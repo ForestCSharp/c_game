@@ -1,0 +1,1 @@
+renderdoccmd capture ./game.exe

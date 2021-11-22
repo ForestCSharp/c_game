@@ -1,0 +1,19 @@
+- FIXME: Pick a driving design (3rd Person ARPG? Airships?)
+
+- TODO: Fill Texture with data
+- TODO: Sample Texture in Shader
+
+- TODO: ImGui
+    - a: quad-based button bool gui_button(const char* label, float x, float y); 
+        - returns true if clicked
+        - x+y are 0-1 screen coords
+        - label will be used later, once we can render fonts
+    - b: font-rendering
+
+- TODO: Some naming standard for stretchy buffers
+
+NVidia Driver 
+March 17th, 2020 - Windows 442.75, Linux 440.66.02
+Added support for a new device-local VkMemoryType which is host-coherent and host-visible 
+
+look into VkPhysicalDeviceMemoryBudgetPropertiesEXT

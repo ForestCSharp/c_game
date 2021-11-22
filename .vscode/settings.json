@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "*.hs": "haskell",
+        "atomic": "cpp",
+        "cstdint": "cpp",
+        "type_traits": "cpp",
+        "gpu.h": "c"
+    }
+}
