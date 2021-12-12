@@ -11,5 +11,6 @@ layout(location = 0) out vec4 out_color;
 
 void main() {
     //TODO: Texture sample multiply by in_color? (colored text?)
-    out_color = texture(tex_sampler, in_uv);
+    out_color = in_color;
+    // out_color = texture(tex_sampler, in_uv);
 }

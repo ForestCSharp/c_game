@@ -59,3 +59,6 @@ static void * stb__sbgrowf(void *arr, int increment, int itemsize)
    }
 }
 #endif // STB_STRETCHY_BUFFER_H_INCLUDED
+
+//useful for denoting that a type is a stretchy buffer and not just a regular pointer/array
+#define sbuffer(t) t*

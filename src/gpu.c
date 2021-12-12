@@ -719,7 +719,7 @@ void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer) {
     }
 }
 
-//Small helper used below, will need to be reworked after I add a proper memory allocator
+//TODO: support resizing here, if upload_size is greater than current size
 void gpu_memcpy(GpuContext* context, GpuMemory* memory, uint64_t upload_size, void* upload_data) {
     void* pData;
     gpu_map_memory(context, memory, 0, upload_size, &pData);

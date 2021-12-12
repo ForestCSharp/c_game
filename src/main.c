@@ -62,7 +62,7 @@ typedef struct Vertex {
 	Vec3 position;
 	Vec3 normal;
 	Vec4 color;
-	float uv[2];
+	Vec2 uv;
 } Vertex;
 
 //Computes all possible triangles (as vertices) for a convex solid, returned in a stretchy buffer
@@ -104,14 +104,14 @@ Vertex* compute_all_triangles(Vec3* in_vertices, Vec4 in_color) {
 					.position = pos_i,
 					.normal = normal,
 					.color = in_color,
-					.uv = {0,0},
+					.uv = vec2_new(0,0),
 				};
 				sb_push(out_verts, v);
 				v.position = pos_j;
-				v.uv[0] = 1;
+				v.uv.x = 1;
 				sb_push(out_verts, v);
 				v.position = pos_k;
-				v.uv[1] = 1;
+				v.uv.y = 1;
 				sb_push(out_verts, v);
             }
         }
@@ -182,7 +182,7 @@ int main() {
 		memcpy(&vertices[i].position, positions_buffer, positions_byte_stride);
 		memcpy(&vertices[i].normal, normals_buffer, normals_byte_stride);
 		memcpy(&vertices[i].color, (float[4]){0.8f, 0.2f, 0.2f, 1.0f}, sizeof(float) * 4);
-		memcpy(vertices[i].uv, uvs_buffer, uvs_byte_stride);
+		memcpy(&vertices[i].uv, uvs_buffer, uvs_byte_stride);
 		
 		positions_buffer += positions_byte_stride;
 		normals_buffer += normals_byte_stride;
@@ -205,9 +205,22 @@ int main() {
 
 	GpuContext gpu_context = gpu_create_context(&window);
 
+	size_t vertices_size = sizeof(Vertex) * vertices_count;
+	GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
+	GpuBuffer vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
+	gpu_upload_buffer(&gpu_context, &vertex_buffer, vertices_size, vertices);
+	free(vertices);
+
+	size_t indices_size = sizeof(uint32_t) * indices_count;
+	GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
+	GpuBuffer index_buffer = gpu_create_buffer(&gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
+	gpu_upload_buffer(&gpu_context, &index_buffer, indices_size, indices);
+	free(indices);
+
 	//BEGIN GUI SETUP 
 
 	GuiContext gui_context;
+	gui_init(&gui_context);
 
 	GuiFont gui_font = {};
 	if (!gui_load_font("data/fonts/JetBrainsMonoLight.bff", &gui_font)) {
@@ -225,7 +238,7 @@ int main() {
 
 	assert(gui_font.font_type == FONT_TYPE_RGBA);
 
-	//FCS TODO: Create Font Texture
+	//Create Font Texture
 	GpuImage font_image = gpu_create_image(&gpu_context, &(GpuImageCreateInfo) {
 		.dimensions = { gui_font.image_width, gui_font.image_height, 1},
 		.format = GPU_FORMAT_RGBA8_UNORM, //FCS TODO: Check from gui_font (remove assert on font type above)
@@ -234,7 +247,7 @@ int main() {
 		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
 	}, "font_image");
 
-	gpu_upload_image(&gpu_context, &font_image, gui_font.image_width, gui_font.image_height, gui_font.image_data_sb);
+	gpu_upload_image(&gpu_context, &font_image, gui_font.image_width, gui_font.image_height, gui_font.image_data);
 
 	GpuImageView font_image_view = gpu_create_image_view(&gpu_context, &(GpuImageViewCreateInfo) {
 		.image = &font_image,
@@ -279,16 +292,16 @@ int main() {
 	GpuRenderPass gui_render_pass = gpu_create_render_pass(&gpu_context, 1, 
 		(GpuAttachmentDesc[1]){{	
 			.format = (GpuFormat) gpu_context.surface_format.format, //FIXME: Store and Get from Context (as a GpuFormat)
-			.load_op = GPU_LOAD_OP_CLEAR,
+			.load_op = GPU_LOAD_OP_LOAD,
 			.store_op = GPU_STORE_OP_STORE,
-			.initial_layout = GPU_IMAGE_LAYOUT_UNDEFINED,
+			.initial_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT,
 			.final_layout = GPU_IMAGE_LAYOUT_PRESENT_SRC,
 		}},
-		&(GpuAttachmentDesc){ //Depth Attachment FCS TODO: Does GUI Need depth?
+		&(GpuAttachmentDesc){ //Depth Attachment
 			.format = GPU_FORMAT_D32_SFLOAT,
 			.load_op = GPU_LOAD_OP_CLEAR,
 			.store_op = GPU_STORE_OP_DONT_CARE,
-			.initial_layout = GPU_IMAGE_LAYOUT_UNDEFINED,
+			.initial_layout = GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT,
 			.final_layout = GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT,
 		});
 
@@ -301,7 +314,7 @@ int main() {
 		GPU_FORMAT_RGBA32_SFLOAT, // Color
 	};
 
-	GpuGraphicsPipelineCreateInfo gui_graphics_pipeline_create_info = {
+	GpuGraphicsPipelineCreateInfo gui_pipeline_create_info = {
 		.vertex_module = &gui_vertex_module,
 		.fragment_module = &gui_fragment_module,
 		.render_pass = &gui_render_pass,
@@ -309,34 +322,25 @@ int main() {
 		.num_attributes = 3,
 		.attribute_formats = gui_attribute_formats,
 		.depth_stencil = {
-			.depth_test = true,
-			.depth_write = true,
+			.depth_test = false,
+			.depth_write = false,
 		}
 	};
 
-	GpuPipeline gui_pipeline = gpu_create_graphics_pipeline(&gpu_context, &gui_graphics_pipeline_create_info);
+	GpuPipeline gui_pipeline = gpu_create_graphics_pipeline(&gpu_context, &gui_pipeline_create_info);
 
 	//Can destroy shader modules after creating pipeline
 	gpu_destroy_shader_module(&gpu_context, &gui_vertex_module);
 	gpu_destroy_shader_module(&gpu_context, &gui_fragment_module);
 
-	//TODO: Generate a test quad (using gui_font_get_uvs)
+	//TODO: vbuf & ibuf
+	size_t max_gui_vertices = 10000; //TODO: need to support gpu buffer resizing
+	GpuBuffer gui_vertex_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_VERTEX_BUFFER, GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, max_gui_vertices, "gui vertex buffer");
 
-	//TODO: gui_init function (takes in font)
+	size_t max_gui_indices = 30000; //TODO: need to support gpu buffer resizing
+	GpuBuffer gui_index_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_INDEX_BUFFER, GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, max_gui_indices, "gui index buffer");
 
 	//END GUI SETUP
-
-	size_t vertices_size = sizeof(Vertex) * vertices_count;
-	GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-	GpuBuffer vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
-	gpu_upload_buffer(&gpu_context, &vertex_buffer, vertices_size, vertices);
-	free(vertices);
-
-	size_t indices_size = sizeof(uint32_t) * indices_count;
-	GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-	GpuBuffer index_buffer = gpu_create_buffer(&gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
-	gpu_upload_buffer(&gpu_context, &index_buffer, indices_size, indices);
-	free(indices);
 
 	typedef struct UniformStruct {
 		Mat4  model;
@@ -365,7 +369,7 @@ int main() {
 			.load_op = GPU_LOAD_OP_CLEAR,
 			.store_op = GPU_STORE_OP_STORE,
 			.initial_layout = GPU_IMAGE_LAYOUT_UNDEFINED,
-			.final_layout = GPU_IMAGE_LAYOUT_PRESENT_SRC,
+			.final_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT,
 		}},
 		&(GpuAttachmentDesc){ //Depth Attachment
 			.format = GPU_FORMAT_D32_SFLOAT,
@@ -423,9 +427,8 @@ int main() {
 		gpu_write_descriptor_set(&gpu_context, &descriptor_sets[i], 2, descriptor_writes);
 	}
 
-
 	//BEGIN COLLIDERS GPU DATA SETUP
-	Vertex* cube_render_vertices = compute_all_triangles(ground_collider.convex_points, vec4_new(0,0.5, 0.0, 1.0));
+	sbuffer(Vertex) cube_render_vertices = compute_all_triangles(ground_collider.convex_points, vec4_new(0,0.5, 0.0, 1.0));
 	uint32_t cube_vertices_count = sb_count(cube_render_vertices);
 	size_t cube_vertices_size = sizeof(Vertex) * cube_vertices_count;
 	GpuBuffer cube_vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, cube_vertices_size, "cube vertex buffer");
@@ -585,20 +588,24 @@ int main() {
 		window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
 		GuiFrameState gui_frame_state = {
-			.res_x = width,
-			.res_y = height,
-			.mouse_x= mouse_x,
+			.res_x   = width,
+			.res_y   = height,
+			.mouse_x = mouse_x,
 			.mouse_y = mouse_y,
 			.mouse_buttons = {input_pressed(KEY_LEFT_MOUSE), input_pressed(KEY_RIGHT_MOUSE), input_pressed(KEY_MIDDLE_MOUSE)}
 		};
 
 		gui_begin_frame(&gui_context, gui_frame_state);
 
-		if (gui_button(&gui_context, "My Button", 0, 0, 40, 40)) {
+		if (gui_button(&gui_context, "My Button", 0, 0, 200, 100)) {
 			printf("CLICKED BUTTON!\n");
 		} else {
 			printf("NO CLICK\n");
 		}
+
+		//TODO: should be per-frame resources
+		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.frame_state.vertices), gui_context.frame_state.vertices);
+		gpu_upload_buffer(&gpu_context, &gui_index_buffer,  sizeof(uint32_t) * sb_count(gui_context.frame_state.indices), gui_context.frame_state.indices);
 
 		//END Gui Test
 
@@ -644,8 +651,41 @@ int main() {
 			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &collider_descriptor_sets[i]);
 			gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count);
 		}
-
 		gpu_cmd_end_render_pass(&command_buffers[current_frame]);
+
+		//BEGIN gui rendering
+		gpu_cmd_begin_render_pass(&command_buffers[current_frame], &(GpuRenderPassBeginInfo) {
+			.render_pass = &gui_render_pass,
+			.framebuffer = &framebuffers[image_index],
+			.num_clear_values = 2,
+			.clear_values = (GpuClearValue[2]){
+				{
+				.clear_color = { 0.0f, 0.0f, 0.0, 0.0f},
+				},
+				{
+					.depth_stencil = {
+						.depth = 1.0f,
+						.stencil = 0,
+					}
+				}
+			},
+		});
+		gpu_cmd_bind_pipeline(&command_buffers[current_frame], &gui_pipeline);
+		gpu_cmd_set_viewport(&command_buffers[current_frame], &(GpuViewport) {
+			.x = 0,
+			.y = 0,
+			.width = width,
+			.height = height,
+			.min_depth = 0.0,
+			.max_depth = 1.0,
+		});
+		gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &gui_pipeline_layout, &gui_descriptor_set);
+		gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &gui_vertex_buffer);
+		gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &gui_index_buffer);
+		gpu_cmd_draw_indexed(&command_buffers[current_frame], sb_count(gui_context.frame_state.indices));
+		gpu_cmd_end_render_pass(&command_buffers[current_frame]);
+		//END gui rendering
+
 		gpu_end_command_buffer(&command_buffers[current_frame]);
 
 		gpu_queue_submit(&gpu_context,
@@ -701,7 +741,6 @@ int main() {
 			orientation = quat_normalize(orientation);
 
 			Mat4 model = quat_to_mat4(orientation);
-			// Mat4 model = mat4_mult_mat4(model, rotation);
 			Mat4 view = mat4_look_at(position, target, up);
 			Mat4 proj = mat4_perspective(60.0f, (float) width / (float) height, 0.01f, 1000.0f);
 
@@ -749,6 +788,8 @@ int main() {
 		}
 
 		current_frame = (current_frame + 1) % gpu_context.swapchain_image_count;
+
+		gpu_wait_idle(&gpu_context); //TODO: Need per-frame resources (gui vbuf,ibuf all uniform buffers)
 	}
 
 	double average_delta_time = accumulated_delta_time / (double) frames_rendered;
@@ -773,6 +814,9 @@ int main() {
 		gpu_destroy_descriptor_set(&gpu_context, &collider_descriptor_sets[i]);
 		gpu_destroy_buffer(&gpu_context, &collider_uniform_buffers[i]);
 	}
+
+	gpu_destroy_buffer(&gpu_context, &gui_vertex_buffer);
+	gpu_destroy_buffer(&gpu_context, &gui_index_buffer);
 
 	//BEGIN Gui Cleanup
 	gpu_destroy_pipeline(&gpu_context, &gui_pipeline);
@@ -799,6 +843,9 @@ int main() {
 	}
 	gpu_destroy_buffer(&gpu_context, &cube_vertex_buffer);
 	gpu_destroy_context(&gpu_context);
+
+	gui_free_font(&gui_font);
+	gui_shutdown(&gui_context);
 
 	return 0;
 }

@@ -2,6 +2,65 @@
 #include <math.h>
 #include <stdio.h>
 
+typedef struct Vec2 {
+    float x;
+    float y;
+} Vec2;
+
+void vec2_print(const Vec2 vec) {
+    printf("[%f %f] ", vec.x, vec.y);
+}
+
+Vec2 vec2_new(float x, float y) {
+    Vec2 v = {
+        .x = x,
+        .y = y,
+    };
+    return v;
+}
+
+Vec2 vec2_negate(const Vec2 v) {
+    return (Vec2) {
+        .x = -v.x,
+        .y = -v.y,
+    };
+}
+
+Vec2 vec2_scale(const Vec2 v, float a) { 
+    return (Vec2) {
+        .x = v.x * a,
+        .y = v.y * a,
+    };
+}
+
+Vec2 vec2_add(const Vec2 a, const Vec2 b) {
+    Vec2 result = {
+        .x = a.x + b.x,
+        .y = a.y + b.y,
+    };
+    return result;
+}
+
+Vec2 vec2_sub(const Vec2 a, const Vec2 b) {
+    return vec2_add(a, vec2_negate(b));
+}
+
+float vec2_length_squared(const Vec2 v) { 
+    return v.x * v.x + v.y * v.y;
+}
+
+float vec2_length(const Vec2 v) { 
+    return sqrt(vec2_length_squared(v)); 
+}
+
+Vec2 vec2_normalize(const Vec2 v) { 
+    float length = vec2_length(v);
+    return (Vec2) {
+        .x = v.x / length,
+        .y = v.y / length,
+    }; 
+}
+
 typedef struct Vec3 {
     float x;
     float y;

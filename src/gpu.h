@@ -235,7 +235,7 @@ typedef struct GpuGraphicsPipelineCreateInfo {
     uint32_t num_attributes;
     GpuFormat* attribute_formats;
     GpuPipelineDepthStencilState depth_stencil;
-	// More FixedFunction State
+	// TODO: More FixedFunction State
 } GpuGraphicsPipelineCreateInfo;
 
 typedef struct GpuPipeline {

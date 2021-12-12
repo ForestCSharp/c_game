@@ -2,6 +2,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "stretchy_buffer.h"
+#include "vec.h"
+
+typedef struct GuiVert {
+    Vec2 position;
+    Vec2 uv;
+    Vec4 color;
+} GuiVert;
 
 typedef struct GuiFrameState {
     uint32_t res_x;
@@ -10,6 +17,9 @@ typedef struct GuiFrameState {
     int32_t mouse_x;
     int32_t mouse_y;
     bool mouse_buttons[3];
+
+    sbuffer(GuiVert) vertices;
+    sbuffer(uint32_t) indices;
 } GuiFrameState;
 
 #define BFF_ID 0xF2BF
@@ -21,20 +31,40 @@ typedef enum GuiFontType {
 } GuiFontType;
 
 typedef struct GuiFont {
-    uint32_t    image_width;
-    uint32_t    image_height;
-    uint32_t    cell_width;
-    uint32_t    cell_height;
-    GuiFontType font_type;
-    char        first_char;
-    uint8_t     char_widths[256];
-    uint8_t*    image_data_sb;
-    uint64_t    image_data_size;
+    uint32_t            image_width;
+    uint32_t            image_height;
+    uint32_t            cell_width;
+    uint32_t            cell_height;
+    GuiFontType         font_type;
+    char                first_char;
+    uint8_t             char_widths[256];
+    sbuffer(uint8_t)    image_data;
+    uint64_t            image_data_size;
 } GuiFont;
 
 typedef struct GuiContext {
     GuiFrameState frame_state;
 } GuiContext;
+
+//TODO: take in a default font
+void gui_init(GuiContext* out_context) {
+    *out_context = (GuiContext){
+        .frame_state = (GuiFrameState) {
+            .res_x = 1920,
+            .res_y = 1080,
+            .mouse_x = 0,
+            .mouse_y = 0,
+            .mouse_buttons = {false, false, false},
+            .vertices = NULL,
+            .indices = NULL,
+        },
+    };
+}
+
+void gui_shutdown(GuiContext* in_context) {
+    sb_free(in_context->frame_state.vertices);
+    sb_free(in_context->frame_state.indices);
+}
 
 //Zeroes out out_font before loading, make sure out_font wasn't previously created with this function, and if so, free it with gui_free_font
 bool gui_load_font(const char* filename, GuiFont* out_font) {
@@ -79,8 +109,8 @@ bool gui_load_font(const char* filename, GuiFont* out_font) {
         //Finally, load actual image data
         out_font->image_data_size = out_font->image_width * out_font->image_height * (font_type / 8);
         
-        sb_add(out_font->image_data_sb, out_font->image_data_size);      
-        if (fread(out_font->image_data_sb, 1, out_font->image_data_size, file) != out_font->image_data_size) {
+        sb_add(out_font->image_data, out_font->image_data_size);      
+        if (fread(out_font->image_data, 1, out_font->image_data_size, file) != out_font->image_data_size) {
             return false;
         }
 
@@ -131,17 +161,20 @@ bool gui_font_get_uvs(GuiFont* in_font, char in_char, CharUVs* out_uvs) {
     return false;
 }
 
-//TODO: set up shaders/pipeline for gui rendering in main.c, using gui.vert/gui.frag
 //TODO: function that takes in a string and returns/appends to stretchy_buffers of the Vertices (4 per char) + Indices (6) for that string (with some input offset) (+ bounding box?)
 
 void gui_free_font(GuiFont* in_font) {
-    sb_free(in_font->image_data_sb);
+    sb_free(in_font->image_data);
     *in_font = (GuiFont){};
 }
 
 //TODO: frame begin function (pass resolution, mouse state, etc...)
 void gui_begin_frame(GuiContext* const context, GuiFrameState frame_state) {
     context->frame_state = frame_state;
+
+    //Clear old vertex + index buffer data //TODO: don't realloc these arrays each frame
+    sb_free(context->frame_state.vertices);
+    sb_free(context->frame_state.indices);
 
     //FCS TODO: Remove
     printf("Mouse Coords: %i %i LMB: %s\n", context->frame_state.mouse_x, context->frame_state.mouse_y, context->frame_state.mouse_buttons[0] ? "DOWN" : "UP");
@@ -156,6 +189,57 @@ bool gui_button(const GuiContext* const context, const char* label, float x, flo
                        && frame_state->mouse_x < x + width 
                        && frame_state->mouse_y > y 
                        && frame_state->mouse_y < y + height;
+
+    Vec4 button_color = button_clicked ? vec4_new(1,0,0,1) : vec4_new(1,1,1,1);
+
+    //FCS TODO: Vertex Data
+    float res_x = (float)frame_state->res_x;
+    float res_y = (float)frame_state->res_y;
+
+    float normalized_x = x / res_x;
+    float normalized_y = y / res_y;
+    float normalized_width = width / res_x;
+    float normalized_height = height / res_y;
+
+    //TODO: "make box" helper
+    //TODO: Helper to push normalized verts
+
+    uint32_t next_vert_idx = sb_count(frame_state->vertices);
+
+    //Indices
+    sb_push(frame_state->indices, next_vert_idx + 0);
+    sb_push(frame_state->indices, next_vert_idx + 1);
+    sb_push(frame_state->indices, next_vert_idx + 2);
+
+    sb_push(frame_state->indices, next_vert_idx + 1);
+    sb_push(frame_state->indices, next_vert_idx + 2);
+    sb_push(frame_state->indices, next_vert_idx + 3);
+
+    //Vertices
+    sb_push(frame_state->vertices, ((GuiVert) {
+        .position = vec2_new(normalized_x, normalized_y),
+        .uv = vec2_new(0,0), //TODO:
+        .color = button_color,
+    }));
+
+    sb_push(frame_state->vertices, ((GuiVert) {
+        .position = vec2_new(normalized_x + normalized_width, normalized_y),
+        .uv = vec2_new(0,0), //TODO:
+        .color = button_color,
+    }));
+
+    sb_push(frame_state->vertices, ((GuiVert) {
+        .position = vec2_new(normalized_x, normalized_y + normalized_height),
+        .uv = vec2_new(0,0), //TODO:
+        .color = button_color,
+    }));
+
+    sb_push(frame_state->vertices, ((GuiVert) {
+        .position = vec2_new(normalized_x + normalized_width, normalized_y + normalized_height),
+        .uv = vec2_new(0,0), //TODO:
+        .color = button_color,
+    }));
+
 
     return button_clicked;
 }
