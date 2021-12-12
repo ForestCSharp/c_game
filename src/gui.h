@@ -44,6 +44,7 @@ typedef struct GuiFont {
 
 typedef struct GuiContext {
     GuiFrameState frame_state;
+    GuiFrameState prev_frame_state;
 } GuiContext;
 
 //TODO: take in a default font
@@ -170,6 +171,7 @@ void gui_free_font(GuiFont* in_font) {
 
 //TODO: frame begin function (pass resolution, mouse state, etc...)
 void gui_begin_frame(GuiContext* const context, GuiFrameState frame_state) {
+    context->prev_frame_state = context->frame_state;
     context->frame_state = frame_state;
 
     //Clear old vertex + index buffer data //TODO: don't realloc these arrays each frame
@@ -239,7 +241,6 @@ bool gui_button(const GuiContext* const context, const char* label, float x, flo
         .uv = vec2_new(0,0), //TODO:
         .color = button_color,
     }));
-
 
     return button_clicked;
 }
