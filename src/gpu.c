@@ -170,7 +170,7 @@ GpuContext gpu_create_context(const Window* const window) {
         "VK_KHR_surface",
         "VK_KHR_win32_surface",
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-        VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
+        VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
     uint32_t extension_count = sizeof(extensions) / sizeof(extensions[0]);
 
@@ -1292,9 +1292,9 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
     //FIXME: build up based on renderpass attachments
     VkPipelineColorBlendAttachmentState color_blending_attachments[] = {
         {
-            .blendEnable = VK_FALSE,
-            .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-            .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .blendEnable = create_info->enable_color_blending ? VK_TRUE : VK_FALSE,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
             .colorBlendOp = VK_BLEND_OP_ADD,
             .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
             .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,

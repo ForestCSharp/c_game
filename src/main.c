@@ -310,7 +310,8 @@ int main() {
 		.depth_stencil = {
 			.depth_test = false,
 			.depth_write = false,
-		}
+		},
+		.enable_color_blending = true,
 	};
 
 	GpuPipeline gui_pipeline = gpu_create_graphics_pipeline(&gpu_context, &gui_pipeline_create_info);

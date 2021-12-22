@@ -235,6 +235,7 @@ typedef struct GpuGraphicsPipelineCreateInfo {
     uint32_t num_attributes;
     GpuFormat* attribute_formats;
     GpuPipelineDepthStencilState depth_stencil;
+    bool enable_color_blending; //FCS TODO: need to pass in per-color attachment for this
 	// TODO: More FixedFunction State
 } GpuGraphicsPipelineCreateInfo;
 

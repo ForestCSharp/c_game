@@ -257,10 +257,11 @@ void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_re
 void gui_text(const GuiContext* const context, const char* in_text, const GuiRect* const in_bounding_rect) {
     size_t num_chars = strlen(in_text);
 
-    const float char_size = 40.0f; //TODO: arg
-    const float spacing = -20.0f; //TODO: arg, ensure that char_size + spacing is > 0
+    const float initial_offset = 15.0f;
+    const float char_size = 30.0f; //TODO: arg
+    const float spacing = -17.5f; //TODO: arg
 
-    Vec2 current_offset = in_bounding_rect->position;
+    Vec2 current_offset = vec2_add(in_bounding_rect->position, vec2_new(initial_offset, 0));
 
     for (size_t i = 0; i < num_chars; ++i) {
         
@@ -281,16 +282,11 @@ void gui_text(const GuiContext* const context, const char* in_text, const GuiRec
         current_offset = vec2_add(current_offset, vec2_new(char_size + spacing, 0));
 
         if (current_offset.x + char_size > in_bounding_rect->position.x + in_bounding_rect->size.x) {
+            //TODO: option to go to next line if enough space in the y direction
             break;
         }
     }
 }
-
-//gui_text(const GuiContext* const context, const char* in_text, const GuiRect* const in_bounding_rect)
-//1. for ea. char in "in_text"...
-//  a. draw appropriate quad with UVs
-//  b. if partially clipped, compute clipping of last char and break loop (out of space)
-//  c. if fully clipped, also break loop (out of space)
 
 GuiClickState gui_button(const GuiContext* const in_context, const char* label, float x, float y, float width, float height) {
     const GuiFrameState* const current_frame_state = &in_context->frame_state;
@@ -318,11 +314,12 @@ GuiClickState gui_button(const GuiContext* const in_context, const char* label, 
                        && cursor_previously_overlapped && prev_frame_state->mouse_buttons[0];
 
     //Draw held buttons as red for now
-    const Vec4 button_color = button_held ? vec4_new(1,0,0,1) : vec4_new(0,0,0,1);
+    const float alpha = 0.75f;
+    const Vec4 button_color = button_held ? vec4_new(1,0,0,alpha) : vec4_new(0,0,0,alpha);
 
     gui_make_box(in_context, &button_rect, &button_color, NULL);
 
-    Vec4 text_color = vec4_new(1,1,1,1);
+    Vec4 text_color = vec4_new(1,1,1,alpha);
     gui_text(in_context, label, &button_rect);
 
     return button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : GUI_RELEASED;
