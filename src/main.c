@@ -243,8 +243,8 @@ int main() {
 	});
 
 	GpuSampler font_sampler = gpu_create_sampler(&gpu_context, &(GpuSamplerCreateInfo) {
-		.mag_filter = GPU_FILTER_NEAREST,
-		.min_filter = GPU_FILTER_NEAREST,
+		.mag_filter = GPU_FILTER_LINEAR,
+		.min_filter = GPU_FILTER_LINEAR,
 		.max_anisotropy = 16,
 	});
 
@@ -592,6 +592,20 @@ int main() {
 			printf("Holding Second Button\n");
 		}
 
+		{ //Rolling FPS, resets on click
+			double average_delta_time = accumulated_delta_time / (double) frames_rendered;
+			double average_fps = 1.0 / average_delta_time;
+
+			char buffer[128];
+			snprintf(buffer, sizeof(buffer), "FPS: %.1f", average_fps);
+			const float padding = 5.f;
+			const float fps_button_size = 160.f;
+			if (gui_button(&gui_context, buffer, width - fps_button_size - padding, padding, fps_button_size, 30) == GUI_CLICKED) {
+				accumulated_delta_time = 0.0f;
+				frames_rendered = 0;
+			}
+		}
+
 		//TODO: should be per-frame resources
 		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);
 		gpu_upload_buffer(&gpu_context, &gui_index_buffer,  sizeof(uint32_t) * sb_count(gui_context.draw_data.indices), gui_context.draw_data.indices);
@@ -780,10 +794,6 @@ int main() {
 
 		gpu_wait_idle(&gpu_context); //TODO: Need per-frame resources (gui vbuf,ibuf all uniform buffers)
 	}
-
-	double average_delta_time = accumulated_delta_time / (double) frames_rendered;
-	printf("Average Delta Time = %f \n", average_delta_time);
-	printf("Average FPS = %f \n", 1 / average_delta_time);
 
 	gpu_wait_idle(&gpu_context);
 
