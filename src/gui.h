@@ -10,17 +10,21 @@ typedef struct GuiVert {
     Vec4 color;
 } GuiVert;
 
+typedef struct GuiRect {
+    Vec2 position;
+    Vec2 size;
+} GuiRect;
+
 typedef struct GuiFrameState {
-    uint32_t res_x;
-    uint32_t res_y;
-
-    int32_t mouse_x;
-    int32_t mouse_y;
+    Vec2 window_size;
+    Vec2 mouse_pos; //Mouse position, in screen coordinates
     bool mouse_buttons[3];
-
-    sbuffer(GuiVert) vertices;
-    sbuffer(uint32_t) indices;
 } GuiFrameState;
+
+typedef struct GuiDrawData {
+    sbuffer(GuiVert)  vertices;
+    sbuffer(uint32_t) indices;
+} GuiDrawData;
 
 #define BFF_ID 0xF2BF
 
@@ -45,26 +49,50 @@ typedef struct GuiFont {
 typedef struct GuiContext {
     GuiFrameState frame_state;
     GuiFrameState prev_frame_state;
+    GuiDrawData draw_data;
 } GuiContext;
+
+typedef struct CharUVs {
+    float min_u;
+    float min_v;
+    float max_u;
+    float max_v;
+} CharUVs;
+
+typedef enum GuiClickState {
+    GUI_RELEASED = 0,
+    GUI_CLICKED  = 1,
+    GUI_HELD     = 2,
+} GuiClickState;
+
+bool gui_is_point_in_rect(GuiRect in_rect, Vec2 in_point) {
+    return in_point.x >= in_rect.position.x
+        && in_point.x <= in_rect.position.x + in_rect.size.x
+        && in_point.y >= in_rect.position.y
+        && in_point.y <= in_rect.position.y + in_rect.size.y;
+}
 
 //TODO: take in a default font
 void gui_init(GuiContext* out_context) {
+    GuiFrameState default_frame_state = {
+        .window_size = vec2_new(1920,1080),
+        .mouse_pos = vec2_new(0,0),
+        .mouse_buttons = {false, false, false},
+    };
+
     *out_context = (GuiContext){
-        .frame_state = (GuiFrameState) {
-            .res_x = 1920,
-            .res_y = 1080,
-            .mouse_x = 0,
-            .mouse_y = 0,
-            .mouse_buttons = {false, false, false},
+        .frame_state = default_frame_state,
+        .prev_frame_state = default_frame_state,
+        .draw_data = (GuiDrawData) {
             .vertices = NULL,
-            .indices = NULL,
-        },
+            .indices  = NULL,
+        }
     };
 }
 
 void gui_shutdown(GuiContext* in_context) {
-    sb_free(in_context->frame_state.vertices);
-    sb_free(in_context->frame_state.indices);
+    sb_free(in_context->draw_data.vertices);
+    sb_free(in_context->draw_data.indices);
 }
 
 //Zeroes out out_font before loading, make sure out_font wasn't previously created with this function, and if so, free it with gui_free_font
@@ -127,13 +155,6 @@ bool gui_load_font(const char* filename, GuiFont* out_font) {
     return false;
 }
 
-typedef struct CharUVs {
-    float min_u;
-    float min_v;
-    float max_u;
-    float max_v;
-} CharUVs;
-
 bool gui_font_get_uvs(GuiFont* in_font, char in_char, CharUVs* out_uvs) {
    
     int32_t chars_per_row = in_font->image_width / in_font->cell_width;
@@ -171,76 +192,92 @@ void gui_free_font(GuiFont* in_font) {
 
 //TODO: frame begin function (pass resolution, mouse state, etc...)
 void gui_begin_frame(GuiContext* const context, GuiFrameState frame_state) {
+    
     context->prev_frame_state = context->frame_state;
     context->frame_state = frame_state;
 
     //Clear old vertex + index buffer data //TODO: don't realloc these arrays each frame
-    sb_free(context->frame_state.vertices);
-    sb_free(context->frame_state.indices);
-
-    //FCS TODO: Remove
-    printf("Mouse Coords: %i %i LMB: %s\n", context->frame_state.mouse_x, context->frame_state.mouse_y, context->frame_state.mouse_buttons[0] ? "DOWN" : "UP");
+    sb_free(context->draw_data.vertices);
+    sb_free(context->draw_data.indices);
 }
 
-//TODO: make x,y, width, height int32_t?
-bool gui_button(const GuiContext* const context, const char* label, float x, float y, float width, float height) {
-    //TODO: return true if mouse_buttons[0], AND mouse_x > x and < width, AND mouse_y
-    const GuiFrameState* const frame_state = &context->frame_state;
-    bool button_clicked = frame_state->mouse_buttons[0] 
-                       && frame_state->mouse_x > x 
-                       && frame_state->mouse_x < x + width 
-                       && frame_state->mouse_y > y 
-                       && frame_state->mouse_y < y + height;
+//TODO: UV-rect argument (for font-rendering)
+/* Currently takes in screen-space coordinates and converts to [0,1] where (0,0) is top-left and (1,1) is bottom right */
+void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_rect, const Vec4* const in_color) {
+    
+    const Vec2* window_size = &in_context->frame_state.window_size;
+    
+    float normalized_x = in_rect->position.x / window_size->x;
+    float normalized_y = in_rect->position.y / window_size->y;
+    float normalized_width = in_rect->size.x / window_size->x;
+    float normalized_height = in_rect->size.y / window_size->y;
 
-    Vec4 button_color = button_clicked ? vec4_new(1,0,0,1) : vec4_new(1,1,1,1);
-
-    //FCS TODO: Vertex Data
-    float res_x = (float)frame_state->res_x;
-    float res_y = (float)frame_state->res_y;
-
-    float normalized_x = x / res_x;
-    float normalized_y = y / res_y;
-    float normalized_width = width / res_x;
-    float normalized_height = height / res_y;
-
-    //TODO: "make box" helper
-    //TODO: Helper to push normalized verts
-
-    uint32_t next_vert_idx = sb_count(frame_state->vertices);
+    uint32_t next_vert_idx = sb_count(in_context->draw_data.vertices);
 
     //Indices
-    sb_push(frame_state->indices, next_vert_idx + 0);
-    sb_push(frame_state->indices, next_vert_idx + 1);
-    sb_push(frame_state->indices, next_vert_idx + 2);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 0);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 1);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 2);
 
-    sb_push(frame_state->indices, next_vert_idx + 1);
-    sb_push(frame_state->indices, next_vert_idx + 2);
-    sb_push(frame_state->indices, next_vert_idx + 3);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 1);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 2);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 3);
 
     //Vertices
-    sb_push(frame_state->vertices, ((GuiVert) {
+    sb_push(in_context->draw_data.vertices, ((GuiVert) {
         .position = vec2_new(normalized_x, normalized_y),
         .uv = vec2_new(0,0), //TODO:
-        .color = button_color,
+        .color = *in_color,
     }));
 
-    sb_push(frame_state->vertices, ((GuiVert) {
+    sb_push(in_context->draw_data.vertices, ((GuiVert) {
         .position = vec2_new(normalized_x + normalized_width, normalized_y),
         .uv = vec2_new(0,0), //TODO:
-        .color = button_color,
+        .color = *in_color,
     }));
 
-    sb_push(frame_state->vertices, ((GuiVert) {
+    sb_push(in_context->draw_data.vertices, ((GuiVert) {
         .position = vec2_new(normalized_x, normalized_y + normalized_height),
         .uv = vec2_new(0,0), //TODO:
-        .color = button_color,
+        .color = *in_color,
     }));
 
-    sb_push(frame_state->vertices, ((GuiVert) {
+    sb_push(in_context->draw_data.vertices, ((GuiVert) {
         .position = vec2_new(normalized_x + normalized_width, normalized_y + normalized_height),
         .uv = vec2_new(0,0), //TODO:
-        .color = button_color,
+        .color = *in_color,
     }));
+}
 
-    return button_clicked;
+GuiClickState gui_button(const GuiContext* const context, const char* label, float x, float y, float width, float height) {
+    const GuiFrameState* const current_frame_state = &context->frame_state;
+    const GuiFrameState* const prev_frame_state = &context->prev_frame_state;
+
+    GuiRect button_rect = {
+        .position = {
+            .x = x,
+            .y = y,
+        },
+        .size = {
+            .x = width,
+            .y = height,
+        }
+    };
+
+    const bool cursor_currently_overlaps = gui_is_point_in_rect(button_rect, current_frame_state->mouse_pos);
+    const bool cursor_previously_overlapped = gui_is_point_in_rect(button_rect, prev_frame_state->mouse_pos);
+
+    //Held: we're over the button and holding LMB
+    bool button_held = cursor_currently_overlaps && current_frame_state->mouse_buttons[0];
+
+    //Clicked: we were previously holding this button and have now released it
+    bool button_clicked = cursor_currently_overlaps && !current_frame_state->mouse_buttons[0]
+                       && cursor_previously_overlapped && prev_frame_state->mouse_buttons[0];
+
+    //Draw held buttons as red for now
+    const Vec4 button_color = button_held ? vec4_new(1,0,0,1) : vec4_new(0,0,0,1);
+
+    gui_make_box(context, &button_rect, &button_color);
+
+    return button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : GUI_RELEASED;
 }

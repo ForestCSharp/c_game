@@ -67,7 +67,7 @@ typedef struct Vertex {
 
 //Computes all possible triangles (as vertices) for a convex solid, returned in a stretchy buffer
 Vertex* compute_all_triangles(Vec3* in_vertices, Vec4 in_color) {
-    Vertex* out_verts = NULL;
+    sbuffer(Vertex) out_verts = NULL;
 	uint32_t num_verts = sb_count(in_vertices);
 
 	Vec3 center = vec3_new(0,0,0);
@@ -434,7 +434,7 @@ int main() {
 	GpuBuffer cube_vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, cube_vertices_size, "cube vertex buffer");
 	gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertices_size, cube_render_vertices);
 	sb_free(cube_render_vertices);
-	
+		
 	GpuBuffer* collider_uniform_buffers = NULL;
 	sb_add(collider_uniform_buffers, sb_count(colliders));
 	GpuDescriptorSet* collider_descriptor_sets = NULL;
@@ -588,24 +588,26 @@ int main() {
 		window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
 		GuiFrameState gui_frame_state = {
-			.res_x   = width,
-			.res_y   = height,
-			.mouse_x = mouse_x,
-			.mouse_y = mouse_y,
+			.window_size = vec2_new(width, height),
+			.mouse_pos = vec2_new(mouse_x, mouse_y),
 			.mouse_buttons = {input_pressed(KEY_LEFT_MOUSE), input_pressed(KEY_RIGHT_MOUSE), input_pressed(KEY_MIDDLE_MOUSE)}
 		};
 
 		gui_begin_frame(&gui_context, gui_frame_state);
 
-		if (gui_button(&gui_context, "My Button", 0, 0, 200, 100)) {
-			printf("CLICKED BUTTON!\n");
-		} else {
-			printf("NO CLICK\n");
+		if (gui_button(&gui_context, "My Button", 15, 15, 100, 50) == GUI_CLICKED)
+		{
+			printf("Button Clicked!\n");
+		}
+
+		if (gui_button(&gui_context, "My Second Button", 165, 15, 100, 50) == GUI_HELD)
+		{
+			printf("Holding Second Button\n");
 		}
 
 		//TODO: should be per-frame resources
-		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.frame_state.vertices), gui_context.frame_state.vertices);
-		gpu_upload_buffer(&gpu_context, &gui_index_buffer,  sizeof(uint32_t) * sb_count(gui_context.frame_state.indices), gui_context.frame_state.indices);
+		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);
+		gpu_upload_buffer(&gpu_context, &gui_index_buffer,  sizeof(uint32_t) * sb_count(gui_context.draw_data.indices), gui_context.draw_data.indices);
 
 		//END Gui Test
 
@@ -682,7 +684,7 @@ int main() {
 		gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &gui_pipeline_layout, &gui_descriptor_set);
 		gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &gui_vertex_buffer);
 		gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &gui_index_buffer);
-		gpu_cmd_draw_indexed(&command_buffers[current_frame], sb_count(gui_context.frame_state.indices));
+		gpu_cmd_draw_indexed(&command_buffers[current_frame], sb_count(gui_context.draw_data.indices));
 		gpu_cmd_end_render_pass(&command_buffers[current_frame]);
 		//END gui rendering
 
