@@ -222,32 +222,18 @@ int main() {
 	GuiContext gui_context;
 	gui_init(&gui_context);
 
-	GuiFont gui_font = {};
-	if (!gui_load_font("data/fonts/JetBrainsMonoLight.bff", &gui_font)) {
-		printf("failed to load font\n");
-		exit(0);
-	}
-
-	char c = 'A';
-	CharUVs char_uvs;
-	if (gui_font_get_uvs(&gui_font, c, &char_uvs)) {
-		printf("FOUND UVs: char: %c u1: %f, v1: %f, u2: %f, v2: %f,\n", 
-			c, char_uvs.min_u, char_uvs.min_v, char_uvs.max_u, char_uvs.max_v
-		);
-	}
-
-	assert(gui_font.font_type == FONT_TYPE_RGBA);
+	assert(gui_context.default_font.font_type == FONT_TYPE_RGBA);
 
 	//Create Font Texture
 	GpuImage font_image = gpu_create_image(&gpu_context, &(GpuImageCreateInfo) {
-		.dimensions = { gui_font.image_width, gui_font.image_height, 1},
-		.format = GPU_FORMAT_RGBA8_UNORM, //FCS TODO: Check from gui_font (remove assert on font type above)
+		.dimensions = { gui_context.default_font.image_width, gui_context.default_font.image_height, 1},
+		.format = GPU_FORMAT_RGBA8_UNORM, //FCS TODO: Check from gui_context.default_font (remove assert on font type above)
 		.mip_levels = 1,
 		.usage = GPU_IMAGE_USAGE_SAMPLED | GPU_IMAGE_USAGE_TRANSFER_DST,
 		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
 	}, "font_image");
 
-	gpu_upload_image(&gpu_context, &font_image, gui_font.image_width, gui_font.image_height, gui_font.image_data);
+	gpu_upload_image(&gpu_context, &font_image, gui_context.default_font.image_width, gui_context.default_font.image_height, gui_context.default_font.image_data);
 
 	GpuImageView font_image_view = gpu_create_image_view(&gpu_context, &(GpuImageViewCreateInfo) {
 		.image = &font_image,
@@ -266,7 +252,7 @@ int main() {
 		.binding_count = 1,
 		.bindings = (GpuDescriptorBinding[1]){
 			{
-				.binding = 1,
+				.binding = 0,
 				.type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 				.stage_flags = GPU_SHADER_STAGE_ALL_GRAPHICS,
 			},
@@ -434,7 +420,7 @@ int main() {
 	GpuBuffer cube_vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, cube_vertices_size, "cube vertex buffer");
 	gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertices_size, cube_render_vertices);
 	sb_free(cube_render_vertices);
-		
+
 	GpuBuffer* collider_uniform_buffers = NULL;
 	sb_add(collider_uniform_buffers, sb_count(colliders));
 	GpuDescriptorSet* collider_descriptor_sets = NULL;
@@ -595,12 +581,12 @@ int main() {
 
 		gui_begin_frame(&gui_context, gui_frame_state);
 
-		if (gui_button(&gui_context, "My Button", 15, 15, 100, 50) == GUI_CLICKED)
+		if (gui_button(&gui_context, "My Button", 15, 15, 300, 50) == GUI_CLICKED)
 		{
 			printf("Button Clicked!\n");
 		}
 
-		if (gui_button(&gui_context, "My Second Button", 165, 15, 100, 50) == GUI_HELD)
+		if (gui_button(&gui_context, "This is also a button.", 15, 100, 300, 50) == GUI_HELD)
 		{
 			printf("Holding Second Button\n");
 		}
@@ -846,7 +832,6 @@ int main() {
 	gpu_destroy_buffer(&gpu_context, &cube_vertex_buffer);
 	gpu_destroy_context(&gpu_context);
 
-	gui_free_font(&gui_font);
 	gui_shutdown(&gui_context);
 
 	return 0;
