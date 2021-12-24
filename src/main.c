@@ -135,7 +135,7 @@ int main() {
 	ground_collider.is_kinematic = false;
 	sb_push(colliders, ground_collider);
 
-	const uint32_t dimensions = 4;
+	const uint32_t dimensions = 3;
 	for (int32_t x = 0; x < dimensions; ++x) {
 		for (int32_t y = 0; y < dimensions; ++y) {
 			for (int32_t z = 0; z < dimensions; ++z) {		
@@ -582,15 +582,17 @@ int main() {
 
 		gui_begin_frame(&gui_context, gui_frame_state);
 
-		if (gui_button(&gui_context, "My Button", 15, 15, 300, 50) == GUI_CLICKED)
+		if (gui_button(&gui_context, "My Btn", 15, 15, 200, 50) == GUI_CLICKED)
 		{
 			printf("Button Clicked!\n");
 		}
 
-		if (gui_button(&gui_context, "This is also a button.", 15, 100, 300, 50) == GUI_HELD)
+		if (gui_button(&gui_context, "too much text to display", 15, 100, 270, 50) == GUI_HELD)
 		{
 			printf("Holding Second Button\n");
 		}
+
+		gui_button(&gui_context, "this is way too much text to display", 15, 150, 270, 50);
 
 		{ //Rolling FPS, resets on click
 			double average_delta_time = accumulated_delta_time / (double) frames_rendered;
@@ -606,11 +608,12 @@ int main() {
 			}
 		}
 
-		static GuiWindowData gui_window_data = {
+		static GuiWindow gui_window_data = {
+			.name = "Debug",
 			.window_rect = {
 				.position = {
-					.x = 200,
-					.y = 200,
+					.x = 15,
+					.y = 250,
 				},
 				.size = {
 					.x = 400,
@@ -626,17 +629,8 @@ int main() {
 		gui_window_button(&gui_context, &gui_window_data, "Button 3");
 		gui_window_button(&gui_context, &gui_window_data, "Button 4");
 
-		const float text_size = 300.0f;
-		gui_make_text(&gui_context, "THIS IS MORE TEXT", &(GuiRect){
-			.position = {
-				.x = (float) width / 2.0f - text_size / 2.0f,
-				.y = 15,
-			},
-			.size = {
-				.x = text_size,
-				.y = 100,
-			}
-		});
+		const float text_size = 400.0f;
+		gui_text(&gui_context, "NW - 30 - 15- N - 15 - 30 - NE", vec2_new((float) width / 2.0f - text_size / 2.0f, 15.0f));
 
 		//TODO: should be per-frame resources
 		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);

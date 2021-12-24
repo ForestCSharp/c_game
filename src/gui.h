@@ -4,6 +4,20 @@
 #include "stretchy_buffer.h"
 #include "vec.h"
 
+/*
+    Naming Conventions
+    -> User-friendly 'free' control functions
+        -> gui_<control>
+        -> ex: gui_button, gui_text
+    -> window based functions
+        -> gui_window_<control>
+        -> ex: gui_window_button
+    -> internal functions
+        -> gui_make_<control/primitive>
+        -> ex: gui_make_button, gui_make_text
+
+*/
+
 typedef struct GuiVert {
     Vec2 position;
     Vec2 uv;
@@ -57,7 +71,18 @@ typedef enum GuiClickState {
     GUI_RELEASED = 0,
     GUI_CLICKED  = 1,
     GUI_HELD     = 2,
+    GUI_HOVERED  = 3,
 } GuiClickState;
+
+typedef struct GuiWindow {
+    char name[256];
+    GuiRect window_rect;
+    bool is_expanded;
+
+    //Internal vars //TODO: store internal vars elsewhere (inner struct?)
+    bool is_window_moving;  //Are we dragging a window (ignore top bar clicks)
+    uint32_t next_index;    //Next Index in window's list of controls
+} GuiWindow;
 
 //Zeroes out out_font before loading, make sure out_font wasn't previously created with this function, and if so, free it with gui_free_font
 bool gui_load_font(const char* filename, GuiFont* out_font) {
@@ -254,19 +279,52 @@ void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_re
     }));
 }
 
-//TODO: version of this that takes in user-friendly position arg (with size being remaining space up to end of screen)
-void gui_make_text(const GuiContext* const context, const char* in_text, const GuiRect* const in_bounding_rect) {
+typedef enum GuiAlignment {
+    GUI_ALIGN_LEFT,
+    GUI_ALIGN_CENTER,
+    // GUI_ALIGN_RIGHT, //TODO:
+} GuiAlignment;
+
+//TODO: simpler version of this that only takes in position arg
+//TODO: if in_bounding_rect size is <= 0, consider that dimension unbounded
+void gui_make_text(const GuiContext* const context, const char* in_text, const GuiRect* const in_bounding_rect, GuiAlignment in_alignment) {
     size_t num_chars = strlen(in_text);
 
-    const float initial_offset = 15.0f; //TODO: arg
-    const float char_size = 27.5f; //TODO: arg
-    const float spacing = -15.0f; //TODO: arg
+    // const float initial_offset = 15.0f; //TODO: style setting
+    const float char_size = 27.5f; //TODO: style setting
+    const float spacing = -15.0f; //TODO: style setting
 
     //TODO: Ensure we have enough height for char_size
 
-    Vec2 current_offset = vec2_add(in_bounding_rect->position, vec2_new(initial_offset, 0));
+    //Compute max possible chars
+    float bounding_rect_width = in_bounding_rect->size.x;
 
-    for (size_t i = 0; i < num_chars; ++i) {
+    //Compute baed on bounding rect width, but never greater than num_chars
+    size_t max_possible_chars = min(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
+    float text_width = max_possible_chars * (char_size + spacing);
+
+    Vec2 current_offset = in_bounding_rect->position;
+    switch (in_alignment)
+    {
+        case GUI_ALIGN_LEFT:
+        {
+            current_offset = in_bounding_rect->position;
+            break;
+        }
+        case GUI_ALIGN_CENTER:
+        {
+            float text_start_x = (in_bounding_rect->position.x + in_bounding_rect->size.x / 2.f) - text_width / 2.f;
+            current_offset = vec2_new(text_start_x, in_bounding_rect->position.y);
+            break;
+        }
+    }
+
+    GuiRect text_rect = {
+        .position = current_offset,
+        .size = vec2_new(0.f, 0.f),
+    };
+    
+    for (size_t i = 0; i < max_possible_chars; ++i) {
         
         char current_char = in_text[i];
 
@@ -282,19 +340,64 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
         gui_make_box(context, &box_rect, &color, &uv_rect);
 
         current_offset = vec2_add(current_offset, vec2_new(char_size + spacing, 0));
-
-        if (current_offset.x + char_size > in_bounding_rect->position.x + in_bounding_rect->size.x) {
-            //TODO: option to go to next line if enough space in the y direction
-            break;
-        }
     }
 }
 
-GuiClickState gui_button(const GuiContext* const in_context, const char* in_label, float x, float y, float width, float height) {
+void gui_text(const GuiContext* const in_context, const char* in_text, Vec2 position) {
+    gui_make_text(in_context, in_text, &(GuiRect) {
+        .position = position,
+        .size = vec2_new(-1,-1),
+    }, GUI_ALIGN_LEFT);
+}
+
+GuiClickState gui_make_button(const GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiAlignment in_alignment) {
     const GuiFrameState* const current_frame_state = &in_context->frame_state;
     const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
 
     GuiRect button_rect = {
+        .position = {
+            .x = in_rect->position.x,
+            .y = in_rect->position.y,
+        },
+        .size = {
+            .x = in_rect->size.x,
+            .y = in_rect->size.y,
+        }
+    };
+
+    const bool cursor_currently_overlaps = gui_is_point_in_rect(button_rect, current_frame_state->mouse_pos);
+    const bool cursor_previously_overlapped = gui_is_point_in_rect(button_rect, prev_frame_state->mouse_pos);
+
+    //Held: we're over the button and holding LMB. 
+    //Using previous frame data to prevent drags from losing our "HELD" state
+    bool button_held = cursor_previously_overlapped && prev_frame_state->mouse_buttons[0];
+
+    //Clicked: we were previously holding this button and have now released it
+    bool button_clicked = cursor_currently_overlaps && !current_frame_state->mouse_buttons[0]
+                       && cursor_previously_overlapped && prev_frame_state->mouse_buttons[0];
+
+    //Draw held buttons as red for now
+    const bool button_hovered = cursor_currently_overlaps;
+    const float alpha = 0.75f;
+    //TODO: button style args
+    const Vec4 button_color = button_held ? vec4_new(1,0,0,1) : button_hovered ? vec4_new(0.5, 0,0, alpha) : vec4_new(0,0,0,alpha);
+
+    gui_make_box(in_context, &button_rect, &button_color, NULL);
+
+    Vec4 text_color = vec4_new(1,1,1,alpha); //TODO: input arg
+    const float button_text_padding = 15.0f; //TODO: Style setting
+
+    GuiRect text_rect = button_rect;
+    text_rect.position.x += button_text_padding;
+    text_rect.size.x -= (button_text_padding * 2.f);
+    gui_make_text(in_context, in_label, &text_rect, in_alignment);
+
+    return button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : button_hovered ? GUI_HOVERED : GUI_RELEASED;
+}
+
+//TODO: replace 4 args with 2 vecs
+GuiClickState gui_button(const GuiContext* const in_context, const char* in_label, float x, float y, float width, float height) {
+    return gui_make_button(in_context, in_label, &(GuiRect) {
         .position = {
             .x = x,
             .y = y,
@@ -303,69 +406,41 @@ GuiClickState gui_button(const GuiContext* const in_context, const char* in_labe
             .x = width,
             .y = height,
         }
-    };
-
-    const bool cursor_currently_overlaps = gui_is_point_in_rect(button_rect, current_frame_state->mouse_pos);
-    const bool cursor_previously_overlapped = gui_is_point_in_rect(button_rect, prev_frame_state->mouse_pos);
-
-    //Held: we're over the button and holding LMB
-    bool button_held = cursor_currently_overlaps && current_frame_state->mouse_buttons[0];
-
-    //Clicked: we were previously holding this button and have now released it
-    bool button_clicked = cursor_currently_overlaps && !current_frame_state->mouse_buttons[0]
-                       && cursor_previously_overlapped && prev_frame_state->mouse_buttons[0];
-
-    //Draw held buttons as red for now
-    const float alpha = 0.75f;
-    const Vec4 button_color = button_held ? vec4_new(1,0,0,alpha) : vec4_new(0,0,0,alpha);
-
-    gui_make_box(in_context, &button_rect, &button_color, NULL);
-
-    Vec4 text_color = vec4_new(1,1,1,alpha);
-    gui_make_text(in_context, in_label, &button_rect);
-
-    return button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : GUI_RELEASED;
+    },
+    GUI_ALIGN_CENTER);
 }
-
-typedef struct GuiWindowData {
-    GuiRect window_rect;
-    bool is_expanded;
-
-    //Internal vars //TODO: store internal vars elsewhere (inner struct?)
-    bool is_window_moving;  //Are we dragging a window (ignore top bar clicks)
-    uint32_t next_index;    //Next Index in window's list of controls
-} GuiWindowData;
 
 static const float top_bar_height = 35.0f; //TODO: style setting
 
-void gui_begin_window(GuiContext* const in_context, GuiWindowData* const in_window_data) {
+void gui_begin_window(GuiContext* const in_context, GuiWindow* const in_window) {
 
-    in_window_data->next_index = 0;
+    in_window->next_index = 0;
     
-    GuiRect* const in_window_rect = &in_window_data->window_rect;
+    GuiRect* const window_rect = &in_window->window_rect;
 
     //Main window area
     const Vec4 window_color = vec4_new(.4, .4, .4, .8); //TODO: Style setting
-    if (in_window_data->is_expanded) {
-        gui_make_box(in_context, in_window_rect, &window_color, NULL);
+    if (in_window->is_expanded) {
+        gui_make_box(in_context, window_rect, &window_color, NULL);
     }
 
     //Top Bar
     const Vec4 top_bar_color = vec4_new(.8, .8, .8, .8); //TODO: Style setting
     GuiRect top_bar_rect = {
-        .position = in_window_rect->position,
+        .position = window_rect->position,
         .size = {
-            .x = in_window_rect->size.x,
+            .x = window_rect->size.x,
             .y = top_bar_height,
         }
     };
 
-    if (gui_button(in_context, "My Window", in_window_rect->position.x, in_window_rect->position.y, in_window_rect->size.x, top_bar_height) == GUI_CLICKED) {
-        if (in_window_data->is_window_moving) {
-            in_window_data->is_window_moving = false;
+    GuiClickState top_bar_click_state = gui_make_button(in_context, in_window->name, &top_bar_rect, GUI_ALIGN_LEFT);
+    if (top_bar_click_state == GUI_CLICKED) {
+        if (in_window->is_window_moving) {
+            in_window->is_window_moving = false;
         }
         else {
-            in_window_data->is_expanded = !in_window_data->is_expanded;
+            in_window->is_expanded = !in_window->is_expanded;
         }
     }
 
@@ -374,38 +449,78 @@ void gui_begin_window(GuiContext* const in_context, GuiWindowData* const in_wind
     Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;
     Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
 
-    //TODO: if GUI_HELD used previous frame data, we could just use that here
-    bool is_dragging_window = in_context->prev_frame_state.mouse_buttons[0] && gui_is_point_in_rect(top_bar_rect, prev_mouse_pos);
-
+    const bool is_dragging_window = top_bar_click_state == GUI_HELD;
     if (is_dragging_window && vec2_length_squared(mouse_delta) > 0.0f) {
-        in_window_rect->position = vec2_add(in_window_rect->position, mouse_delta);
-        in_window_data->is_window_moving = true;
+        window_rect->position = vec2_add(window_rect->position, mouse_delta);
+        in_window->is_window_moving = true;
     }
 
     //TODO: Resize Gizmo bottom right
+    if (in_window->is_expanded) {
+        const Vec2 resize_gizmo_size = vec2_new(15.f, 15.f);
+        const Vec2 resize_gizmo_position = vec2_sub(vec2_add(window_rect->position, window_rect->size), resize_gizmo_size);
+
+        const GuiRect resize_gizmo_rect = {
+            .position = resize_gizmo_position,
+            .size = resize_gizmo_size,
+        };
+
+        GuiClickState resize_click_state = gui_make_button(in_context, "", &resize_gizmo_rect, GUI_ALIGN_CENTER);
+        if (resize_click_state == GUI_HELD) {
+            window_rect->size = vec2_add(window_rect->size, mouse_delta);
+
+            float minimum_window_height = top_bar_height + resize_gizmo_size.y;
+            window_rect->size.y = max(minimum_window_height, window_rect->size.y);
+        }
+    }
 
     //TODO: Need to cache current window in context
 }
 
-static const float window_row_padding = 2.5f;
-static const float window_row_height = 35.0f; //TODO: Style setting
+static const float window_row_padding_y = 2.5f; //TODO: Style setting
+static const float window_row_height = 35.0f;  //TODO: Style setting
 
-GuiClickState gui_window_button(const GuiContext* const in_context, GuiWindowData* const in_window_data, const char* in_label) {
+//Attemps to allocate space for a new control in 'in_window'. If there is space, out_rect is written and true is returned.
+bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_rect) {
+    //Store and increment control index
+    const uint32_t control_index = in_window->next_index++;
+    
+    const GuiRect* const window_rect = &in_window->window_rect;
+    const Vec2 window_pos = window_rect->position;
+    const Vec2 window_size = window_rect->size;
+
+    //Need padding after first element as well, so add 1 to control index to account for that
+    const float y_offset = window_pos.y + top_bar_height + ((window_row_height) * (float)control_index) + (window_row_padding_y * (float) (control_index + 1));
+
+    bool has_space_for_control = y_offset + window_row_height <= window_rect->position.y + window_rect->size.y;
+
+    if (has_space_for_control) {
+        *out_rect = (GuiRect) {
+            .position = {
+                .x = window_pos.x,
+                .y = y_offset,
+            },
+            .size = {
+                .x = window_size.x,
+                .y = window_row_height,
+            },
+        };
+    }
+
+    return has_space_for_control;
+}
+
+GuiClickState gui_window_button(const GuiContext* const in_context, GuiWindow* const in_window, const char* in_label) {
     
     GuiClickState out_click_state = GUI_RELEASED;
 
-    if (in_window_data->is_expanded) {
+    if (in_window->is_expanded) {
+        const GuiRect* const window_rect = &in_window->window_rect;
 
-        //TODO: helper fn to compute window row rect
-        const uint32_t control_index = in_window_data->next_index++;
-
-        const GuiRect* const window_rect = &in_window_data->window_rect;
-        const Vec2 window_pos = window_rect->position;
-        const Vec2 window_size = window_rect->size;
-
-        const float y_offset = window_pos.y + top_bar_height + (window_row_height * (float)control_index) + window_row_padding;
-
-        out_click_state = gui_button(in_context, in_label, window_pos.x, y_offset, window_size.x, window_row_height);
+        GuiRect button_rect;
+        if (gui_window_compute_control_rect(in_window, &button_rect)) {
+            out_click_state = gui_make_button(in_context, in_label, &button_rect, GUI_ALIGN_CENTER);
+        }
     }
 
     return out_click_state;
