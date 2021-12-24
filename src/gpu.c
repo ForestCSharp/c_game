@@ -728,6 +728,7 @@ void gpu_memcpy(GpuContext* context, GpuMemory* memory, uint64_t upload_size, vo
 }
 
 void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, uint64_t upload_size, void* upload_data) {
+    //TODO: Warn if not big enough (or re-create buffer)
     if (buffer->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE) {
         gpu_memcpy(context, buffer->memory, upload_size, upload_data);
     } else {

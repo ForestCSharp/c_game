@@ -321,10 +321,10 @@ int main() {
 	gpu_destroy_shader_module(&gpu_context, &gui_fragment_module);
 
 	//TODO: vbuf & ibuf
-	size_t max_gui_vertices = 10000; //TODO: need to support gpu buffer resizing
+	size_t max_gui_vertices = sizeof(GuiVert) * 10000; //TODO: need to support gpu buffer resizing
 	GpuBuffer gui_vertex_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_VERTEX_BUFFER, GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, max_gui_vertices, "gui vertex buffer");
 
-	size_t max_gui_indices = 30000; //TODO: need to support gpu buffer resizing
+	size_t max_gui_indices = sizeof(uint32_t) * 30000; //TODO: need to support gpu buffer resizing
 	GpuBuffer gui_index_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_INDEX_BUFFER, GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, max_gui_indices, "gui index buffer");
 
 	//END GUI SETUP
@@ -594,17 +594,49 @@ int main() {
 
 		{ //Rolling FPS, resets on click
 			double average_delta_time = accumulated_delta_time / (double) frames_rendered;
-			double average_fps = 1.0 / average_delta_time;
+			float average_fps = 1.0 / average_delta_time;
 
 			char buffer[128];
 			snprintf(buffer, sizeof(buffer), "FPS: %.1f", average_fps);
 			const float padding = 5.f;
-			const float fps_button_size = 160.f;
+			const float fps_button_size = 155.f;
 			if (gui_button(&gui_context, buffer, width - fps_button_size - padding, padding, fps_button_size, 30) == GUI_CLICKED) {
 				accumulated_delta_time = 0.0f;
 				frames_rendered = 0;
 			}
 		}
+
+		static GuiWindowData gui_window_data = {
+			.window_rect = {
+				.position = {
+					.x = 200,
+					.y = 200,
+				},
+				.size = {
+					.x = 400,
+					.y = 400,
+				}
+			},
+			.is_expanded = true,
+		};
+
+		gui_begin_window(&gui_context, &gui_window_data);
+		gui_window_button(&gui_context, &gui_window_data, "Button 1");
+		gui_window_button(&gui_context, &gui_window_data, "Button 2");
+		gui_window_button(&gui_context, &gui_window_data, "Button 3");
+		gui_window_button(&gui_context, &gui_window_data, "Button 4");
+
+		const float text_size = 300.0f;
+		gui_make_text(&gui_context, "THIS IS MORE TEXT", &(GuiRect){
+			.position = {
+				.x = (float) width / 2.0f - text_size / 2.0f,
+				.y = 15,
+			},
+			.size = {
+				.x = text_size,
+				.y = 100,
+			}
+		});
 
 		//TODO: should be per-frame resources
 		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);

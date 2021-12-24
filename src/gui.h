@@ -258,7 +258,7 @@ void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_re
 void gui_make_text(const GuiContext* const context, const char* in_text, const GuiRect* const in_bounding_rect) {
     size_t num_chars = strlen(in_text);
 
-    const float initial_offset = 15.0f;
+    const float initial_offset = 15.0f; //TODO: arg
     const float char_size = 27.5f; //TODO: arg
     const float spacing = -15.0f; //TODO: arg
 
@@ -290,7 +290,7 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
     }
 }
 
-GuiClickState gui_button(const GuiContext* const in_context, const char* label, float x, float y, float width, float height) {
+GuiClickState gui_button(const GuiContext* const in_context, const char* in_label, float x, float y, float width, float height) {
     const GuiFrameState* const current_frame_state = &in_context->frame_state;
     const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
 
@@ -322,7 +322,91 @@ GuiClickState gui_button(const GuiContext* const in_context, const char* label, 
     gui_make_box(in_context, &button_rect, &button_color, NULL);
 
     Vec4 text_color = vec4_new(1,1,1,alpha);
-    gui_make_text(in_context, label, &button_rect);
+    gui_make_text(in_context, in_label, &button_rect);
 
     return button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : GUI_RELEASED;
+}
+
+typedef struct GuiWindowData {
+    GuiRect window_rect;
+    bool is_expanded;
+
+    //Internal vars //TODO: store internal vars elsewhere (inner struct?)
+    bool is_window_moving;  //Are we dragging a window (ignore top bar clicks)
+    uint32_t next_index;    //Next Index in window's list of controls
+} GuiWindowData;
+
+static const float top_bar_height = 35.0f; //TODO: style setting
+
+void gui_begin_window(GuiContext* const in_context, GuiWindowData* const in_window_data) {
+
+    in_window_data->next_index = 0;
+    
+    GuiRect* const in_window_rect = &in_window_data->window_rect;
+
+    //Main window area
+    const Vec4 window_color = vec4_new(.4, .4, .4, .8); //TODO: Style setting
+    if (in_window_data->is_expanded) {
+        gui_make_box(in_context, in_window_rect, &window_color, NULL);
+    }
+
+    //Top Bar
+    const Vec4 top_bar_color = vec4_new(.8, .8, .8, .8); //TODO: Style setting
+    GuiRect top_bar_rect = {
+        .position = in_window_rect->position,
+        .size = {
+            .x = in_window_rect->size.x,
+            .y = top_bar_height,
+        }
+    };
+
+    if (gui_button(in_context, "My Window", in_window_rect->position.x, in_window_rect->position.y, in_window_rect->size.x, top_bar_height) == GUI_CLICKED) {
+        if (in_window_data->is_window_moving) {
+            in_window_data->is_window_moving = false;
+        }
+        else {
+            in_window_data->is_expanded = !in_window_data->is_expanded;
+        }
+    }
+
+    //Window moving
+    Vec2 mouse_pos = in_context->frame_state.mouse_pos;
+    Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;
+    Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
+
+    //TODO: if GUI_HELD used previous frame data, we could just use that here
+    bool is_dragging_window = in_context->prev_frame_state.mouse_buttons[0] && gui_is_point_in_rect(top_bar_rect, prev_mouse_pos);
+
+    if (is_dragging_window && vec2_length_squared(mouse_delta) > 0.0f) {
+        in_window_rect->position = vec2_add(in_window_rect->position, mouse_delta);
+        in_window_data->is_window_moving = true;
+    }
+
+    //TODO: Resize Gizmo bottom right
+
+    //TODO: Need to cache current window in context
+}
+
+static const float window_row_padding = 2.5f;
+static const float window_row_height = 35.0f; //TODO: Style setting
+
+GuiClickState gui_window_button(const GuiContext* const in_context, GuiWindowData* const in_window_data, const char* in_label) {
+    
+    GuiClickState out_click_state = GUI_RELEASED;
+
+    if (in_window_data->is_expanded) {
+
+        //TODO: helper fn to compute window row rect
+        const uint32_t control_index = in_window_data->next_index++;
+
+        const GuiRect* const window_rect = &in_window_data->window_rect;
+        const Vec2 window_pos = window_rect->position;
+        const Vec2 window_size = window_rect->size;
+
+        const float y_offset = window_pos.y + top_bar_height + (window_row_height * (float)control_index) + window_row_padding;
+
+        out_click_state = gui_button(in_context, in_label, window_pos.x, y_offset, window_size.x, window_row_height);
+    }
+
+    return out_click_state;
 }
