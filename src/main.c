@@ -608,8 +608,8 @@ int main() {
 			}
 		}
 
-		static GuiWindow gui_window_data = {
-			.name = "Debug",
+		static GuiWindow gui_window_1 = {
+			.name = "Window 1",
 			.window_rect = {
 				.position = {
 					.x = 15,
@@ -623,14 +623,34 @@ int main() {
 			.is_expanded = true,
 		};
 
-		gui_begin_window(&gui_context, &gui_window_data);
-		gui_window_button(&gui_context, &gui_window_data, "Button 1");
-		gui_window_button(&gui_context, &gui_window_data, "Button 2");
-		gui_window_button(&gui_context, &gui_window_data, "Button 3");
-		gui_window_button(&gui_context, &gui_window_data, "Button 4");
+		gui_begin_window(&gui_context, &gui_window_1);
+		if (gui_window_button(&gui_context, &gui_window_1, "Button 1") == GUI_CLICKED) {
+			printf("BUTTON 1\n");
+		}
+		gui_window_button(&gui_context, &gui_window_1, "Button 2");
+		gui_window_button(&gui_context, &gui_window_1, "Button 3");
+		if (gui_window_button(&gui_context, &gui_window_1, "Button 4") == GUI_CLICKED) {
+			printf("BUTTON 4\n");
+		}
+
+		static GuiWindow gui_window_2 = {
+			.name = "Window 2",
+			.window_rect = {
+				.position = {
+					.x = 430,
+					.y = 250,
+				},
+				.size = {
+					.x = 400,
+					.y = 400,
+				}
+			},
+			.is_expanded = true,
+		};
+		gui_begin_window(&gui_context, &gui_window_2);
 
 		const float text_size = 400.0f;
-		gui_text(&gui_context, "NW - 30 - 15- N - 15 - 30 - NE", vec2_new((float) width / 2.0f - text_size / 2.0f, 15.0f));
+		gui_text(&gui_context, "NW - 30 - 15 - N - 15 - 30 - NE", vec2_new((float) width / 2.0f - text_size / 2.0f, 15.0f));
 
 		//TODO: should be per-frame resources
 		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);

@@ -78,9 +78,11 @@ typedef struct GuiWindow {
     char name[256];
     GuiRect window_rect;
     bool is_expanded;
+    bool is_open;
 
     //Internal vars //TODO: store internal vars elsewhere (inner struct?)
-    bool is_window_moving;  //Are we dragging a window (ignore top bar clicks)
+    bool is_moving;  //Are we dragging a window (ignore top bar clicks)
+    bool is_resizing; //Are we resizing the window
     uint32_t next_index;    //Next Index in window's list of controls
 } GuiWindow;
 
@@ -181,7 +183,7 @@ void gui_free_font(GuiFont* in_font) {
     *in_font = (GuiFont){};
 }
 
-bool gui_is_point_in_rect(GuiRect in_rect, Vec2 in_point) {
+bool gui_rect_intersects_point(const GuiRect in_rect, const Vec2 in_point) {
     return in_point.x >= in_rect.position.x
         && in_point.x <= in_rect.position.x + in_rect.size.x
         && in_point.y >= in_rect.position.y
@@ -204,7 +206,7 @@ void gui_init(GuiContext* out_context) {
         }
     };
 
-    if (!gui_load_font("data/fonts/JetBrainsMonoMedium.bff", &out_context->default_font)) {
+    if (!gui_load_font("data/fonts/JetBrainsMonoRegular.bff", &out_context->default_font)) {
 		printf("failed to load default font\n");
 		exit(1);
     }
@@ -343,6 +345,7 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
     }
 }
 
+//TODO: Alignment arg
 void gui_text(const GuiContext* const in_context, const char* in_text, Vec2 position) {
     gui_make_text(in_context, in_text, &(GuiRect) {
         .position = position,
@@ -350,7 +353,7 @@ void gui_text(const GuiContext* const in_context, const char* in_text, Vec2 posi
     }, GUI_ALIGN_LEFT);
 }
 
-GuiClickState gui_make_button(const GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiAlignment in_alignment) {
+GuiClickState gui_make_button(const GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiAlignment in_alignment, bool is_active) {
     const GuiFrameState* const current_frame_state = &in_context->frame_state;
     const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
 
@@ -365,8 +368,8 @@ GuiClickState gui_make_button(const GuiContext* const in_context, const char* in
         }
     };
 
-    const bool cursor_currently_overlaps = gui_is_point_in_rect(button_rect, current_frame_state->mouse_pos);
-    const bool cursor_previously_overlapped = gui_is_point_in_rect(button_rect, prev_frame_state->mouse_pos);
+    const bool cursor_currently_overlaps = gui_rect_intersects_point(button_rect, current_frame_state->mouse_pos);
+    const bool cursor_previously_overlapped = gui_rect_intersects_point(button_rect, prev_frame_state->mouse_pos);
 
     //Held: we're over the button and holding LMB. 
     //Using previous frame data to prevent drags from losing our "HELD" state
@@ -379,8 +382,23 @@ GuiClickState gui_make_button(const GuiContext* const in_context, const char* in
     //Draw held buttons as red for now
     const bool button_hovered = cursor_currently_overlaps;
     const float alpha = 0.75f;
-    //TODO: button style args
-    const Vec4 button_color = button_held ? vec4_new(1,0,0,1) : button_hovered ? vec4_new(0.5, 0,0, alpha) : vec4_new(0,0,0,alpha);
+    //TODO: refactor this
+    GuiClickState out_click_state = !is_active ? GUI_RELEASED : button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : button_hovered ? GUI_HOVERED : GUI_RELEASED;
+    
+    Vec4 button_color; //TODO: button style settings
+    switch (out_click_state) {
+        case GUI_RELEASED:
+            button_color = vec4_new(0,0,0,alpha);
+            break;
+        case GUI_HOVERED:
+            button_color = vec4_new(0.5, 0,0, alpha);
+            break;
+        case GUI_HELD:
+            button_color = vec4_new(1,0,0,1);
+            break;
+        default: 
+            button_color = vec4_new(0,0,0,alpha);
+    }
 
     gui_make_box(in_context, &button_rect, &button_color, NULL);
 
@@ -392,7 +410,7 @@ GuiClickState gui_make_button(const GuiContext* const in_context, const char* in
     text_rect.size.x -= (button_text_padding * 2.f);
     gui_make_text(in_context, in_label, &text_rect, in_alignment);
 
-    return button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : button_hovered ? GUI_HOVERED : GUI_RELEASED;
+    return out_click_state;
 }
 
 //TODO: replace 4 args with 2 vecs
@@ -407,7 +425,7 @@ GuiClickState gui_button(const GuiContext* const in_context, const char* in_labe
             .y = height,
         }
     },
-    GUI_ALIGN_CENTER);
+    GUI_ALIGN_CENTER, true);
 }
 
 static const float top_bar_height = 35.0f; //TODO: style setting
@@ -419,7 +437,7 @@ void gui_begin_window(GuiContext* const in_context, GuiWindow* const in_window) 
     GuiRect* const window_rect = &in_window->window_rect;
 
     //Main window area
-    const Vec4 window_color = vec4_new(.4, .4, .4, .8); //TODO: Style setting
+    const Vec4 window_color = vec4_new(.2, .2, .2, .9); //TODO: Style setting
     if (in_window->is_expanded) {
         gui_make_box(in_context, window_rect, &window_color, NULL);
     }
@@ -434,10 +452,10 @@ void gui_begin_window(GuiContext* const in_context, GuiWindow* const in_window) 
         }
     };
 
-    GuiClickState top_bar_click_state = gui_make_button(in_context, in_window->name, &top_bar_rect, GUI_ALIGN_LEFT);
+    GuiClickState top_bar_click_state = gui_make_button(in_context, in_window->name, &top_bar_rect, GUI_ALIGN_LEFT, !in_window->is_resizing);
     if (top_bar_click_state == GUI_CLICKED) {
-        if (in_window->is_window_moving) {
-            in_window->is_window_moving = false;
+        if (in_window->is_moving) {
+            in_window->is_moving = false;
         }
         else {
             in_window->is_expanded = !in_window->is_expanded;
@@ -452,24 +470,25 @@ void gui_begin_window(GuiContext* const in_context, GuiWindow* const in_window) 
     const bool is_dragging_window = top_bar_click_state == GUI_HELD;
     if (is_dragging_window && vec2_length_squared(mouse_delta) > 0.0f) {
         window_rect->position = vec2_add(window_rect->position, mouse_delta);
-        in_window->is_window_moving = true;
+        //TODO: make sure top-bar is always slightly visible
+        in_window->is_moving = true;
     }
 
-    //TODO: Resize Gizmo bottom right
+    //Resize Control bottom right
     if (in_window->is_expanded) {
-        const Vec2 resize_gizmo_size = vec2_new(15.f, 15.f);
-        const Vec2 resize_gizmo_position = vec2_sub(vec2_add(window_rect->position, window_rect->size), resize_gizmo_size);
+        const Vec2 resize_control_size = vec2_new(15.f, 15.f);
+        const Vec2 resize_control_position = vec2_sub(vec2_add(window_rect->position, window_rect->size), resize_control_size);
 
-        const GuiRect resize_gizmo_rect = {
-            .position = resize_gizmo_position,
-            .size = resize_gizmo_size,
+        const GuiRect resize_control_rect = {
+            .position = resize_control_position,
+            .size = resize_control_size,
         };
 
-        GuiClickState resize_click_state = gui_make_button(in_context, "", &resize_gizmo_rect, GUI_ALIGN_CENTER);
-        if (resize_click_state == GUI_HELD) {
+        in_window->is_resizing = gui_make_button(in_context, "", &resize_control_rect, GUI_ALIGN_CENTER, !in_window->is_moving) == GUI_HELD;
+        if (in_window->is_resizing) {
             window_rect->size = vec2_add(window_rect->size, mouse_delta);
 
-            float minimum_window_height = top_bar_height + resize_gizmo_size.y;
+            float minimum_window_height = top_bar_height + resize_control_size.y;
             window_rect->size.y = max(minimum_window_height, window_rect->size.y);
         }
     }
@@ -519,7 +538,7 @@ GuiClickState gui_window_button(const GuiContext* const in_context, GuiWindow* c
 
         GuiRect button_rect;
         if (gui_window_compute_control_rect(in_window, &button_rect)) {
-            out_click_state = gui_make_button(in_context, in_label, &button_rect, GUI_ALIGN_CENTER);
+            out_click_state = gui_make_button(in_context, in_label, &button_rect, GUI_ALIGN_CENTER, !in_window->is_resizing);
         }
     }
 
