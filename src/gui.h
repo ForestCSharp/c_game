@@ -69,10 +69,16 @@ typedef struct GuiContext {
 
 typedef enum GuiClickState {
     GUI_RELEASED = 0,
-    GUI_CLICKED  = 1,
+    GUI_HOVERED  = 1,
     GUI_HELD     = 2,
-    GUI_HOVERED  = 3,
+    GUI_CLICKED  = 3,
 } GuiClickState;
+
+typedef enum GuiAlignment {
+    GUI_ALIGN_LEFT,
+    GUI_ALIGN_CENTER,
+    // GUI_ALIGN_RIGHT, //TODO:
+} GuiAlignment;
 
 typedef struct GuiWindow {
     char name[256];
@@ -80,9 +86,9 @@ typedef struct GuiWindow {
     bool is_expanded;
     bool is_open;
 
-    //Internal vars //TODO: store internal vars elsewhere (inner struct?)
-    bool is_moving;  //Are we dragging a window (ignore top bar clicks)
-    bool is_resizing; //Are we resizing the window
+    //Internal Vars
+    bool is_moving;         //Are we currently dragging this window
+    bool is_resizing;       //Are we currently resizing this window
     uint32_t next_index;    //Next Index in window's list of controls
 } GuiWindow;
 
@@ -219,7 +225,6 @@ void gui_shutdown(GuiContext* in_context) {
     gui_free_font(&in_context->default_font);
 }
 
-//TODO: frame begin function (pass resolution, mouse state, etc...)
 void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state) {
     
     in_context->prev_frame_state = in_context->frame_state;
@@ -230,7 +235,6 @@ void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state) {
     sb_free(in_context->draw_data.indices);
 }
 
-//TODO: UV-rect argument (for font-rendering)
 /* Currently takes in screen-space coordinates (i.e in pixels) and converts to [0,1] range where (0,0) is top-left and (1,1) is bottom right */
 void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_rect, const Vec4* const in_color, const GuiRect* const in_uv_rect) {
     
@@ -281,20 +285,12 @@ void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_re
     }));
 }
 
-typedef enum GuiAlignment {
-    GUI_ALIGN_LEFT,
-    GUI_ALIGN_CENTER,
-    // GUI_ALIGN_RIGHT, //TODO:
-} GuiAlignment;
-
-//TODO: simpler version of this that only takes in position arg
-//TODO: if in_bounding_rect size is <= 0, consider that dimension unbounded
 void gui_make_text(const GuiContext* const context, const char* in_text, const GuiRect* const in_bounding_rect, GuiAlignment in_alignment) {
     size_t num_chars = strlen(in_text);
 
     // const float initial_offset = 15.0f; //TODO: style setting
-    const float char_size = 27.5f; //TODO: style setting
-    const float spacing = -15.0f; //TODO: style setting
+    const float char_size = 22.5f; //TODO: style setting
+    const float spacing = -12.0f; //TODO: style setting
 
     //TODO: Ensure we have enough height for char_size
 
@@ -305,7 +301,7 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
     size_t max_possible_chars = min(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
     float text_width = max_possible_chars * (char_size + spacing);
 
-    Vec2 current_offset = in_bounding_rect->position;
+    Vec2 current_offset;
     switch (in_alignment)
     {
         case GUI_ALIGN_LEFT:
@@ -320,6 +316,9 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
             break;
         }
     }
+
+    //Center of rect on y-axis
+    current_offset.y += (in_bounding_rect->size.y - char_size) / 2.0f;
 
     GuiRect text_rect = {
         .position = current_offset,
@@ -346,14 +345,18 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
 }
 
 //TODO: Alignment arg
-void gui_text(const GuiContext* const in_context, const char* in_text, Vec2 position) {
+void gui_text(const GuiContext* const in_context, const char* in_text, Vec2 position, Vec2 size, GuiAlignment alignment) {
     gui_make_text(in_context, in_text, &(GuiRect) {
         .position = position,
-        .size = vec2_new(-1,-1),
-    }, GUI_ALIGN_LEFT);
+        .size = size,
+    }, alignment);
 }
 
-GuiClickState gui_make_button(const GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiAlignment in_alignment, bool is_active) {
+//TODO: Style Setting for this
+const float control_alpha = 0.75f;
+
+//TODO: Pass in Style args
+GuiClickState gui_make_button(const GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiAlignment in_alignment, const bool is_active) {
     const GuiFrameState* const current_frame_state = &in_context->frame_state;
     const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
 
@@ -381,28 +384,27 @@ GuiClickState gui_make_button(const GuiContext* const in_context, const char* in
 
     //Draw held buttons as red for now
     const bool button_hovered = cursor_currently_overlaps;
-    const float alpha = 0.75f;
-    //TODO: refactor this
     GuiClickState out_click_state = !is_active ? GUI_RELEASED : button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : button_hovered ? GUI_HOVERED : GUI_RELEASED;
     
     Vec4 button_color; //TODO: button style settings
     switch (out_click_state) {
         case GUI_RELEASED:
-            button_color = vec4_new(0,0,0,alpha);
+            button_color = vec4_new(0,0,0,control_alpha);
             break;
         case GUI_HOVERED:
-            button_color = vec4_new(0.5, 0,0, alpha);
+            button_color = vec4_new(0.5, 0,0, control_alpha);
             break;
         case GUI_HELD:
             button_color = vec4_new(1,0,0,1);
             break;
-        default: 
-            button_color = vec4_new(0,0,0,alpha);
+        case GUI_CLICKED:
+            button_color = vec4_new(0,0,0,control_alpha);
+            break;
     }
 
     gui_make_box(in_context, &button_rect, &button_color, NULL);
 
-    Vec4 text_color = vec4_new(1,1,1,alpha); //TODO: input arg
+    Vec4 text_color = vec4_new(1,1,1,control_alpha); //TODO: input arg
     const float button_text_padding = 15.0f; //TODO: Style setting
 
     GuiRect text_rect = button_rect;
@@ -414,18 +416,68 @@ GuiClickState gui_make_button(const GuiContext* const in_context, const char* in
 }
 
 //TODO: replace 4 args with 2 vecs
-GuiClickState gui_button(const GuiContext* const in_context, const char* in_label, float x, float y, float width, float height) {
+GuiClickState gui_button(const GuiContext* const in_context, const char* in_label, Vec2 in_position, const Vec2 in_size) {
     return gui_make_button(in_context, in_label, &(GuiRect) {
-        .position = {
-            .x = x,
-            .y = y,
-        },
-        .size = {
-            .x = width,
-            .y = height,
-        }
+        .position = in_position,
+        .size = in_size,
     },
     GUI_ALIGN_CENTER, true);
+}
+
+//TODO: BEGIN make general math file
+float lerp(float f, float min, float max) 
+{
+    return (min * (1.0 - f)) + (max * f);
+}
+
+float unlerp(float f, float min, float max) {
+    return (f - min) / (max - min);
+}
+
+float remap(float x, float in_range_min, float in_range_max, float out_range_min, float out_range_max) {
+    return lerp(unlerp(x, in_range_min, in_range_max), out_range_min, out_range_max);
+}
+
+float remap_clamped(float x, float in_range_min, float in_range_max, float out_range_min, float out_range_max) {
+    return remap(CLAMP(x, in_range_min, in_range_max), in_range_min, in_range_max, out_range_min, out_range_max);
+}
+//TODO: END
+
+GuiClickState gui_make_slider_float(const GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const GuiRect* const in_rect, const bool is_active) {
+    GuiClickState clicked_state = gui_make_button(in_context, "", in_rect, GUI_ALIGN_CENTER, is_active);
+    if (clicked_state == GUI_HELD) {
+        const float current_mouse_x = in_context->frame_state.mouse_pos.x;
+        const float new_value = remap_clamped((current_mouse_x - in_rect->position.x) / in_rect->size.x, 0.0, 1.0, in_slider_bounds.x, in_slider_bounds.y);
+        *data_ptr = new_value;
+    }
+
+    const float current_percent = remap_clamped(*data_ptr, in_slider_bounds.x, in_slider_bounds.y, 0.0, 1.0);
+    const float filled_width = in_rect->size.x * current_percent;
+    GuiRect filled_rect = {
+        .position = in_rect->position,
+        .size = {
+            .x = filled_width,
+            .y = in_rect->size.y,
+        },
+    };
+    const Vec4 slider_filled_color = clicked_state == GUI_HELD ? vec4_new(0,0,1,1) : clicked_state == GUI_HOVERED ? vec4_new(1.0, 0,0, control_alpha) : vec4_new(0.5, 0,0, control_alpha);
+    gui_make_box(in_context, &filled_rect, &slider_filled_color, NULL);
+
+    //Draw current value
+    int required_chars = snprintf(NULL, 0, "%f", *data_ptr);
+    char data_as_string[required_chars];
+    snprintf(data_as_string, required_chars, "%f", *data_ptr);
+    gui_make_text(in_context, data_as_string, in_rect, GUI_ALIGN_CENTER);
+
+    return clicked_state;
+}
+
+GuiClickState gui_slider_float(const GuiContext* const in_context,  float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const Vec2 in_position, const Vec2 in_size) {
+    return gui_make_slider_float(in_context, data_ptr, in_slider_bounds, in_label, &(GuiRect) {
+        .position = in_position,
+        .size = in_size,
+    },
+    true);
 }
 
 static const float top_bar_height = 35.0f; //TODO: style setting
@@ -539,6 +591,21 @@ GuiClickState gui_window_button(const GuiContext* const in_context, GuiWindow* c
         GuiRect button_rect;
         if (gui_window_compute_control_rect(in_window, &button_rect)) {
             out_click_state = gui_make_button(in_context, in_label, &button_rect, GUI_ALIGN_CENTER, !in_window->is_resizing);
+        }
+    }
+
+    return out_click_state;
+}
+
+GuiClickState gui_window_slider_float(const GuiContext* const in_context, GuiWindow* const in_window, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label) {
+    GuiClickState out_click_state = GUI_RELEASED;
+
+    if (in_window->is_expanded) {
+        const GuiRect* const window_rect = &in_window->window_rect;
+
+        GuiRect button_rect;
+        if (gui_window_compute_control_rect(in_window, &button_rect)) {
+            out_click_state = gui_make_slider_float(in_context, data_ptr, in_slider_bounds, in_label, &button_rect, !in_window->is_resizing);
         }
     }
 

@@ -582,17 +582,22 @@ int main() {
 
 		gui_begin_frame(&gui_context, gui_frame_state);
 
-		if (gui_button(&gui_context, "My Btn", 15, 15, 200, 50) == GUI_CLICKED)
+		if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
 		{
 			printf("Button Clicked!\n");
 		}
 
-		if (gui_button(&gui_context, "too much text to display", 15, 100, 270, 50) == GUI_HELD)
+		if (gui_button(&gui_context, "too much text to display", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
 		{
 			printf("Holding Second Button\n");
 		}
 
-		gui_button(&gui_context, "this is way too much text to display", 15, 150, 270, 50);
+		if (gui_button(&gui_context, "this is way too much text to display", vec2_new(15, 150), vec2_new(270, 50)) == GUI_HOVERED) {
+			printf("Hovering Third Button\n");
+		}
+
+		static float f = 0.25f;
+		gui_slider_float(&gui_context, &f, vec2_new(0,2), "My Slider", vec2_new(15,0), vec2_new(270,50));
 
 		{ //Rolling FPS, resets on click
 			double average_delta_time = accumulated_delta_time / (double) frames_rendered;
@@ -602,7 +607,7 @@ int main() {
 			snprintf(buffer, sizeof(buffer), "FPS: %.1f", average_fps);
 			const float padding = 5.f;
 			const float fps_button_size = 155.f;
-			if (gui_button(&gui_context, buffer, width - fps_button_size - padding, padding, fps_button_size, 30) == GUI_CLICKED) {
+			if (gui_button(&gui_context, buffer, vec2_new(width - fps_button_size - padding, padding), vec2_new(fps_button_size, 30)) == GUI_CLICKED) {
 				accumulated_delta_time = 0.0f;
 				frames_rendered = 0;
 			}
@@ -627,11 +632,15 @@ int main() {
 		if (gui_window_button(&gui_context, &gui_window_1, "Button 1") == GUI_CLICKED) {
 			printf("BUTTON 1\n");
 		}
+		
 		gui_window_button(&gui_context, &gui_window_1, "Button 2");
 		gui_window_button(&gui_context, &gui_window_1, "Button 3");
 		if (gui_window_button(&gui_context, &gui_window_1, "Button 4") == GUI_CLICKED) {
 			printf("BUTTON 4\n");
 		}
+
+		static float window_float = 0.25f;
+		gui_window_slider_float(&gui_context, &gui_window_1, &window_float, vec2_new(-5.0, 5.0), "My Slider");
 
 		static GuiWindow gui_window_2 = {
 			.name = "Window 2",
@@ -650,7 +659,7 @@ int main() {
 		gui_begin_window(&gui_context, &gui_window_2);
 
 		const float text_size = 400.0f;
-		gui_text(&gui_context, "NW - 30 - 15 - N - 15 - 30 - NE", vec2_new((float) width / 2.0f - text_size / 2.0f, 15.0f));
+		gui_text(&gui_context, "NW - 30 - 15 - N - 15 - 30 - NE", vec2_new(((float) width - text_size) / 2.0f, 0.0f), vec2_new(text_size, 50), GUI_ALIGN_CENTER);
 
 		//TODO: should be per-frame resources
 		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);
