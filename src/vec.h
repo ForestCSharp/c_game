@@ -61,6 +61,17 @@ Vec2 vec2_normalize(const Vec2 v) {
     }; 
 }
 
+Vec2 vec2_lerp(const float t, const Vec2 a, const Vec2 b) {
+    return vec2_add(vec2_scale(a, 1.0f - t),vec2_scale(b, t));
+}
+
+Vec2 vec2_rotate(const Vec2 v, const float radians) {
+    return (Vec2) {
+        .x = v.x * cos(radians) - v.y * sin(radians),
+        .y = v.x * sin(radians) - v.y * cos(radians),
+    };
+}
+
 typedef struct Vec3 {
     float x;
     float y;
@@ -144,6 +155,10 @@ Vec3 vec3_normalize(const Vec3 v) {
     }; 
 }
 
+Vec3 vec3_lerp(const float t, const Vec3 a, const Vec3 b) {
+    return vec3_add(vec3_scale(a, 1.0f - t),vec3_scale(b, t));
+}
+
 Vec3 vec3_projection(const Vec3 v, const Vec3 dir) {
     float dir_length_squared = vec3_length_squared(dir);
     return vec3_scale(dir, vec3_dot(v, dir) / dir_length_squared);
@@ -184,6 +199,15 @@ Vec4 vec4_negate(const Vec4 v) {
     };
 }
 
+Vec4 vec4_scale(const Vec4 v, float a) { 
+    return (Vec4) {
+        .x = v.x * a,
+        .y = v.y * a,
+        .z = v.z * a,
+        .w = v.w * a,
+    };
+}
+
 Vec4 vec4_add(const Vec4 a, const Vec4 b) {
     return (Vec4) {
         .x = a.x + b.x,
@@ -203,6 +227,10 @@ float vec4_dot(const Vec4 a, const Vec4 b) {
                  + a.z * b.z
                  + a.w * b.w;
     return result;
+}
+
+Vec4 vec4_lerp(const float t, const Vec4 a, const Vec4 b) {
+    return vec4_add(vec4_scale(a, 1.0f - t),vec4_scale(b, t));
 }
 
 Vec3 vec4_to_vec3(const Vec4 v) {

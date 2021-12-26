@@ -1,6 +1,7 @@
 #include "gpu.h"
 #include "window.h"
 #include "stretchy_buffer.h"
+#include "basic_math.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,10 +16,6 @@
         exit(1);                                           \
     }                                                      \
 }                                                          \
-
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
-#define CLAMP(value, min, max) (MAX(min, MIN(max, value)))
 
 VkBool32 vulkan_debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

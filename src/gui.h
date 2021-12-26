@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include "stretchy_buffer.h"
 #include "vec.h"
+#include "basic_math.h"
 
 /*
     Naming Conventions
@@ -29,11 +30,11 @@ typedef struct GuiRect {
     Vec2 size;
 } GuiRect;
 
-typedef struct GuiFrameState {
+typedef struct GuiInputState {
     Vec2 window_size;
     Vec2 mouse_pos; //Mouse position, in screen coordinates
     bool mouse_buttons[3];
-} GuiFrameState;
+} GuiInputState;
 
 typedef struct GuiDrawData {
     sbuffer(GuiVert)  vertices;
@@ -61,8 +62,8 @@ typedef struct GuiFont {
 } GuiFont;
 
 typedef struct GuiContext {
-    GuiFrameState frame_state;
-    GuiFrameState prev_frame_state;
+    GuiInputState input_state;
+    GuiInputState prev_input_state;
     GuiDrawData draw_data;
     GuiFont default_font;
 } GuiContext;
@@ -197,15 +198,15 @@ bool gui_rect_intersects_point(const GuiRect in_rect, const Vec2 in_point) {
 }
 
 void gui_init(GuiContext* out_context) {
-    GuiFrameState default_frame_state = {
+    GuiInputState default_input_state = {
         .window_size = vec2_new(1920,1080),
         .mouse_pos = vec2_new(0,0),
         .mouse_buttons = {false, false, false},
     };
 
     *out_context = (GuiContext){
-        .frame_state = default_frame_state,
-        .prev_frame_state = default_frame_state,
+        .input_state = default_input_state,
+        .prev_input_state = default_input_state,
         .draw_data = (GuiDrawData) {
             .vertices = NULL,
             .indices  = NULL,
@@ -225,25 +226,34 @@ void gui_shutdown(GuiContext* in_context) {
     gui_free_font(&in_context->default_font);
 }
 
-void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state) {
+void gui_begin_frame(GuiContext* const in_context, GuiInputState input_state) {
     
-    in_context->prev_frame_state = in_context->frame_state;
-    in_context->frame_state = frame_state;
+    in_context->prev_input_state = in_context->input_state;
+    in_context->input_state = input_state;
 
     //Clear old vertex + index buffer data //TODO: don't realloc these arrays each frame
     sb_free(in_context->draw_data.vertices);
     sb_free(in_context->draw_data.indices);
 }
 
-/* Currently takes in screen-space coordinates (i.e in pixels) and converts to [0,1] range where (0,0) is top-left and (1,1) is bottom right */
-void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_rect, const Vec4* const in_color, const GuiRect* const in_uv_rect) {
-    
-    const Vec2* window_size = &in_context->frame_state.window_size;
-    
-    float normalized_x = in_rect->position.x / window_size->x;
-    float normalized_y = in_rect->position.y / window_size->y;
-    float normalized_width = in_rect->size.x / window_size->x;
-    float normalized_height = in_rect->size.y / window_size->y;
+/* positions: [0,1] range */
+void gui_make_tri(const GuiContext* const in_context, const GuiVert vertices[3]) {
+
+    uint32_t next_vert_idx = sb_count(in_context->draw_data.vertices);
+
+    //Indices
+    sb_push(in_context->draw_data.indices, next_vert_idx + 0);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 1);
+    sb_push(in_context->draw_data.indices, next_vert_idx + 2);
+
+    //Vertices
+    sb_push(in_context->draw_data.vertices, vertices[0]);
+    sb_push(in_context->draw_data.vertices, vertices[1]);
+    sb_push(in_context->draw_data.vertices, vertices[2]);
+}
+
+/* positions: [0,1] range */
+void gui_make_quad(const GuiContext* const in_context, const GuiVert vertices[4]) {
 
     uint32_t next_vert_idx = sb_count(in_context->draw_data.vertices);
 
@@ -256,33 +266,48 @@ void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_re
     sb_push(in_context->draw_data.indices, next_vert_idx + 2);
     sb_push(in_context->draw_data.indices, next_vert_idx + 3);
 
+    //Vertices
+    sb_push(in_context->draw_data.vertices, vertices[0]);
+    sb_push(in_context->draw_data.vertices, vertices[1]);
+    sb_push(in_context->draw_data.vertices, vertices[2]);
+    sb_push(in_context->draw_data.vertices, vertices[3]);
+}
+
+/* Currently takes in screen-space coordinates (i.e in pixels) and converts to [0,1] range where (0,0) is top-left and (1,1) is bottom right */
+void gui_make_box(const GuiContext* const in_context, const GuiRect* const in_rect, const Vec4* const in_color, const GuiRect* const in_uv_rect) {
+    
+    const Vec2* window_size = &in_context->input_state.window_size;
+    
+    float normalized_x = in_rect->position.x / window_size->x;
+    float normalized_y = in_rect->position.y / window_size->y;
+    float normalized_width = in_rect->size.x / window_size->x;
+    float normalized_height = in_rect->size.y / window_size->y;
+
     const Vec2 uv_start = in_uv_rect ? in_uv_rect->position : vec2_new(-1,-1);
     const Vec2 uv_size = in_uv_rect ? in_uv_rect->size : vec2_new(0,0);
 
-    //Vertices
-    sb_push(in_context->draw_data.vertices, ((GuiVert) {
-        .position = vec2_new(normalized_x, normalized_y),
-        .uv = uv_start,
-        .color = *in_color,
-    }));
-
-    sb_push(in_context->draw_data.vertices, ((GuiVert) {
-        .position = vec2_new(normalized_x + normalized_width, normalized_y),
-        .uv = vec2_add(uv_start, vec2_new(uv_size.x, 0)),
-        .color = *in_color,
-    }));
-
-    sb_push(in_context->draw_data.vertices, ((GuiVert) {
-        .position = vec2_new(normalized_x, normalized_y + normalized_height),
-        .uv = vec2_add(uv_start, vec2_new(0, uv_size.y)),
-        .color = *in_color,
-    }));
-
-    sb_push(in_context->draw_data.vertices, ((GuiVert) {
-        .position = vec2_new(normalized_x + normalized_width, normalized_y + normalized_height),
-        .uv = vec2_add(uv_start, uv_size),
-        .color = *in_color,
-    }));
+    gui_make_quad(in_context, (GuiVert[4]){
+        (GuiVert) {
+            .position = vec2_new(normalized_x, normalized_y),
+            .uv = uv_start,
+            .color = *in_color,
+        },
+        (GuiVert) {
+            .position = vec2_new(normalized_x + normalized_width, normalized_y),
+            .uv = vec2_add(uv_start, vec2_new(uv_size.x, 0)),
+            .color = *in_color,
+        },
+        (GuiVert) {
+            .position = vec2_new(normalized_x, normalized_y + normalized_height),
+            .uv = vec2_add(uv_start, vec2_new(0, uv_size.y)),
+            .color = *in_color,
+        },
+        (GuiVert) {
+            .position = vec2_new(normalized_x + normalized_width, normalized_y + normalized_height),
+            .uv = vec2_add(uv_start, uv_size),
+            .color = *in_color,
+        },
+    });
 }
 
 void gui_make_text(const GuiContext* const context, const char* in_text, const GuiRect* const in_bounding_rect, GuiAlignment in_alignment) {
@@ -290,7 +315,7 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
 
     // const float initial_offset = 15.0f; //TODO: style setting
     const float char_size = 22.5f; //TODO: style setting
-    const float spacing = -12.0f; //TODO: style setting
+    const float spacing = -13.5f; //TODO: style setting
 
     //TODO: Ensure we have enough height for char_size
 
@@ -344,6 +369,85 @@ void gui_make_text(const GuiContext* const context, const char* in_text, const G
     }
 }
 
+Vec2 recursive_bezier(const float t, const uint32_t num_points, const Vec2* in_points) {
+    assert(num_points > 0);
+
+    switch (num_points)
+    {
+        case 1:  return in_points[0];
+        default: return vec2_lerp(t, recursive_bezier(t, num_points-1, in_points), recursive_bezier(t, num_points-1, in_points+1));
+    }
+}
+
+Vec2 recursive_bezier_deriv(const float t, const uint32_t num_points, const Vec2* in_points) {
+    assert(num_points > 0);
+
+    switch (num_points)
+    {
+        case 1: return vec2_new(0.0f, 0.0f);
+        default:
+            const Vec2 left = recursive_bezier(t, num_points-1, in_points);
+            const Vec2 right = recursive_bezier(t, num_points-1, in_points+1);
+            return vec2_scale(vec2_sub(left, right), num_points);
+    }
+}
+
+void gui_make_bezier(const GuiContext* const in_context, const uint32_t num_points, Vec2* points, const uint32_t num_samples, const Vec4 color, const float width) {
+    assert(num_points > 0);
+    assert(num_samples > 0);
+    
+    const float step_amount = 1.0f / (float) num_samples;
+
+    float current_t = 0.0f;
+   
+    for (uint32_t current_idx = 0; current_idx < num_samples; ++current_idx) {
+        const float next_t = current_t + step_amount;
+
+        //FCS TODO: Make quad between current_t and next_t points (need normal of curve)
+        const Vec2 current_pos = recursive_bezier(current_t, num_points, points);
+        const Vec2 next_pos = recursive_bezier(next_t, num_points, points);
+
+        const Vec2 current_tangent = recursive_bezier_deriv(current_t, num_points, points);
+        const Vec2 next_tangent = recursive_bezier_deriv(next_t, num_points, points);
+
+        const Vec2 current_normal = vec2_normalize(vec2_rotate(current_tangent, degrees_to_radians(-90)));
+        const Vec2 next_normal = vec2_normalize(vec2_rotate(next_tangent, degrees_to_radians(-90)));
+        
+        const Vec2 invalid_uv = vec2_new(-1,-1);
+
+        const Vec2 pos_a = vec2_add(current_pos, vec2_scale(current_normal,  width));
+        const Vec2 pos_b = vec2_add(current_pos, vec2_scale(current_normal, -width));
+
+        const Vec2 pos_c = vec2_add(next_pos, vec2_scale(next_normal,  width));
+        const Vec2 pos_d = vec2_add(next_pos, vec2_scale(next_normal, -width));
+
+        gui_make_quad(in_context, (GuiVert[4]){
+            (GuiVert) {
+                .position = pos_a,
+                .uv = invalid_uv,
+                .color = color,
+            },
+            (GuiVert) {
+                .position = pos_b,
+                .uv = invalid_uv,
+                .color = color,
+            },
+            (GuiVert) {
+                .position = pos_c,
+                .uv = invalid_uv,
+                .color = color,
+            },
+            (GuiVert) {
+                .position = pos_d,
+                .uv = invalid_uv,
+                .color = color,
+            },
+        });
+
+        current_t += step_amount;
+    }
+}
+
 //TODO: Alignment arg
 void gui_text(const GuiContext* const in_context, const char* in_text, Vec2 position, Vec2 size, GuiAlignment alignment) {
     gui_make_text(in_context, in_text, &(GuiRect) {
@@ -357,8 +461,8 @@ const float control_alpha = 0.75f;
 
 //TODO: Pass in Style args
 GuiClickState gui_make_button(const GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiAlignment in_alignment, const bool is_active) {
-    const GuiFrameState* const current_frame_state = &in_context->frame_state;
-    const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
+    const GuiInputState* const current_input_state = &in_context->input_state;
+    const GuiInputState* const prev_input_state = &in_context->prev_input_state;
 
     GuiRect button_rect = {
         .position = {
@@ -371,16 +475,16 @@ GuiClickState gui_make_button(const GuiContext* const in_context, const char* in
         }
     };
 
-    const bool cursor_currently_overlaps = gui_rect_intersects_point(button_rect, current_frame_state->mouse_pos);
-    const bool cursor_previously_overlapped = gui_rect_intersects_point(button_rect, prev_frame_state->mouse_pos);
+    const bool cursor_currently_overlaps = gui_rect_intersects_point(button_rect, current_input_state->mouse_pos);
+    const bool cursor_previously_overlapped = gui_rect_intersects_point(button_rect, prev_input_state->mouse_pos);
 
     //Held: we're over the button and holding LMB. 
     //Using previous frame data to prevent drags from losing our "HELD" state
-    bool button_held = cursor_previously_overlapped && prev_frame_state->mouse_buttons[0];
+    bool button_held = cursor_previously_overlapped && prev_input_state->mouse_buttons[0];
 
     //Clicked: we were previously holding this button and have now released it
-    bool button_clicked = cursor_currently_overlaps && !current_frame_state->mouse_buttons[0]
-                       && cursor_previously_overlapped && prev_frame_state->mouse_buttons[0];
+    bool button_clicked = cursor_currently_overlaps && !current_input_state->mouse_buttons[0]
+                       && cursor_previously_overlapped && prev_input_state->mouse_buttons[0];
 
     //Draw held buttons as red for now
     const bool button_hovered = cursor_currently_overlaps;
@@ -424,29 +528,10 @@ GuiClickState gui_button(const GuiContext* const in_context, const char* in_labe
     GUI_ALIGN_CENTER, true);
 }
 
-//TODO: BEGIN make general math file
-float lerp(float f, float min, float max) 
-{
-    return (min * (1.0 - f)) + (max * f);
-}
-
-float unlerp(float f, float min, float max) {
-    return (f - min) / (max - min);
-}
-
-float remap(float x, float in_range_min, float in_range_max, float out_range_min, float out_range_max) {
-    return lerp(unlerp(x, in_range_min, in_range_max), out_range_min, out_range_max);
-}
-
-float remap_clamped(float x, float in_range_min, float in_range_max, float out_range_min, float out_range_max) {
-    return remap(CLAMP(x, in_range_min, in_range_max), in_range_min, in_range_max, out_range_min, out_range_max);
-}
-//TODO: END
-
-GuiClickState gui_make_slider_float(const GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const GuiRect* const in_rect, const bool is_active) {
+GuiClickState gui_make_slider_float(const GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const GuiRect* const in_rect, const bool is_active) {    
     GuiClickState clicked_state = gui_make_button(in_context, "", in_rect, GUI_ALIGN_CENTER, is_active);
     if (clicked_state == GUI_HELD) {
-        const float current_mouse_x = in_context->frame_state.mouse_pos.x;
+        const float current_mouse_x = in_context->input_state.mouse_pos.x;
         const float new_value = remap_clamped((current_mouse_x - in_rect->position.x) / in_rect->size.x, 0.0, 1.0, in_slider_bounds.x, in_slider_bounds.y);
         *data_ptr = new_value;
     }
@@ -463,10 +548,11 @@ GuiClickState gui_make_slider_float(const GuiContext* const in_context, float* c
     const Vec4 slider_filled_color = clicked_state == GUI_HELD ? vec4_new(0,0,1,1) : clicked_state == GUI_HOVERED ? vec4_new(1.0, 0,0, control_alpha) : vec4_new(0.5, 0,0, control_alpha);
     gui_make_box(in_context, &filled_rect, &slider_filled_color, NULL);
 
-    //Draw current value
-    int required_chars = snprintf(NULL, 0, "%f", *data_ptr);
+    //Draw label and current value text
+    const char* format_string = "%s: %.3f";
+    int required_chars = snprintf(NULL, 0, format_string, in_label, *data_ptr);
     char data_as_string[required_chars];
-    snprintf(data_as_string, required_chars, "%f", *data_ptr);
+    snprintf(data_as_string, required_chars, format_string, in_label, *data_ptr);
     gui_make_text(in_context, data_as_string, in_rect, GUI_ALIGN_CENTER);
 
     return clicked_state;
@@ -482,7 +568,7 @@ GuiClickState gui_slider_float(const GuiContext* const in_context,  float* const
 
 static const float top_bar_height = 35.0f; //TODO: style setting
 
-void gui_begin_window(GuiContext* const in_context, GuiWindow* const in_window) {
+void gui_window(GuiContext* const in_context, GuiWindow* const in_window) {
 
     in_window->next_index = 0;
     
@@ -515,8 +601,8 @@ void gui_begin_window(GuiContext* const in_context, GuiWindow* const in_window) 
     }
 
     //Window moving
-    Vec2 mouse_pos = in_context->frame_state.mouse_pos;
-    Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;
+    Vec2 mouse_pos = in_context->input_state.mouse_pos;
+    Vec2 prev_mouse_pos = in_context->prev_input_state.mouse_pos;
     Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
 
     const bool is_dragging_window = top_bar_click_state == GUI_HELD;

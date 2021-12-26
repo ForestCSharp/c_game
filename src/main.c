@@ -574,13 +574,13 @@ int main() {
 		int32_t mouse_x, mouse_y;
 		window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
-		GuiFrameState gui_frame_state = {
+		GuiInputState gui_input_state = {
 			.window_size = vec2_new(width, height),
 			.mouse_pos = vec2_new(mouse_x, mouse_y),
 			.mouse_buttons = {input_pressed(KEY_LEFT_MOUSE), input_pressed(KEY_RIGHT_MOUSE), input_pressed(KEY_MIDDLE_MOUSE)}
 		};
 
-		gui_begin_frame(&gui_context, gui_frame_state);
+		gui_begin_frame(&gui_context, gui_input_state);
 
 		if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
 		{
@@ -628,7 +628,7 @@ int main() {
 			.is_expanded = true,
 		};
 
-		gui_begin_window(&gui_context, &gui_window_1);
+		gui_window(&gui_context, &gui_window_1);
 		if (gui_window_button(&gui_context, &gui_window_1, "Button 1") == GUI_CLICKED) {
 			printf("BUTTON 1\n");
 		}
@@ -639,8 +639,8 @@ int main() {
 			printf("BUTTON 4\n");
 		}
 
-		static float window_float = 0.25f;
-		gui_window_slider_float(&gui_context, &gui_window_1, &window_float, vec2_new(-5.0, 5.0), "My Slider");
+		static float rotation_rate = 1.25f;
+		gui_window_slider_float(&gui_context, &gui_window_1, &rotation_rate, vec2_new(-25.0, 25.0), "Rot Rate");
 
 		static GuiWindow gui_window_2 = {
 			.name = "Window 2",
@@ -654,12 +654,40 @@ int main() {
 					.y = 400,
 				}
 			},
-			.is_expanded = true,
+			.is_expanded = false,
 		};
-		gui_begin_window(&gui_context, &gui_window_2);
+		gui_window(&gui_context, &gui_window_2);
 
 		const float text_size = 400.0f;
 		gui_text(&gui_context, "NW - 30 - 15 - N - 15 - 30 - NE", vec2_new(((float) width - text_size) / 2.0f, 0.0f), vec2_new(text_size, 50), GUI_ALIGN_CENTER);
+
+		static Vec2 bezier_points[] = {
+			{.x=0.2, .y=0.2},
+			{.x=0.5, .y=0.2},
+			{.x=0.6, .y=0.8},
+			{.x=0.8, .y=0.8},
+		};
+		gui_make_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0,0.6,0,1), 0.01); //TODO: Replace with gui_bezier (screen-space)
+
+		for (uint32_t i = 0; i < 4; ++i) {
+			const Vec2 window_size = gui_context.input_state.window_size;
+			const Vec2 point_pos_screen_space = {
+				.x = bezier_points[i].x * window_size.x,
+				.y = bezier_points[i].y * window_size.y,
+			};
+			char label[255];
+			sprintf(label, "p%u", i);
+			const Vec2 bezier_button_size = vec2_new(25,25);
+			if (gui_button(&gui_context, label, vec2_sub(point_pos_screen_space, vec2_scale(bezier_button_size, 0.5)), bezier_button_size) == GUI_HELD) {
+				Vec2 mouse_pos = gui_context.input_state.mouse_pos;
+				Vec2 prev_mouse_pos = gui_context.prev_input_state.mouse_pos;
+				Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
+				mouse_delta.x /= window_size.x;
+				mouse_delta.y /= window_size.y;
+
+				bezier_points[i] = vec2_add(bezier_points[i], mouse_delta);
+			}
+		}
 
 		//TODO: should be per-frame resources
 		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);
@@ -789,9 +817,9 @@ int main() {
 		}
 
 		{
-			float rotation_speed = 1.0f;
-			Quat q1 = quat_new(vec3_new(0,1,0),delta_time * rotation_speed);
-			Quat q2 = quat_new(vec3_new(1,0,0),delta_time * rotation_speed);
+			// float rotation_rate = 1.0f;
+			Quat q1 = quat_new(vec3_new(0,1,0),delta_time * rotation_rate);
+			Quat q2 = quat_new(vec3_new(1,0,0),delta_time * rotation_rate);
 
 			Quat q = quat_normalize(quat_mult(q1, q2));
 
