@@ -395,7 +395,7 @@ Vec2 recursive_bezier_deriv(const float t, const uint32_t num_points, const Vec2
 void gui_make_bezier(const GuiContext* const in_context, const uint32_t num_points, Vec2* points, const uint32_t num_samples, const Vec4 color, const float width) {
     assert(num_points > 0);
     assert(num_samples > 0);
-    
+
     const float step_amount = 1.0f / (float) num_samples;
 
     float current_t = 0.0f;
@@ -446,6 +446,20 @@ void gui_make_bezier(const GuiContext* const in_context, const uint32_t num_poin
 
         current_t += step_amount;
     }
+}
+
+/* Same as above, but in screen-space */
+void gui_bezier(const GuiContext* const in_context, const uint32_t num_points, Vec2* points, const uint32_t num_samples, const Vec4 color, const float width) {
+    Vec2 normalized_points[num_points];
+    memcpy(normalized_points, points, sizeof(Vec2) * num_points);
+
+    const Vec2 window_size = in_context->input_state.window_size;
+    for (uint32_t i = 0; i < num_points; ++i) {
+        normalized_points[i].x /= window_size.x;
+        normalized_points[i].y /= window_size.y;
+    }
+
+    gui_make_bezier(in_context, num_points, normalized_points, num_samples, color, width);
 }
 
 //TODO: Alignment arg
