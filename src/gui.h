@@ -35,9 +35,8 @@ typedef struct GuiRect {
 
 typedef struct GuiFrameState {
     Vec2 window_size;
-    Vec2 mouse_pos; //Mouse position, in screen coordinates
+    Vec2 mouse_pos;
     bool mouse_buttons[3];
-    //TODO: Store window rects (w/ 'active' at front)
 } GuiFrameState;
 
 typedef struct GuiDrawData {
@@ -101,7 +100,35 @@ typedef struct GuiWindow {
     GuiDrawData draw_data;  //Stores window's local draw data
 } GuiWindow;
 
-//Zeroes out out_font before loading, make sure out_font wasn't previously created with this function, and if so, free it with gui_free_font
+typedef struct GuiButtonStyleArgs {
+    Vec4 released_color;
+    Vec4 hovered_color;
+    Vec4 held_color;
+    GuiAlignment text_alignment;
+} GuiButtonStyleArgs;
+
+//TODO: Style Setting for this
+static const GuiButtonStyleArgs default_button_style = {
+    .released_color = {0.0, 0.0, 0.0, 0.75f},
+    .hovered_color  = {0.4, 0.0, 0.0, 0.75f},
+    .held_color     = {1.0, 0.0, 0.0, 1.0},
+    .text_alignment = GUI_ALIGN_CENTER,
+};
+
+Vec4 gui_style_get_button_color(const GuiButtonStyleArgs* const in_style_args, const GuiClickState in_click_state) {
+    switch (in_click_state) {
+        case GUI_RELEASED:
+            return in_style_args->released_color;
+        case GUI_HOVERED:
+            return in_style_args->hovered_color;
+        case GUI_HELD:
+        case GUI_CLICKED:
+            return in_style_args->held_color;
+        default:
+            return in_style_args->released_color;
+    }
+}
+
 bool gui_load_font(const char* filename, GuiFont* out_font) {
     FILE* file = fopen(filename, "rb"); 
 
@@ -487,37 +514,6 @@ void gui_text(GuiContext* const in_context, const char* in_text, Vec2 position, 
         .position = position,
         .size = size,
     }, alignment);
-}
-
-//TODO: Style Setting for this
-const float control_alpha = 0.75f;
-
-typedef struct GuiButtonStyleArgs {
-    Vec4 released_color;
-    Vec4 hovered_color;
-    Vec4 held_color;
-    GuiAlignment text_alignment;
-} GuiButtonStyleArgs;
-
-static const GuiButtonStyleArgs default_button_style = {
-    .released_color = {0.0, 0.0, 0.0, control_alpha},
-    .hovered_color  = {0.4, 0.0, 0.0, control_alpha},
-    .held_color     = {1.0, 0.0, 0.0, 1.0},
-    .text_alignment = GUI_ALIGN_CENTER,
-};
-
-Vec4 gui_style_get_button_color(const GuiButtonStyleArgs* const in_style_args, const GuiClickState in_click_state) {
-    switch (in_click_state) {
-        case GUI_RELEASED:
-            return in_style_args->released_color;
-        case GUI_HOVERED:
-            return in_style_args->hovered_color;
-        case GUI_HELD:
-            return in_style_args->held_color;
-        case GUI_CLICKED:
-        default:
-            return in_style_args->released_color;
-    }
 }
 
 //TODO: Pass in Style args (released, hovered, held colors)
