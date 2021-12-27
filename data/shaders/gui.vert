@@ -9,13 +9,14 @@ layout(location = 0) out vec2 out_position;
 layout(location = 1) out vec2 out_uv;
 layout(location = 2) out vec4 out_color;
 
-vec2 screen_to_ndc(vec2 in_gui_coords)
+/* Converts [0,1] to [-1,1] */
+vec2 normalized_to_ndc(vec2 in_gui_coords)
 {
     return (in_gui_coords * 2.0) - vec2(1,1);
 }
 
 void main() {
-    out_position = screen_to_ndc(in_position);
+    out_position = normalized_to_ndc(in_position);
     gl_Position = vec4(out_position, 0.0, 1.0);
     out_uv = in_uv;
     out_color = in_color;

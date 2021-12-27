@@ -25,7 +25,7 @@ void main() {
     vec3 normal = normalize(in_normal);
     vec3 light_dir = normalize(ubo.light_dir.xyz);
     float n_dot_l = max(dot(normal, -light_dir), 0.0);
-    out_color += texture(tex_sampler, in_uv) * n_dot_l;
+    out_color += vec4(0.8,0.8,0.8,1) * n_dot_l;
 
     //Specular
     vec3 view_dir = normalize(ubo.eye.xyz - in_position);

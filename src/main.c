@@ -574,17 +574,17 @@ int main() {
 		int32_t mouse_x, mouse_y;
 		window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
-		GuiInputState gui_input_state = {
+		GuiFrameState gui_frame_state = {
 			.window_size = vec2_new(width, height),
 			.mouse_pos = vec2_new(mouse_x, mouse_y),
 			.mouse_buttons = {input_pressed(KEY_LEFT_MOUSE), input_pressed(KEY_RIGHT_MOUSE), input_pressed(KEY_MIDDLE_MOUSE)}
 		};
 
-		gui_begin_frame(&gui_context, gui_input_state);
+		gui_begin_frame(&gui_context, gui_frame_state);
 
 		if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
 		{
-			printf("Button Clicked!\n");
+			printf("Clicked First BUtton\n");
 		}
 
 		if (gui_button(&gui_context, "too much text to display", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
@@ -604,7 +604,7 @@ int main() {
 			float average_fps = 1.0 / average_delta_time;
 
 			char buffer[128];
-			snprintf(buffer, sizeof(buffer), "FPS: %.1f", average_fps);
+			snprintf(buffer, sizeof(buffer), "FPS: %.1f", round(average_fps));
 			const float padding = 5.f;
 			const float fps_button_size = 155.f;
 			if (gui_button(&gui_context, buffer, vec2_new(width - fps_button_size - padding, padding), vec2_new(fps_button_size, 30)) == GUI_CLICKED) {
@@ -626,21 +626,10 @@ int main() {
 				}
 			},
 			.is_expanded = true,
+			.is_open = true,
+			.is_resizable = true,
+			.is_movable = true,
 		};
-
-		gui_window(&gui_context, &gui_window_1);
-		if (gui_window_button(&gui_context, &gui_window_1, "Button 1") == GUI_CLICKED) {
-			printf("BUTTON 1\n");
-		}
-		
-		gui_window_button(&gui_context, &gui_window_1, "Button 2");
-		gui_window_button(&gui_context, &gui_window_1, "Button 3");
-		if (gui_window_button(&gui_context, &gui_window_1, "Button 4") == GUI_CLICKED) {
-			printf("BUTTON 4\n");
-		}
-
-		static float rotation_rate = 1.25f;
-		gui_window_slider_float(&gui_context, &gui_window_1, &rotation_rate, vec2_new(-25.0, 25.0), "Rot Rate");
 
 		static GuiWindow gui_window_2 = {
 			.name = "Window 2",
@@ -654,36 +643,64 @@ int main() {
 					.y = 400,
 				}
 			},
-			.is_expanded = false,
+			.is_expanded = true,
+			.is_open = false,
+			.is_resizable = true,
+			.is_movable = true,
 		};
-		gui_window(&gui_context, &gui_window_2);
+
+		gui_window_begin(&gui_context, &gui_window_1);
+		if (gui_window_button(&gui_context, &gui_window_1, gui_window_2.is_open ? "Hide Window 2" : "Show Window 2") == GUI_CLICKED) {
+			gui_window_2.is_open = !gui_window_2.is_open;
+		}
+		
+		static bool show_bezier = true;
+		if (gui_window_button(&gui_context, &gui_window_1, show_bezier ? "Hide Bezier" : "Show Bezier") == GUI_CLICKED) {
+			show_bezier = !show_bezier;
+		}
+
+		static float rotation_rate = 1.25f;
+		gui_window_slider_float(&gui_context, &gui_window_1, &rotation_rate, vec2_new(-25.0, 25.0), "Rot Rate");
+		gui_window_end(&gui_context, &gui_window_1);
+
+		gui_window_begin(&gui_context, &gui_window_2);
+		if (gui_window_button(&gui_context, &gui_window_2, "Toggle Movable") == GUI_CLICKED) {
+			gui_window_2.is_movable = !gui_window_2.is_movable;
+		}
+		if (gui_window_button(&gui_context, &gui_window_2, "Toggle Resizable") == GUI_CLICKED) {
+			gui_window_2.is_resizable = !gui_window_2.is_resizable;
+		}
+		gui_window_end(&gui_context, &gui_window_2);
 
 		const float text_size = 400.0f;
 		gui_text(&gui_context, "NW - 30 - 15 - N - 15 - 30 - NE", vec2_new(((float) width - text_size) / 2.0f, 0.0f), vec2_new(text_size, 50), GUI_ALIGN_CENTER);
 
-		static Vec2 bezier_points[] = {
-			{.x=400, .y=200},
-			{.x=600, .y=200},
-			{.x=800, .y=600},
-			{.x=1000, .y=600},
-		};
-		gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0,0.6,0,1), 0.01);
-
-		for (uint32_t i = 0; i < 4; ++i) {
-			const Vec2 window_size = gui_context.input_state.window_size;
-			const Vec2 point_pos_screen_space = {
-				.x = bezier_points[i].x * window_size.x,
-				.y = bezier_points[i].y * window_size.y,
+		if (show_bezier) {
+			static Vec2 bezier_points[] = {
+				{.x=400, .y=200},
+				{.x=600, .y=200},
+				{.x=800, .y=600},
+				{.x=1000, .y=600},
 			};
-			char label[255];
-			sprintf(label, "p%u", i);
-			const Vec2 bezier_button_size = vec2_new(25,25);
-			if (gui_button(&gui_context, label, vec2_sub(bezier_points[i], vec2_scale(bezier_button_size, 0.5)), bezier_button_size) == GUI_HELD) {
-				Vec2 mouse_pos = gui_context.input_state.mouse_pos;
-				Vec2 prev_mouse_pos = gui_context.prev_input_state.mouse_pos;
-				Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
+			gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0.6,0,0,1), 0.01);
 
-				bezier_points[i] = vec2_add(bezier_points[i], mouse_delta);
+			//Bezier Controls
+			for (uint32_t i = 0; i < 4; ++i) {
+				const Vec2 window_size = gui_context.frame_state.window_size;
+				const Vec2 point_pos_screen_space = {
+					.x = bezier_points[i].x * window_size.x,
+					.y = bezier_points[i].y * window_size.y,
+				};
+				char label[255];
+				sprintf(label, "p%u", i);
+				const Vec2 bezier_button_size = vec2_new(25,25);
+				if (gui_button(&gui_context, label, vec2_sub(bezier_points[i], vec2_scale(bezier_button_size, 0.5)), bezier_button_size) == GUI_HELD) {
+					Vec2 mouse_pos = gui_context.frame_state.mouse_pos;
+					Vec2 prev_mouse_pos = gui_context.prev_frame_state.mouse_pos;
+					Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
+
+					bezier_points[i] = vec2_add(bezier_points[i], mouse_delta);
+				}
 			}
 		}
 

@@ -249,3 +249,29 @@ Vec4 vec3_to_vec4(const Vec3 v, const float w) {
         .w = w,
     };
 }
+
+//Floating point LHS
+
+Vec2 float_div_vec2(float a, const Vec2 v) {
+    return (Vec2) {
+        .x = a / v.x,
+        .y = a / v.y,
+    };
+}
+
+Vec3 float_div_vec3(float a, const Vec3 v) {
+    return (Vec3) {
+        .x = a / v.x,
+        .y = a / v.y,
+        .z = a / v.z,
+    };
+}
+
+Vec4 float_div_vec4(float a, const Vec4 v) {
+    return (Vec4) {
+        .x = a / v.x,
+        .y = a / v.y,
+        .z = a / v.z,
+        .w = a / v.w,
+    };
+}
