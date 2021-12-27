@@ -34,7 +34,7 @@ typedef struct GuiRect {
 } GuiRect;
 
 typedef struct GuiFrameState {
-    Vec2 window_size;
+    Vec2 screen_size;
     Vec2 mouse_pos;
     bool mouse_buttons[3];
 } GuiFrameState;
@@ -105,6 +105,7 @@ typedef struct GuiButtonStyleArgs {
     Vec4 hovered_color;
     Vec4 held_color;
     GuiAlignment text_alignment;
+    float text_padding;
 } GuiButtonStyleArgs;
 
 //TODO: Style Setting for this
@@ -113,6 +114,7 @@ static const GuiButtonStyleArgs default_button_style = {
     .hovered_color  = {0.4, 0.0, 0.0, 0.75f},
     .held_color     = {1.0, 0.0, 0.0, 1.0},
     .text_alignment = GUI_ALIGN_CENTER,
+    .text_padding   = 15.0f,
 };
 
 Vec4 gui_style_get_button_color(const GuiButtonStyleArgs* const in_style_args, const GuiClickState in_click_state) {
@@ -139,7 +141,6 @@ bool gui_load_font(const char* filename, GuiFont* out_font) {
         if (fread(&bff_id, 2, 1, file) != 1 || bff_id != BFF_ID) {
             return false;
         }
-        
         if (fread(&out_font->image_width, 4, 1, file) != 1) {
             return false;
         }
@@ -159,11 +160,9 @@ bool gui_load_font(const char* filename, GuiFont* out_font) {
         } else {
             return false;
         }
-
         if (fread(&out_font->first_char, 1, 1, file) != 1) {
             return false;
         }
-
         if (fread(out_font->char_widths, 1, 256, file) != 256) {
             return false;
         }
@@ -247,7 +246,7 @@ GuiRect gui_rect_scale(const GuiRect in_rect, const Vec2 in_scale) {
 
 void gui_init(GuiContext* out_context) {
     GuiFrameState default_frame_state = {
-        .window_size = vec2_new(1920,1080),
+        .screen_size = vec2_new(1920,1080),
         .mouse_pos = vec2_new(0,0),
         .mouse_buttons = {false, false, false},
     };
@@ -323,34 +322,32 @@ void gui_draw_quad(GuiDrawData* const in_draw_data, const GuiVert vertices[4]) {
 }
 
 /* Currently takes in screen-space coordinates (i.e in pixels) and converts to [0,1] range where (0,0) is top-left and (1,1) is bottom right */
-//TODO: Make [0,1]
 void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect, const Vec4* const in_color, const GuiRect* const in_uv_rect) {
-    float normalized_x = in_rect->position.x;
-    float normalized_y = in_rect->position.y;
-    float normalized_width = in_rect->size.x;
-    float normalized_height = in_rect->size.y;
+
+    const Vec2 position = in_rect->position;
+    const Vec2 size = in_rect->size;
 
     const Vec2 uv_start = in_uv_rect ? in_uv_rect->position : vec2_new(-1,-1);
     const Vec2 uv_size = in_uv_rect ? in_uv_rect->size : vec2_new(0,0);
 
     gui_draw_quad(in_draw_data, (GuiVert[4]){
         (GuiVert) {
-            .position = vec2_new(normalized_x, normalized_y),
+            .position = position,
             .uv = uv_start,
             .color = *in_color,
         },
         (GuiVert) {
-            .position = vec2_new(normalized_x + normalized_width, normalized_y),
+            .position = vec2_add(position, vec2_new(size.x, 0)),
             .uv = vec2_add(uv_start, vec2_new(uv_size.x, 0)),
             .color = *in_color,
         },
         (GuiVert) {
-            .position = vec2_new(normalized_x, normalized_y + normalized_height),
+            .position = vec2_add(position, vec2_new(0, size.y)),
             .uv = vec2_add(uv_start, vec2_new(0, uv_size.y)),
             .color = *in_color,
         },
         (GuiVert) {
-            .position = vec2_new(normalized_x + normalized_width, normalized_y + normalized_height),
+            .position = vec2_add(position, size),
             .uv = vec2_add(uv_start, uv_size),
             .color = *in_color,
         },
@@ -380,7 +377,6 @@ Vec2 recursive_bezier_deriv(const float t, const uint32_t num_points, const Vec2
     }
 }
 
-//TODO: take in GuiDrawData rather than context
 void gui_draw_bezier(GuiDrawData* const in_draw_data, const uint32_t num_points, Vec2* points, const uint32_t num_samples, const Vec4 color, const float width) {
     assert(num_points > 0);
     assert(num_samples > 0);
@@ -441,7 +437,7 @@ void gui_bezier(GuiContext* const in_context, const uint32_t num_points, Vec2* p
     Vec2 normalized_points[num_points];
     memcpy(normalized_points, points, sizeof(Vec2) * num_points);
 
-    const Vec2 window_size = in_context->frame_state.window_size;
+    const Vec2 window_size = in_context->frame_state.screen_size;
     for (uint32_t i = 0; i < num_points; ++i) {
         normalized_points[i].x /= window_size.x;
         normalized_points[i].y /= window_size.y;
@@ -450,63 +446,66 @@ void gui_bezier(GuiContext* const in_context, const uint32_t num_points, Vec2* p
     gui_draw_bezier(&in_context->draw_data, num_points, normalized_points, num_samples, color, width);
 }
 
-//TODO: Add GuiTextStyleArgs (replace GuiAlignment)
+//TODO: Add GuiTextStyleArgs (replace GuiAlignment arg (GuiAlignment should live in style args))
 void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiRect* const in_bounding_rect, GuiAlignment in_alignment) {
-    size_t num_chars = strlen(in_text);
 
-    const float char_size = 22.5f; //TODO: style setting
-    const float spacing = -13.5f; //TODO: style setting
-
-    //TODO: Ensure we have enough height for char_size
-
-    //Compute max possible chars
-    float bounding_rect_width = in_bounding_rect->size.x;
-
-    //Compute baed on bounding rect width, but never greater than num_chars
-    size_t max_possible_chars = min(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
-    float text_width = max_possible_chars * (char_size + spacing);
-
-    Vec2 current_offset;
-    switch (in_alignment)
-    {
-        case GUI_ALIGN_LEFT:
-        {
-            current_offset = in_bounding_rect->position;
-            break;
-        }
-        case GUI_ALIGN_CENTER:
-        {
-            float text_start_x = (in_bounding_rect->position.x + in_bounding_rect->size.x / 2.f) - text_width / 2.f;
-            current_offset = vec2_new(text_start_x, in_bounding_rect->position.y);
-            break;
-        }
-    }
-
-    //Center of rect on y-axis
-    current_offset.y += (in_bounding_rect->size.y - char_size) / 2.0f;
-
-    GuiRect text_rect = {
-        .position = current_offset,
-        .size = vec2_new(0.f, 0.f),
-    };
+    if (in_bounding_rect->size.x > 0.0f) {
+        size_t num_chars = strlen(in_text);
     
-    for (size_t i = 0; i < max_possible_chars; ++i) {
-        
-        char current_char = in_text[i];
+        const float char_size = 22.5f; //TODO: style setting
+        const float spacing = -13.5f; //TODO: style setting
 
-        GuiRect uv_rect;
-        gui_font_get_uvs(&in_context->default_font, current_char, &uv_rect);
+        //TODO: Ensure we have enough height for char_size
 
-        GuiRect box_rect = gui_rect_scale((GuiRect) {
+        //Compute max possible chars
+        float bounding_rect_width = in_bounding_rect->size.x;
+
+        //Compute baed on bounding rect width, but never greater than num_chars
+        size_t max_possible_chars = min(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
+        float text_width = max_possible_chars * (char_size + spacing);
+
+        Vec2 current_offset;
+        switch (in_alignment)
+        {
+            case GUI_ALIGN_LEFT:
+            {
+                current_offset = in_bounding_rect->position;
+                break;
+            }
+            case GUI_ALIGN_CENTER:
+            {
+                float text_start_x = (in_bounding_rect->position.x + in_bounding_rect->size.x / 2.f) - text_width / 2.f;
+                current_offset = vec2_new(text_start_x, in_bounding_rect->position.y);
+                break;
+            }
+        }
+
+        //Center of rect on y-axis
+        current_offset.y += (in_bounding_rect->size.y - char_size) / 2.0f;
+
+        GuiRect text_rect = {
             .position = current_offset,
-            .size = vec2_new(char_size, char_size),
-        }, float_div_vec2(1.0,in_context->frame_state.window_size));
+            .size = vec2_new(0.f, 0.f),
+        };
+        
+        for (size_t i = 0; i < max_possible_chars; ++i) {
+            
+            char current_char = in_text[i];
 
-        Vec4 text_color = vec4_new(1,1,1,1); //TODO: arg
-        gui_draw_box(&in_context->draw_data, &box_rect, &text_color, &uv_rect);
+            GuiRect uv_rect;
+            gui_font_get_uvs(&in_context->default_font, current_char, &uv_rect);
 
-        current_offset = vec2_add(current_offset, vec2_new(char_size + spacing, 0));
-    }
+            GuiRect box_rect = gui_rect_scale((GuiRect) {
+                .position = current_offset,
+                .size = vec2_new(char_size, char_size),
+            }, float_div_vec2(1.0,in_context->frame_state.screen_size));
+
+            Vec4 text_color = vec4_new(1,1,1,1); //TODO: arg
+            gui_draw_box(&in_context->draw_data, &box_rect, &text_color, &uv_rect);
+
+            current_offset = vec2_add(current_offset, vec2_new(char_size + spacing, 0));
+        }
+    } 
 }
 
 void gui_text(GuiContext* const in_context, const char* in_text, Vec2 position, Vec2 size, GuiAlignment alignment) {
@@ -516,7 +515,6 @@ void gui_text(GuiContext* const in_context, const char* in_text, Vec2 position, 
     }, alignment);
 }
 
-//TODO: Pass in Style args (released, hovered, held colors)
 GuiClickState gui_make_button(GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiButtonStyleArgs* in_style_args, const bool is_active) {
     const GuiFrameState* const current_frame_state = &in_context->frame_state;
     const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
@@ -549,14 +547,12 @@ GuiClickState gui_make_button(GuiContext* const in_context, const char* in_label
     
     Vec4 button_color = gui_style_get_button_color(in_style_args, out_click_state);
 
-    const GuiRect normalized_button_rect = gui_rect_scale(button_rect, float_div_vec2(1.0, in_context->frame_state.window_size));
+    const GuiRect normalized_button_rect = gui_rect_scale(button_rect, float_div_vec2(1.0, in_context->frame_state.screen_size));
     gui_draw_box(&in_context->draw_data, &normalized_button_rect, &button_color, NULL);
 
-    const float button_text_padding = 15.0f; //TODO: Style setting
-
     GuiRect text_rect = button_rect;
-    text_rect.position.x += button_text_padding;
-    text_rect.size.x -= (button_text_padding * 2.f);
+    text_rect.position.x += in_style_args->text_padding;
+    text_rect.size.x -= (in_style_args->text_padding * 2.f);
     gui_make_text(in_context, in_label, &text_rect, in_style_args->text_alignment);
 
     return out_click_state;
@@ -592,7 +588,7 @@ GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const d
             .x = filled_width,
             .y = in_rect->size.y,
         },
-    }, float_div_vec2(1.0, in_context->frame_state.window_size));
+    }, float_div_vec2(1.0, in_context->frame_state.screen_size));
 
     const GuiButtonStyleArgs slider_filled_style = {
         .released_color = default_button_style.hovered_color,
@@ -621,7 +617,13 @@ GuiClickState gui_slider_float(GuiContext* const in_context,  float* const data_
     true);
 }
 
-static const float top_bar_height = 35.0f; //TODO: style setting
+//TODO: GuiWindowStyleArgs
+static const float window_top_bar_height = 35.0f;       //TODO: style setting
+static const float window_row_padding_y = 2.5f;         //TODO: Style setting
+static const float window_row_height = 35.0f;           //TODO: Style setting
+static const float min_window_width = 50.0f;            //TODO: Style Setting
+const Vec2 window_resize_control_size = {15.f, 15.f};   //TODO: Style setting
+static const Vec4  window_color = {.2, .2, .2, .9};     //TODO: Style setting
 
 //TODO: Window z-order ideas
 // 1. All windows in front of "free" controls
@@ -635,19 +637,17 @@ void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window) 
         GuiRect* const window_rect = &in_window->window_rect;
 
         //Main window area
-        const Vec4 window_color = vec4_new(.2, .2, .2, .9); //TODO: Style setting
         if (in_window->is_expanded) {
-            const GuiRect normalized_window_rect = gui_rect_scale(*window_rect, float_div_vec2(1.0, in_context->frame_state.window_size));
+            const GuiRect normalized_window_rect = gui_rect_scale(*window_rect, float_div_vec2(1.0, in_context->frame_state.screen_size));
             gui_draw_box(&in_context->draw_data, &normalized_window_rect, &window_color, NULL);
         }
 
         //Top Bar
-        const Vec4 top_bar_color = vec4_new(.8, .8, .8, .8); //TODO: Style setting
         GuiRect top_bar_rect = {
             .position = window_rect->position,
             .size = {
                 .x = window_rect->size.x,
-                .y = top_bar_height,
+                .y = window_top_bar_height,
             }
         };
 
@@ -680,27 +680,25 @@ void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window) 
 
         //Resize Control bottom right
         if (in_window->is_expanded && in_window->is_resizable) {
-            const Vec2 resize_control_size = vec2_new(15.f, 15.f);
-            const Vec2 resize_control_position = vec2_sub(vec2_add(window_rect->position, window_rect->size), resize_control_size);
+            const Vec2 resize_control_position = vec2_sub(vec2_add(window_rect->position, window_rect->size), window_resize_control_size);
 
             const GuiRect resize_control_rect = {
                 .position = resize_control_position,
-                .size = resize_control_size,
+                .size = window_resize_control_size,
             };
 
             in_window->is_resizing = gui_make_button(in_context, "", &resize_control_rect, &default_button_style, !in_window->is_moving) == GUI_HELD;
             if (in_window->is_resizing) {
                 window_rect->size = vec2_add(window_rect->size, mouse_delta);
+                window_rect->size.x = MAX(min_window_width, window_rect->size.x);
+                window_rect->size.y = MAX(window_resize_control_size.y, window_rect->size.y);
 
-                float minimum_window_height = top_bar_height + resize_control_size.y;
+                float minimum_window_height = window_top_bar_height + window_resize_control_size.y;
                 window_rect->size.y = max(minimum_window_height, window_rect->size.y);
             }
         }
     }
 }
-
-static const float window_row_padding_y = 2.5f; //TODO: Style setting
-static const float window_row_height = 35.0f;  //TODO: Style setting
 
 //Attemps to allocate space for a new control in 'in_window'. If there is space, out_rect is written and true is returned.
 bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_rect) {
@@ -714,7 +712,7 @@ bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_re
         const Vec2 window_size = window_rect->size;
 
         //Need padding after first element as well, so add 1 to control index to account for that
-        const float y_offset = window_pos.y + top_bar_height + ((window_row_height) * (float)control_index) + (window_row_padding_y * (float) (control_index + 1));
+        const float y_offset = window_pos.y + window_top_bar_height + ((window_row_height) * (float)control_index) + (window_row_padding_y * (float) (control_index + 1));
 
         if(y_offset + window_row_height <= window_rect->position.y + window_rect->size.y) {
             *out_rect = (GuiRect) {

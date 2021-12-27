@@ -575,7 +575,7 @@ int main() {
 		window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
 		GuiFrameState gui_frame_state = {
-			.window_size = vec2_new(width, height),
+			.screen_size = vec2_new(width, height),
 			.mouse_pos = vec2_new(mouse_x, mouse_y),
 			.mouse_buttons = {input_pressed(KEY_LEFT_MOUSE), input_pressed(KEY_RIGHT_MOUSE), input_pressed(KEY_MIDDLE_MOUSE)}
 		};
@@ -686,7 +686,7 @@ int main() {
 
 			//Bezier Controls
 			for (uint32_t i = 0; i < 4; ++i) {
-				const Vec2 window_size = gui_context.frame_state.window_size;
+				const Vec2 window_size = gui_context.frame_state.screen_size;
 				const Vec2 point_pos_screen_space = {
 					.x = bezier_points[i].x * window_size.x,
 					.y = bezier_points[i].y * window_size.y,
