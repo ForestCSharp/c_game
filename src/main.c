@@ -584,7 +584,7 @@ int main() {
 
 		if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
 		{
-			printf("Clicked First BUtton\n");
+			printf("Clicked First Button\n");
 		}
 
 		if (gui_button(&gui_context, "too much text to display", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
@@ -623,7 +623,8 @@ int main() {
 				.size = {
 					.x = 400,
 					.y = 400,
-				}
+				},
+				.z_order = 1,
 			},
 			.is_expanded = true,
 			.is_open = true,
@@ -641,7 +642,8 @@ int main() {
 				.size = {
 					.x = 400,
 					.y = 400,
-				}
+				},
+				.z_order = 2,
 			},
 			.is_expanded = true,
 			.is_open = false,
@@ -654,13 +656,20 @@ int main() {
 			gui_window_2.is_open = !gui_window_2.is_open;
 		}
 		
-		static bool show_bezier = true;
+		static bool show_bezier = false;
 		if (gui_window_button(&gui_context, &gui_window_1, show_bezier ? "Hide Bezier" : "Show Bezier") == GUI_CLICKED) {
 			show_bezier = !show_bezier;
 		}
 
 		static float rotation_rate = 1.25f;
 		gui_window_slider_float(&gui_context, &gui_window_1, &rotation_rate, vec2_new(-25.0, 25.0), "Rot Rate");
+		for (uint32_t i = 0; i < 12; ++i) {
+			char buffer[256];
+			snprintf(buffer, sizeof(buffer), "Btn %u", i);
+			if (gui_window_button(&gui_context, &gui_window_1, buffer) == GUI_CLICKED) {
+				printf("Clicked %s\n", buffer);
+			}
+		}
 		gui_window_end(&gui_context, &gui_window_1);
 
 		gui_window_begin(&gui_context, &gui_window_2);
@@ -691,10 +700,8 @@ int main() {
 					.x = bezier_points[i].x * window_size.x,
 					.y = bezier_points[i].y * window_size.y,
 				};
-				char label[255];
-				sprintf(label, "p%u", i);
 				const Vec2 bezier_button_size = vec2_new(25,25);
-				if (gui_button(&gui_context, label, vec2_sub(bezier_points[i], vec2_scale(bezier_button_size, 0.5)), bezier_button_size) == GUI_HELD) {
+				if (gui_button(&gui_context, "", vec2_sub(bezier_points[i], vec2_scale(bezier_button_size, 0.5)), bezier_button_size) == GUI_HELD) {
 					Vec2 mouse_pos = gui_context.frame_state.mouse_pos;
 					Vec2 prev_mouse_pos = gui_context.prev_frame_state.mouse_pos;
 					Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);

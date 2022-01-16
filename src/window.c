@@ -4,7 +4,7 @@
 const char g_WindowClassName[] = "c_game";
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch(msg) {               
+    switch(msg) {             
         case WM_CLOSE:
         case WM_DESTROY:
             PostQuitMessage(0);

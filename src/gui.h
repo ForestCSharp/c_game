@@ -31,12 +31,32 @@ typedef struct GuiVert {
 typedef struct GuiRect {
     Vec2 position;
     Vec2 size;
+    uint32_t z_order;
 } GuiRect;
+
+typedef struct GuiWindow {
+    char name[256];
+    GuiRect window_rect;
+    float scroll_amount;
+    bool is_expanded;
+    bool is_open;
+    bool is_resizable;
+    bool is_movable;
+
+    //Internal Vars
+    bool is_moving;         //Are we currently dragging this window
+    bool is_resizing;       //Are we currently resizing this window
+    bool is_scrolling;      //Are we currently scrolling this window
+    uint32_t num_controls;  //Next Index in window's list of controls
+
+    // GuiDrawData draw_data;  //Stores window's local draw data //TODO:
+} GuiWindow;
 
 typedef struct GuiFrameState {
     Vec2 screen_size;
     Vec2 mouse_pos;
     bool mouse_buttons[3];
+    sbuffer(GuiWindow) open_windows; //FCS TODO: Store all active window data (can check if is_moving or is_resizing)
 } GuiFrameState;
 
 typedef struct GuiDrawData {
@@ -72,10 +92,10 @@ typedef struct GuiContext {
 } GuiContext;
 
 typedef enum GuiClickState {
-    GUI_RELEASED = 0,
-    GUI_HOVERED  = 1,
-    GUI_HELD     = 2,
-    GUI_CLICKED  = 3,
+    GUI_RELEASED,
+    GUI_HOVERED,
+    GUI_HELD,
+    GUI_CLICKED,
 } GuiClickState;
 
 typedef enum GuiAlignment {
@@ -83,22 +103,6 @@ typedef enum GuiAlignment {
     GUI_ALIGN_CENTER,
     // GUI_ALIGN_RIGHT, //TODO:
 } GuiAlignment;
-
-typedef struct GuiWindow {
-    char name[256];
-    GuiRect window_rect;
-    bool is_expanded;
-    bool is_open;
-    bool is_resizable;
-    bool is_movable;
-
-    //Internal Vars
-    bool is_moving;         //Are we currently dragging this window
-    bool is_resizing;       //Are we currently resizing this window
-    uint32_t next_index;    //Next Index in window's list of controls
-
-    GuiDrawData draw_data;  //Stores window's local draw data
-} GuiWindow;
 
 typedef struct GuiButtonStyleArgs {
     Vec4 released_color;
@@ -108,7 +112,6 @@ typedef struct GuiButtonStyleArgs {
     float text_padding;
 } GuiButtonStyleArgs;
 
-//TODO: Style Setting for this
 static const GuiButtonStyleArgs default_button_style = {
     .released_color = {0.0, 0.0, 0.0, 0.75f},
     .hovered_color  = {0.4, 0.0, 0.0, 0.75f},
@@ -249,6 +252,7 @@ void gui_init(GuiContext* out_context) {
         .screen_size = vec2_new(1920,1080),
         .mouse_pos = vec2_new(0,0),
         .mouse_buttons = {false, false, false},
+        .open_windows = NULL,
     };
 
     *out_context = (GuiContext){
@@ -269,6 +273,8 @@ void gui_init(GuiContext* out_context) {
 void gui_shutdown(GuiContext* in_context) {
     sb_free(in_context->draw_data.vertices);
     sb_free(in_context->draw_data.indices);
+    sb_free(in_context->frame_state.open_windows);
+    sb_free(in_context->prev_frame_state.open_windows);
 
     gui_free_font(&in_context->default_font);
 }
@@ -282,6 +288,17 @@ void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state) {
     //TODO: don't realloc these arrays each frame, need sb_reset that clears count but not capacity
     sb_free(in_context->draw_data.vertices);
     sb_free(in_context->draw_data.indices);
+}
+
+GuiRect gui_make_fullscreen_rect(const GuiContext* const in_context, const uint32_t in_z_order) {
+    return (GuiRect) {
+        .position = {
+            .x = 0,
+            .y = 0,
+        },
+        .size = in_context->frame_state.screen_size,
+        .z_order = in_z_order,
+    };
 }
 
 /* positions: [0,1] range */
@@ -515,23 +532,35 @@ void gui_text(GuiContext* const in_context, const char* in_text, Vec2 position, 
     }, alignment);
 }
 
-GuiClickState gui_make_button(GuiContext* const in_context, const char* in_label, const GuiRect* const in_rect, const GuiButtonStyleArgs* in_style_args, const bool is_active) {
+//Hit-Test with previous-frame geometry: fail if we intersect with a higher z-order window OR a higher z-order window is moving/resizing
+//FCS TODO: Make sure to handle is_expanded
+bool gui_hit_test(const GuiContext* const in_context, const GuiRect in_rect) {
+    for (uint32_t i = 0; i < sb_count(in_context->prev_frame_state.open_windows); ++i) {
+        const GuiWindow current_window = in_context->prev_frame_state.open_windows[i];
+        const GuiRect window_rect = current_window.window_rect;
+        const bool current_window_is_busy = current_window.is_moving || current_window.is_resizing || current_window.is_scrolling;
+        if (in_rect.z_order < window_rect.z_order && (current_window_is_busy || gui_rect_intersects_point(window_rect, in_context->frame_state.mouse_pos))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+//If in_style_args is nullptr, this button is "invisible" but can still be used for hit-testing
+GuiClickState gui_make_button(GuiContext* const in_context, const char* in_label, const GuiRect* const in_draw_rect, const GuiRect* const in_hit_rect, const GuiButtonStyleArgs* in_style_args, const bool is_active) {
     const GuiFrameState* const current_frame_state = &in_context->frame_state;
     const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
 
-    GuiRect button_rect = {
-        .position = {
-            .x = in_rect->position.x,
-            .y = in_rect->position.y,
-        },
-        .size = {
-            .x = in_rect->size.x,
-            .y = in_rect->size.y,
-        }
-    };
+    GuiRect hit_rect = *in_hit_rect; //TODO: use in_hit_rect if non-null
 
-    const bool cursor_currently_overlaps = gui_rect_intersects_point(button_rect, current_frame_state->mouse_pos);
-    const bool cursor_previously_overlapped = gui_rect_intersects_point(button_rect, prev_frame_state->mouse_pos);
+    bool cursor_currently_overlaps = gui_rect_intersects_point(hit_rect, current_frame_state->mouse_pos);
+    bool cursor_previously_overlapped = gui_rect_intersects_point(hit_rect, prev_frame_state->mouse_pos);
+
+    if (!gui_hit_test(in_context, hit_rect))
+    {
+        cursor_currently_overlaps = false;
+        cursor_previously_overlapped = false;
+    }
 
     //Held: we're over the button and holding LMB. 
     //Using previous frame data to prevent drags from losing our "HELD" state
@@ -543,29 +572,35 @@ GuiClickState gui_make_button(GuiContext* const in_context, const char* in_label
 
     //Draw held buttons as red for now
     const bool button_hovered = cursor_currently_overlaps;
-    GuiClickState out_click_state = !is_active ? GUI_RELEASED : button_clicked ? GUI_CLICKED : button_held ? GUI_HELD : button_hovered ? GUI_HOVERED : GUI_RELEASED;
     
-    Vec4 button_color = gui_style_get_button_color(in_style_args, out_click_state);
+    GuiClickState out_click_state = !is_active      ? GUI_RELEASED  : 
+                                    button_clicked  ? GUI_CLICKED   : 
+                                    button_held     ? GUI_HELD      :
+                                    button_hovered  ? GUI_HOVERED   : 
+                                                      GUI_RELEASED  ;
+    
+    if (in_style_args) {
+        Vec4 button_color = gui_style_get_button_color(in_style_args, out_click_state);
 
-    const GuiRect normalized_button_rect = gui_rect_scale(button_rect, float_div_vec2(1.0, in_context->frame_state.screen_size));
-    gui_draw_box(&in_context->draw_data, &normalized_button_rect, &button_color, NULL);
+        const GuiRect normalized_draw_rect = gui_rect_scale(*in_draw_rect, float_div_vec2(1.0, in_context->frame_state.screen_size));
+        gui_draw_box(&in_context->draw_data, &normalized_draw_rect, &button_color, NULL);
 
-    GuiRect text_rect = button_rect;
-    text_rect.position.x += in_style_args->text_padding;
-    text_rect.size.x -= (in_style_args->text_padding * 2.f);
-    gui_make_text(in_context, in_label, &text_rect, in_style_args->text_alignment);
+        GuiRect text_rect = *in_draw_rect;
+        text_rect.position.x += in_style_args->text_padding;
+        text_rect.size.x -= (in_style_args->text_padding * 2.f);
+        gui_make_text(in_context, in_label, &text_rect, in_style_args->text_alignment);
+    }
 
     return out_click_state;
 }
 
 GuiClickState gui_button(GuiContext* const in_context, const char* in_label, Vec2 in_position, const Vec2 in_size) {
     const Vec2 current_mouse_pos = in_context->frame_state.mouse_pos;
-    
-    return gui_make_button(in_context, in_label, &(GuiRect) {
+    const GuiRect rect = {
         .position = in_position,
         .size = in_size,
-    },
-    &default_button_style, true);
+    };
+    return gui_make_button(in_context, in_label, &rect, &rect, &default_button_style, true);
 }
 
 GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const GuiRect* const in_rect, const bool is_active) {    
@@ -573,7 +608,7 @@ GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const d
     GuiButtonStyleArgs slider_button_style = default_button_style;
     slider_button_style.held_color = default_button_style.hovered_color;
     
-    GuiClickState clicked_state = gui_make_button(in_context, "", in_rect, &slider_button_style, is_active);
+    GuiClickState clicked_state = gui_make_button(in_context, "", in_rect, in_rect, &slider_button_style, is_active);
     if (clicked_state == GUI_HELD) {
         const float current_mouse_x = in_context->frame_state.mouse_pos.x;
         const float new_value = remap_clamped((current_mouse_x - in_rect->position.x) / in_rect->size.x, 0.0, 1.0, in_slider_bounds.x, in_slider_bounds.y);
@@ -617,13 +652,17 @@ GuiClickState gui_slider_float(GuiContext* const in_context,  float* const data_
     true);
 }
 
-//TODO: GuiWindowStyleArgs
-static const float window_top_bar_height = 35.0f;       //TODO: style setting
-static const float window_row_padding_y = 2.5f;         //TODO: Style setting
-static const float window_row_height = 35.0f;           //TODO: Style setting
-static const float min_window_width = 50.0f;            //TODO: Style Setting
-const Vec2 window_resize_control_size = {15.f, 15.f};   //TODO: Style setting
-static const Vec4  window_color = {.2, .2, .2, .9};     //TODO: Style setting
+//TODO: GuiWindowStyleArgs //TODO: Style Struct
+static const float window_top_bar_height = 35.0f;
+static const float window_row_padding_y = 2.5f;
+static const float window_row_height = 35.0f;
+static const float min_window_width = 50.0f;
+static const float window_scrollbar_width = 20.0f;
+static const float window_scrollbar_height = 40.0f;
+static const Vec2  window_resize_control_size = {15.f, 15.f};
+static const Vec4  window_color = {.2, .2, .2, .9};
+static const bool  window_allow_overscroll = false;
+
 
 //TODO: Window z-order ideas
 // 1. All windows in front of "free" controls
@@ -632,7 +671,7 @@ static const Vec4  window_color = {.2, .2, .2, .9};     //TODO: Style setting
 
 void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window) {
     if (in_window->is_open) {
-        in_window->next_index = 0;
+        in_window->num_controls = 0;
         
         GuiRect* const window_rect = &in_window->window_rect;
 
@@ -648,13 +687,14 @@ void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window) 
             .size = {
                 .x = window_rect->size.x,
                 .y = window_top_bar_height,
-            }
+            },
+            .z_order = window_rect->z_order,
         };
 
         GuiButtonStyleArgs top_bar_button_style = default_button_style;
         top_bar_button_style.text_alignment = GUI_ALIGN_LEFT;
 
-        GuiClickState top_bar_click_state = gui_make_button(in_context, in_window->name, &top_bar_rect, &top_bar_button_style, !in_window->is_resizing);
+        GuiClickState top_bar_click_state = gui_make_button(in_context, in_window->name, &top_bar_rect, &top_bar_rect, &top_bar_button_style, !in_window->is_resizing);
         if (top_bar_click_state == GUI_CLICKED) {
             if (in_window->is_moving) {
                 in_window->is_moving = false;
@@ -685,9 +725,10 @@ void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window) 
             const GuiRect resize_control_rect = {
                 .position = resize_control_position,
                 .size = window_resize_control_size,
+                .z_order = window_rect->z_order,
             };
 
-            in_window->is_resizing = gui_make_button(in_context, "", &resize_control_rect, &default_button_style, !in_window->is_moving) == GUI_HELD;
+            in_window->is_resizing = gui_make_button(in_context, "", &resize_control_rect, &resize_control_rect, &default_button_style, !in_window->is_moving) == GUI_HELD;
             if (in_window->is_resizing) {
                 window_rect->size = vec2_add(window_rect->size, mouse_delta);
                 window_rect->size.x = MAX(min_window_width, window_rect->size.x);
@@ -705,16 +746,23 @@ bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_re
     bool out_success = false;
     if (in_window->is_open && in_window->is_expanded) {
         //Store and increment control index
-        const uint32_t control_index = in_window->next_index++;
-        
+        const uint32_t control_index = in_window->num_controls++;
+
+        //FCS TODO: Scrolling math
+        const uint32_t first_visible_index = (uint32_t) in_window->scroll_amount;
+        // const float first_visible_offset = float_fractional(in_window->scroll_amount);
+        const uint32_t max_visible_controls = (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
+        const uint32_t last_visible_index = first_visible_index + max_visible_controls;
+                
         const GuiRect* const window_rect = &in_window->window_rect;
         const Vec2 window_pos = window_rect->position;
         const Vec2 window_size = window_rect->size;
 
         //Need padding after first element as well, so add 1 to control index to account for that
-        const float y_offset = window_pos.y + window_top_bar_height + ((window_row_height) * (float)control_index) + (window_row_padding_y * (float) (control_index + 1));
+        float y_offset = window_pos.y + window_top_bar_height + ((window_row_height) * (float)control_index) + (window_row_padding_y * (float) (control_index + 1));
+        y_offset -= (window_row_height + window_row_padding_y) * first_visible_index;
 
-        if(y_offset + window_row_height <= window_rect->position.y + window_rect->size.y) {
+        if (control_index >= first_visible_index && control_index < last_visible_index) {
             *out_rect = (GuiRect) {
                 .position = {
                     .x = window_pos.x,
@@ -724,6 +772,7 @@ bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_re
                     .x = window_size.x,
                     .y = window_row_height,
                 },
+                .z_order = window_rect->z_order,
             };
             out_success = true;
         }
@@ -737,7 +786,7 @@ GuiClickState gui_window_button(GuiContext* const in_context, GuiWindow* const i
 
     GuiRect button_rect;
     if (gui_window_compute_control_rect(in_window, &button_rect)) {
-        out_click_state = gui_make_button(in_context, in_label, &button_rect, &default_button_style, !in_window->is_resizing);
+        out_click_state = gui_make_button(in_context, in_label, &button_rect, &button_rect, &default_button_style, !in_window->is_resizing);
     }
 
     return out_click_state;
@@ -754,6 +803,58 @@ GuiClickState gui_window_slider_float(GuiContext* const in_context, GuiWindow* c
     return out_click_state;
 }
 
-void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window) {
-    //TODO: Copy contents of our window to in_context vert/indices arrays
+void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window) {  
+
+    if (in_window->is_open) {
+        //Push at end so we have updated rect from any moves/resizes
+        sb_push(in_context->frame_state.open_windows, *in_window);
+
+        if (in_window->is_expanded) {   //Scrollbar FCS TODO: only draw if we need to be able to scroll
+        
+            //TODO: option to allow overscrolling
+            const uint32_t max_visible_controls = (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
+            const float max_scroll_amount = (float) MAX(0, in_window->num_controls - (window_allow_overscroll ? 1 : max_visible_controls));
+            in_window->scroll_amount = CLAMP(in_window->scroll_amount, 0.0, max_scroll_amount);
+
+            const float scrollbar_x = in_window->window_rect.position.x + in_window->window_rect.size.x - window_scrollbar_width;
+            const float scrollbar_y_min = in_window->window_rect.position.y + window_top_bar_height;
+            const float scrollbar_y_max = in_window->window_rect.position.y + in_window->window_rect.size.y - window_scrollbar_height - window_resize_control_size.y;
+            const float scrollbar_y = remap_clamped(in_window->scroll_amount, 0.0, max_scroll_amount, scrollbar_y_min, scrollbar_y_max);
+
+            const GuiRect scrollbar_draw_rect = {
+                .position = {
+                    .x = scrollbar_x,
+                    .y = scrollbar_y,
+                },
+                .size = {
+                    .x = window_scrollbar_width,
+                    .y = window_scrollbar_height,
+                },
+                .z_order = in_window->window_rect.z_order,
+            };
+
+            GuiRect hit_rect = in_window->is_scrolling ? gui_make_fullscreen_rect(in_context, in_window->window_rect.z_order) : scrollbar_draw_rect;
+            GuiClickState scrollbar_click_state = gui_make_button(in_context, "", &scrollbar_draw_rect, &hit_rect, &default_button_style, true);
+            in_window->is_scrolling = scrollbar_click_state == GUI_HELD;
+            if (in_window->is_scrolling) {
+                Vec2 mouse_pos = in_context->frame_state.mouse_pos;
+                Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;
+                Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
+
+                //Compute dragged amount in window-space, and use that to recompute scroll_amount
+                const float new_scrollbar_y = scrollbar_draw_rect.position.y + mouse_delta.y;
+                if (scrollbar_y_min < scrollbar_y_max) { //FCS TODO: NaN fix
+                    in_window->scroll_amount = remap_clamped(new_scrollbar_y, scrollbar_y_min, scrollbar_y_max, 0.0, max_scroll_amount);
+                }
+            }          
+        }
+
+        //TODO: Do Resize control here?
+
+        //TODO: Copy contents of our window to in_context vert/indices arrays
+    }
 }
+
+//TODO: Fix disappearing scrollbar bug (if you resize y too small)
+
+//TODO: "active window" bring to front

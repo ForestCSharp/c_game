@@ -1,5 +1,7 @@
 #pragma once
 
+#include "assert.h"
+
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define CLAMP(value, min, max) (MAX(min, MIN(max, value)))
@@ -10,6 +12,7 @@ float lerp(float t, float a, float b)
 }
 
 float unlerp(float t, float a, float b) {
+    assert((b-a) != 0.0f);
     return (t - a) / (b - a);
 }
 
@@ -31,4 +34,9 @@ float degrees_to_radians(const float degrees) {
 
 float radians_to_degrees(const float radians) {
     return radians * RADIANS_TO_DEGREES;
+}
+
+float float_fractional(const float input) {
+    float integral;
+    return modff(input, &integral);
 }
