@@ -717,27 +717,6 @@ void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window) 
                 in_window->is_moving = true;
             }
         }
-
-        //Resize Control bottom right
-        if (in_window->is_expanded && in_window->is_resizable) {
-            const Vec2 resize_control_position = vec2_sub(vec2_add(window_rect->position, window_rect->size), window_resize_control_size);
-
-            const GuiRect resize_control_rect = {
-                .position = resize_control_position,
-                .size = window_resize_control_size,
-                .z_order = window_rect->z_order,
-            };
-
-            in_window->is_resizing = gui_make_button(in_context, "", &resize_control_rect, &resize_control_rect, &default_button_style, !in_window->is_moving) == GUI_HELD;
-            if (in_window->is_resizing) {
-                window_rect->size = vec2_add(window_rect->size, mouse_delta);
-                window_rect->size.x = MAX(min_window_width, window_rect->size.x);
-                window_rect->size.y = MAX(window_resize_control_size.y, window_rect->size.y);
-
-                float minimum_window_height = window_top_bar_height + window_resize_control_size.y;
-                window_rect->size.y = max(minimum_window_height, window_rect->size.y);
-            }
-        }
     }
 }
 
@@ -809,47 +788,70 @@ void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window) {
         //Push at end so we have updated rect from any moves/resizes
         sb_push(in_context->frame_state.open_windows, *in_window);
 
-        if (in_window->is_expanded) {   //Scrollbar FCS TODO: only draw if we need to be able to scroll
-        
-            //TODO: option to allow overscrolling
-            const uint32_t max_visible_controls = (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
-            const float max_scroll_amount = (float) MAX(0, in_window->num_controls - (window_allow_overscroll ? 1 : max_visible_controls));
-            in_window->scroll_amount = CLAMP(in_window->scroll_amount, 0.0, max_scroll_amount);
+        if (in_window->is_expanded) {
+            GuiRect* const window_rect = &in_window->window_rect;
 
-            const float scrollbar_x = in_window->window_rect.position.x + in_window->window_rect.size.x - window_scrollbar_width;
-            const float scrollbar_y_min = in_window->window_rect.position.y + window_top_bar_height;
-            const float scrollbar_y_max = in_window->window_rect.position.y + in_window->window_rect.size.y - window_scrollbar_height - window_resize_control_size.y;
-            const float scrollbar_y = remap_clamped(in_window->scroll_amount, 0.0, max_scroll_amount, scrollbar_y_min, scrollbar_y_max);
+            Vec2 mouse_pos = in_context->frame_state.mouse_pos;
+            Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;
+            Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
 
-            const GuiRect scrollbar_draw_rect = {
-                .position = {
-                    .x = scrollbar_x,
-                    .y = scrollbar_y,
-                },
-                .size = {
-                    .x = window_scrollbar_width,
-                    .y = window_scrollbar_height,
-                },
-                .z_order = in_window->window_rect.z_order,
-            };
+            const float scroll_area_length = window_rect->size.y - window_top_bar_height - window_resize_control_size.y;
+            const bool has_space_for_scrollbar = scroll_area_length > window_scrollbar_height;
+            if (has_space_for_scrollbar) {   //Scrollbar FCS TODO: only draw if we need to be able to scroll
+            
+                //TODO: option to allow overscrolling
+                const uint32_t max_visible_controls = (window_rect->size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
+                const float max_scroll_amount = (float) MAX(0, in_window->num_controls - (window_allow_overscroll ? 1 : max_visible_controls));
+                in_window->scroll_amount = CLAMP(in_window->scroll_amount, 0.0, max_scroll_amount);
 
-            GuiRect hit_rect = in_window->is_scrolling ? gui_make_fullscreen_rect(in_context, in_window->window_rect.z_order) : scrollbar_draw_rect;
-            GuiClickState scrollbar_click_state = gui_make_button(in_context, "", &scrollbar_draw_rect, &hit_rect, &default_button_style, true);
-            in_window->is_scrolling = scrollbar_click_state == GUI_HELD;
-            if (in_window->is_scrolling) {
-                Vec2 mouse_pos = in_context->frame_state.mouse_pos;
-                Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;
-                Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
+                const float scrollbar_x = window_rect->position.x + window_rect->size.x - window_scrollbar_width;
+                const float scrollbar_y_min = window_rect->position.y + window_top_bar_height;
+                const float scrollbar_y_max = window_rect->position.y + window_rect->size.y - window_scrollbar_height - window_resize_control_size.y;
+                const float scrollbar_y = remap_clamped(in_window->scroll_amount, 0.0, max_scroll_amount, scrollbar_y_min, scrollbar_y_max);
 
-                //Compute dragged amount in window-space, and use that to recompute scroll_amount
-                const float new_scrollbar_y = scrollbar_draw_rect.position.y + mouse_delta.y;
-                if (scrollbar_y_min < scrollbar_y_max) { //FCS TODO: NaN fix
+                const GuiRect scrollbar_draw_rect = {
+                    .position = {
+                        .x = scrollbar_x,
+                        .y = scrollbar_y,
+                    },
+                    .size = {
+                        .x = window_scrollbar_width,
+                        .y = window_scrollbar_height,
+                    },
+                    .z_order = window_rect->z_order,
+                };
+
+                GuiRect hit_rect = in_window->is_scrolling ? gui_make_fullscreen_rect(in_context, window_rect->z_order) : scrollbar_draw_rect;
+                GuiClickState scrollbar_click_state = gui_make_button(in_context, "", &scrollbar_draw_rect, &hit_rect, &default_button_style, true);
+                in_window->is_scrolling = scrollbar_click_state == GUI_HELD;
+                if (in_window->is_scrolling) {
+                    //Compute dragged amount in window-space, and use that to recompute scroll_amount
+                    const float new_scrollbar_y = scrollbar_draw_rect.position.y + mouse_delta.y;
                     in_window->scroll_amount = remap_clamped(new_scrollbar_y, scrollbar_y_min, scrollbar_y_max, 0.0, max_scroll_amount);
-                }
-            }          
-        }
+                }          
+            }
 
-        //TODO: Do Resize control here?
+            //Resize Control (bottom right)
+            if (in_window->is_resizable) {
+                const Vec2 resize_control_position = vec2_sub(vec2_add(window_rect->position, window_rect->size), window_resize_control_size);
+
+                const GuiRect resize_control_rect = {
+                    .position = resize_control_position,
+                    .size = window_resize_control_size,
+                    .z_order = window_rect->z_order,
+                };
+
+                in_window->is_resizing = gui_make_button(in_context, "", &resize_control_rect, &resize_control_rect, &default_button_style, !in_window->is_moving) == GUI_HELD;
+                if (in_window->is_resizing) {
+                    window_rect->size = vec2_add(window_rect->size, mouse_delta);
+                    window_rect->size.x = MAX(min_window_width, window_rect->size.x);
+                    window_rect->size.y = MAX(window_resize_control_size.y, window_rect->size.y);
+
+                    float minimum_window_height = window_top_bar_height + window_resize_control_size.y;
+                    window_rect->size.y = max(minimum_window_height, window_rect->size.y);
+                }
+            }
+        }
 
         //TODO: Copy contents of our window to in_context vert/indices arrays
     }
