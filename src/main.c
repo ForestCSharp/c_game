@@ -686,9 +686,9 @@ int main() {
 
 		if (show_bezier) {
 			static Vec2 bezier_points[] = {
-				{.x=400, .y=200},
-				{.x=600, .y=200},
-				{.x=800, .y=600},
+				{.x=400,  .y=200},
+				{.x=600,  .y=200},
+				{.x=800,  .y=600},
 				{.x=1000, .y=600},
 			};
 			gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0.6,0,0,1), 0.01);
@@ -723,6 +723,26 @@ int main() {
 		uint32_t image_index = gpu_acquire_next_image(&gpu_context, &image_acquired_semaphores[current_frame]);
 
 		gpu_begin_command_buffer(&command_buffers[current_frame]);
+
+		gpu_cmd_begin_rendering(&command_buffers[current_frame], &(GpuRenderingInfo) {
+			.render_width = width,
+			.render_height = height,
+			.color_attachment_count = 1,
+			.color_attachments = (GpuRenderingAttachmentInfo[1]){{
+				.image_view = &gpu_context.swapchain_image_views[current_frame],
+				.image_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT,
+				.load_op = GPU_LOAD_OP_CLEAR,
+				.store_op = GPU_STORE_OP_STORE,
+				.clear_value = {
+					.clear_color = { 0.392f, 0.584f, 0.929f, 0.0f},
+				}
+			}},
+			.depth_attachment = NULL, //TODO:
+			.stencil_attachment = NULL, //TODO:
+		});
+
+		gpu_cmd_end_rendering(&command_buffers[current_frame]);
+
 		gpu_cmd_begin_render_pass(&command_buffers[current_frame], &(GpuRenderPassBeginInfo) {
 			.render_pass = &render_pass,
 			.framebuffer = &framebuffers[image_index],

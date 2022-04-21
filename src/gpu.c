@@ -159,7 +159,8 @@ GpuContext gpu_create_context(const Window* const window) {
     }
 
     const char* validation_layers[] = {
-        "VK_LAYER_KHRONOS_validation"
+        "VK_LAYER_KHRONOS_validation",
+        // "VK_LAYER_LUNARG_api_dump"
     };
     uint32_t validation_layer_count = sizeof(validation_layers) / sizeof(validation_layers[0]);
 
@@ -235,9 +236,14 @@ GpuContext gpu_create_context(const Window* const window) {
     };
     uint32_t device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
 
+    VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+        .dynamicRendering = VK_TRUE,
+    };
+
     VkDeviceCreateInfo device_create_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = NULL,
+        .pNext = &dynamic_rendering_features,
         .flags = 0,
         .pQueueCreateInfos = &graphics_queue_create_info,
         .queueCreateInfoCount = 1,
@@ -1423,6 +1429,78 @@ void gpu_end_command_buffer(GpuCommandBuffer* command_buffer) {
     VK_CHECK(vkEndCommandBuffer(command_buffer->vk_command_buffer));
 }
 
+//helper to convert to VkRenderingAttachmentInfo
+VkRenderingAttachmentInfo to_vk_attachment_info(GpuRenderingAttachmentInfo* attachment_info) {
+    assert(attachment_info);
+    //TODO: Can we infer image_layout from just if its color/depth/stencil (remove from info struct?)
+
+    VkRenderingAttachmentInfo vk_rendering_attachment_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = NULL,
+        .imageView = attachment_info->image_view->vk_image_view,
+        .imageLayout = (VkImageLayout) attachment_info->image_layout,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = 0,
+        .loadOp = (VkAttachmentLoadOp) attachment_info->load_op,
+        .storeOp = (VkAttachmentStoreOp) attachment_info->store_op,
+        // .clearValue = (VkClearValue) attachment_info->clear_value,
+    };
+
+    //TODO: Better way?
+    memcpy(&vk_rendering_attachment_info.clearValue, &attachment_info->clear_value, sizeof(VkClearValue));
+
+    return vk_rendering_attachment_info;
+}
+
+void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info) { //TODO: Add rendering info wrapper struct
+
+    VkRenderingAttachmentInfo vk_color_attachments[rendering_info->color_attachment_count];
+    for (uint32_t i = 0; i < rendering_info->color_attachment_count; ++i) {
+        vk_color_attachments[i] = to_vk_attachment_info(&rendering_info->color_attachments[i]);
+    }
+
+    VkRenderingAttachmentInfo vk_depth_attachment;
+    if (rendering_info->depth_attachment) {
+        vk_depth_attachment = to_vk_attachment_info(rendering_info->depth_attachment);
+    }
+
+    VkRenderingAttachmentInfo vk_stencil_attachment;
+    if (rendering_info->stencil_attachment) {
+        vk_stencil_attachment = to_vk_attachment_info(rendering_info->stencil_attachment);
+    }
+
+    VkRenderingInfo vk_rendering_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .renderArea = {
+            .offset = {
+                .x = 0,
+                .y = 0,
+            },
+            .extent = {
+                .width = rendering_info->render_width,
+                .height = rendering_info->render_height,
+            },
+        },
+        .layerCount = 1,
+        .viewMask = 0,
+        .colorAttachmentCount = rendering_info->color_attachment_count,
+        .pColorAttachments = vk_color_attachments,
+        .pDepthAttachment = rendering_info->depth_attachment ? &vk_depth_attachment : NULL,
+        .pStencilAttachment = rendering_info->stencil_attachment ? &vk_stencil_attachment : NULL,
+    };
+
+    //FCS TODO: Why are these functions NULL?
+    vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
+}
+
+void gpu_cmd_end_rendering(GpuCommandBuffer* command_buffer) {
+    //FCS TODO: Why are these functions NULL?
+    vkCmdEndRendering(command_buffer->vk_command_buffer);
+}
+
 void gpu_cmd_begin_render_pass(GpuCommandBuffer* command_buffer, GpuRenderPassBeginInfo* begin_info) {
     VkRenderPassBeginInfo vk_begin_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -1442,7 +1520,7 @@ void gpu_cmd_begin_render_pass(GpuCommandBuffer* command_buffer, GpuRenderPassBe
         .clearValueCount = begin_info->num_clear_values,
         .pClearValues = (VkClearValue*)begin_info->clear_values,
     };
-
+    
     vkCmdBeginRenderPass(command_buffer->vk_command_buffer, &vk_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 }
 

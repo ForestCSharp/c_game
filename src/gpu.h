@@ -267,9 +267,26 @@ typedef struct GpuClearDepthStencil {
 } GpuClearDepthStencil;
 
 typedef union GpuClearValue {
-    float clear_color[4];
-    GpuClearDepthStencil depth_stencil;
+        float clear_color[4];
+        GpuClearDepthStencil depth_stencil;
 } GpuClearValue;
+
+typedef struct GpuRenderingAttachmentInfo {
+    GpuImageView* image_view;
+    GpuImageLayout image_layout;
+    GpuLoadOp load_op;
+    GpuStoreOp store_op;
+    GpuClearValue clear_value;
+} GpuRenderingAttachmentInfo;
+
+typedef struct GpuRenderingInfo {
+    uint32_t render_width;
+    uint32_t render_height;
+    uint32_t color_attachment_count;
+    GpuRenderingAttachmentInfo* color_attachments;
+    GpuRenderingAttachmentInfo* depth_attachment;
+    GpuRenderingAttachmentInfo* stencil_attachment;
+} GpuRenderingInfo;
 
 typedef struct GpuRenderPassBeginInfo {
     GpuRenderPass* render_pass;
@@ -368,6 +385,9 @@ void             gpu_free_command_buffer(GpuContext* context, GpuCommandBuffer* 
 
 void gpu_begin_command_buffer(GpuCommandBuffer* command_buffer);
 void gpu_end_command_buffer(GpuCommandBuffer* command_buffer);
+
+void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info);
+void gpu_cmd_end_rendering(GpuCommandBuffer* command_buffer);
 
 void gpu_cmd_begin_render_pass(GpuCommandBuffer* command_buffer, GpuRenderPassBeginInfo* begin_info);
 void gpu_cmd_end_render_pass(GpuCommandBuffer* command_buffer);
