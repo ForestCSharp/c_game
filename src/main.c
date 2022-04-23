@@ -724,6 +724,7 @@ int main() {
 
 		gpu_begin_command_buffer(&command_buffers[current_frame]);
 
+		//What a waste of fucking time. 
 		gpu_cmd_begin_rendering(&command_buffers[current_frame], &(GpuRenderingInfo) {
 			.render_width = width,
 			.render_height = height,
@@ -735,9 +736,20 @@ int main() {
 				.store_op = GPU_STORE_OP_STORE,
 				.clear_value = {
 					.clear_color = { 0.392f, 0.584f, 0.929f, 0.0f},
-				}
+				}	
 			}},
-			.depth_attachment = NULL, //TODO:
+			.depth_attachment = &(GpuRenderingAttachmentInfo){
+				.image_view = &depth_view,
+				.image_layout = GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT,
+				.load_op = GPU_LOAD_OP_CLEAR,
+				.store_op = GPU_STORE_OP_DONT_CARE,
+				.clear_value = {
+					.depth_stencil = {
+						.depth = 1.0f,
+						.stencil = 0,
+					}
+				}	
+			},
 			.stencil_attachment = NULL, //TODO:
 		});
 

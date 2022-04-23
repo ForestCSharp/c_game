@@ -144,7 +144,7 @@ GpuContext gpu_create_context(const Window* const window) {
         .applicationVersion = VK_MAKE_VERSION(1,0,0),
         .pEngineName = "C Game",
         .engineVersion = VK_MAKE_VERSION(1,0,0),
-        .apiVersion = VK_API_VERSION_1_0,
+        .apiVersion = VK_API_VERSION_1_3,
     };
 
     uint32_t enumerated_layer_count;
@@ -227,7 +227,7 @@ GpuContext gpu_create_context(const Window* const window) {
     };
 
     VkPhysicalDeviceFeatures physical_device_features = {
-        .samplerAnisotropy = true,
+        .samplerAnisotropy = VK_TRUE,
     };
 
     const char* device_extensions[] = {
@@ -238,16 +238,27 @@ GpuContext gpu_create_context(const Window* const window) {
 
     VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
-        .dynamicRendering = VK_TRUE,
+        .pNext = NULL,
     };
+    VkPhysicalDeviceFeatures2 features_2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &dynamic_rendering_features,
+        .features = physical_device_features,
+    };
+    vkGetPhysicalDeviceFeatures2(physical_device_data.physical_device, &features_2);
+
+    if (!dynamic_rendering_features.dynamicRendering) {
+        printf("Error: Dynamic Rendering Is Required\n");
+        exit(0);
+    }
 
     VkDeviceCreateInfo device_create_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = &dynamic_rendering_features,
+        .pNext = &features_2,
         .flags = 0,
         .pQueueCreateInfos = &graphics_queue_create_info,
         .queueCreateInfoCount = 1,
-        .pEnabledFeatures = &physical_device_features,
+        .pEnabledFeatures = NULL,
         .enabledLayerCount = validation_layer_count,
         .ppEnabledLayerNames = validation_layers,
         .enabledExtensionCount = device_extension_count,
@@ -1492,6 +1503,7 @@ void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo*
         .pStencilAttachment = rendering_info->stencil_attachment ? &vk_stencil_attachment : NULL,
     };
 
+	//What a waste of fucking time. 
     //FCS TODO: Why are these functions NULL?
     vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
 }
