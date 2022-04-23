@@ -286,10 +286,6 @@ GpuContext gpu_create_context(const Window* const window) {
     };
     vkGetPhysicalDeviceMemoryProperties2(physical_device_data.physical_device, &vk_memory_properties);
 
-    for (VkPhysicalDeviceMemoryProperties2* p = vk_memory_properties.pNext; p != NULL; p = p->pNext) {
-        printf("HELLO\n");
-    }
-
     //FIXME: get VkPhysicalDeviceMemoryBudgetPropertiesEXT above and store it so we have heap budgets
     //FIXME: get every second (other applications are also consuming GPU memory)? that seems to be what VK_EXT_memory_budget suggests?
 

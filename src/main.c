@@ -724,7 +724,6 @@ int main() {
 
 		gpu_begin_command_buffer(&command_buffers[current_frame]);
 
-		//What a waste of fucking time. 
 		gpu_cmd_begin_rendering(&command_buffers[current_frame], &(GpuRenderingInfo) {
 			.render_width = width,
 			.render_height = height,

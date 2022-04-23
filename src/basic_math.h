@@ -12,8 +12,11 @@ float lerp(float t, float a, float b)
 }
 
 float unlerp(float t, float a, float b) {
-    assert((b-a) != 0.0f);
-    return (t - a) / (b - a);
+    if (a != b) {
+        return (t - a) / (b - a);
+    } else {
+        return 0.f;
+    }
 }
 
 float remap(float x, float in_range_min, float in_range_max, float out_range_min, float out_range_max) {
