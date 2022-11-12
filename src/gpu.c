@@ -755,8 +755,7 @@ void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, uint64_t upload_s
     }
 }
 
-//FCS TODO: Add to header?
-void gpu_cmd_transition_image_layout(GpuCommandBuffer* command_buffer, GpuImage* image, GpuFormat format, GpuImageLayout old_layout, GpuImageLayout new_layout) {
+void gpu_cmd_transition_image_layout(GpuCommandBuffer* command_buffer, GpuImage* image, GpuImageLayout old_layout, GpuImageLayout new_layout) {
 
     VkImageMemoryBarrier vk_barrier ={
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -873,9 +872,9 @@ void gpu_upload_image(GpuContext* context, GpuImage* image, uint64_t upload_widt
         gpu_memcpy(context, staging_buffer.memory, upload_size, upload_data);
         GpuCommandBuffer command_buffer = gpu_create_command_buffer(context);
         gpu_begin_command_buffer(&command_buffer);
-        gpu_cmd_transition_image_layout(&command_buffer, image, image->format, GPU_IMAGE_LAYOUT_UNDEFINED, GPU_IMAGE_LAYOUT_TRANSFER_DST);
+        gpu_cmd_transition_image_layout(&command_buffer, image, GPU_IMAGE_LAYOUT_UNDEFINED, GPU_IMAGE_LAYOUT_TRANSFER_DST);
         gpu_cmd_copy_buffer_to_image(&command_buffer, &staging_buffer, image, GPU_IMAGE_LAYOUT_TRANSFER_DST /*FCS TODO: */, upload_width, upload_height);
-        gpu_cmd_transition_image_layout(&command_buffer, image, image->format, GPU_IMAGE_LAYOUT_TRANSFER_DST, GPU_IMAGE_LAYOUT_SHADER_READ_ONLY); //FCS TODO: Final layout arg?
+        gpu_cmd_transition_image_layout(&command_buffer, image, GPU_IMAGE_LAYOUT_TRANSFER_DST, GPU_IMAGE_LAYOUT_SHADER_READ_ONLY); //FCS TODO: Final layout arg?
         gpu_end_command_buffer(&command_buffer);
         gpu_queue_submit(context, &command_buffer, NULL, NULL, NULL);
         gpu_wait_idle(context); //TODO: pass back complete semaphore
@@ -1341,9 +1340,22 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         .pDynamicStates = dynamic_states,
     };
 
+    VkPipelineRenderingCreateInfo vk_rendering_create_info = {};
+    if (create_info->rendering_info) {
+        vk_rendering_create_info = (VkPipelineRenderingCreateInfo) {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+            .pNext = NULL,
+            .viewMask = 0,
+            .colorAttachmentCount = create_info->rendering_info->color_attachment_count,
+            .pColorAttachmentFormats = (VkFormat*) create_info->rendering_info->color_formats,
+            .depthAttachmentFormat = (VkFormat) create_info->rendering_info->depth_format,
+            .stencilAttachmentFormat = (VkFormat) create_info->rendering_info->stencil_format,
+        };
+    }
+
     VkGraphicsPipelineCreateInfo vk_create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .pNext = NULL,
+        .pNext = create_info->rendering_info ? &vk_rendering_create_info : NULL,
         .flags = 0,
         .stageCount = 2,
         .pStages = shader_stages,
@@ -1357,7 +1369,7 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         .pColorBlendState = &color_blending,
         .pDynamicState = &dynamic_state_create_info,
         .layout = create_info->layout->vk_pipeline_layout,
-        .renderPass = create_info->render_pass->vk_render_pass,
+        .renderPass = create_info->render_pass ? create_info->render_pass->vk_render_pass : VK_NULL_HANDLE,
         .subpass = 0,
         .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = 0,
@@ -1459,6 +1471,9 @@ VkRenderingAttachmentInfo to_vk_attachment_info(GpuRenderingAttachmentInfo* atta
 
     return vk_rendering_attachment_info;
 }
+
+//FCS TODO: dynamic rendering: handle VkPipelineRenderingCreateInfo
+//          in place of render pass ref when creating pipeline (either/or)
 
 void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info) { //TODO: Add rendering info wrapper struct
 

@@ -275,22 +275,6 @@ int main() {
 
 	gpu_write_descriptor_set(&gpu_context, &gui_descriptor_set, 1, gui_descriptor_writes);
 
-	GpuRenderPass gui_render_pass = gpu_create_render_pass(&gpu_context, 1, 
-		(GpuAttachmentDesc[1]){{	
-			.format = (GpuFormat) gpu_context.surface_format.format, //FIXME: Store and Get from Context (as a GpuFormat)
-			.load_op = GPU_LOAD_OP_LOAD,
-			.store_op = GPU_STORE_OP_STORE,
-			.initial_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT,
-			.final_layout = GPU_IMAGE_LAYOUT_PRESENT_SRC,
-		}},
-		&(GpuAttachmentDesc){ //Depth Attachment
-			.format = GPU_FORMAT_D32_SFLOAT,
-			.load_op = GPU_LOAD_OP_CLEAR,
-			.store_op = GPU_STORE_OP_DONT_CARE,
-			.initial_layout = GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT,
-			.final_layout = GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT,
-		});
-
 	GpuShaderModule gui_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/gui.vert.spv");
 	GpuShaderModule gui_fragment_module = create_shader_module_from_file(&gpu_context, "data/shaders/gui.frag.spv");
 
@@ -300,10 +284,16 @@ int main() {
 		GPU_FORMAT_RGBA32_SFLOAT, // Color
 	};
 
+	GpuPipelineRenderingCreateInfo dynamic_rendering_info = {
+		.color_attachment_count = 1,
+		.color_formats = (GpuFormat*) &gpu_context.surface_format.format, //FIXME: Store and Get from Context (as a GpuFormat)
+		.depth_format = GPU_FORMAT_D32_SFLOAT,
+	};
+
 	GpuGraphicsPipelineCreateInfo gui_pipeline_create_info = {
 		.vertex_module = &gui_vertex_module,
 		.fragment_module = &gui_fragment_module,
-		.render_pass = &gui_render_pass,
+		.rendering_info = &dynamic_rendering_info,
 		.layout = &gui_pipeline_layout,
 		.num_attributes = 3,
 		.attribute_formats = gui_attribute_formats,
@@ -349,22 +339,6 @@ int main() {
 												, sizeof(UniformStruct)
 												, "uniform_buffer");
 	}
-
-	GpuRenderPass render_pass = gpu_create_render_pass(&gpu_context, 1, 
-		(GpuAttachmentDesc[1]){{	
-			.format = (GpuFormat) gpu_context.surface_format.format, //FIXME: Store and Get from Context (as a GpuFormat)
-			.load_op = GPU_LOAD_OP_CLEAR,
-			.store_op = GPU_STORE_OP_STORE,
-			.initial_layout = GPU_IMAGE_LAYOUT_UNDEFINED,
-			.final_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT,
-		}},
-		&(GpuAttachmentDesc){ //Depth Attachment
-			.format = GPU_FORMAT_D32_SFLOAT,
-			.load_op = GPU_LOAD_OP_CLEAR,
-			.store_op = GPU_STORE_OP_DONT_CARE,
-			.initial_layout = GPU_IMAGE_LAYOUT_UNDEFINED,
-			.final_layout = GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT,
-		});
 
 	GpuShaderModule vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.vert.spv");
 	GpuShaderModule fragment_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.frag.spv");
@@ -470,7 +444,7 @@ int main() {
 	GpuGraphicsPipelineCreateInfo graphics_pipeline_create_info = {
 		.vertex_module = &vertex_module,
 		.fragment_module = &fragment_module,
-		.render_pass = &render_pass,
+		.rendering_info = &dynamic_rendering_info,
 		.layout = &pipeline_layout,
 		.num_attributes = 4,
 		.attribute_formats = attribute_formats,
@@ -511,8 +485,6 @@ int main() {
 	//These are set up on startup / resize
 	GpuImage depth_image = {};
 	GpuImageView depth_view = {};
-	GpuFramebuffer framebuffers[gpu_context.swapchain_image_count];
-	memset(framebuffers, 0, sizeof(framebuffers));
 
 	int width = 0;
 	int height = 0;
@@ -533,10 +505,6 @@ int main() {
 			gpu_resize_swapchain(&gpu_context, &window);
 			width = new_width;
 			height = new_height;
-			
-			for (size_t i = 0; i < gpu_context.swapchain_image_count; ++i) {
-				gpu_destroy_framebuffer(&gpu_context, &framebuffers[i]);
-			}
 
 			gpu_destroy_image_view(&gpu_context, &depth_view);
 			gpu_destroy_image(&gpu_context, &depth_image);
@@ -555,18 +523,6 @@ int main() {
 				.format = GPU_FORMAT_D32_SFLOAT,
 				.aspect = GPU_IMAGE_ASPECT_DEPTH,
 			});
-
-			for (size_t i = 0; i < gpu_context.swapchain_image_count; ++i) {
-				GpuFramebufferCreateInfo new_framebuffer_create_info = {
-					.render_pass = &render_pass,
-					.width = width,
-					.height = height,
-					.attachment_count = 2,
-					.attachments = (GpuImageView[2]){gpu_context.swapchain_image_views[i], depth_view},
-				};
-
-				framebuffers[i] = gpu_create_framebuffer(&gpu_context, &new_framebuffer_create_info);
-			}
 		}
 
 		//BEGIN Gui Test
@@ -724,6 +680,11 @@ int main() {
 
 		gpu_begin_command_buffer(&command_buffers[current_frame]);
 
+		//FCS TODO:
+		//			1. store swapchain images as GpuImage array
+		//			2. add transitions before + after rendering
+		// gpu_cmd_transition_image_layout(&command_buffers[current_frame], &gpu_context.swapchain_images[current_frame], GPU_IMAGE_LAYOUT_UNDEFINED, GPU_IMAGE_LAYOUT_COLOR_ATACHMENT);
+
 		gpu_cmd_begin_rendering(&command_buffers[current_frame], &(GpuRenderingInfo) {
 			.render_width = width,
 			.render_height = height,
@@ -752,24 +713,6 @@ int main() {
 			.stencil_attachment = NULL, //TODO:
 		});
 
-		gpu_cmd_end_rendering(&command_buffers[current_frame]);
-
-		gpu_cmd_begin_render_pass(&command_buffers[current_frame], &(GpuRenderPassBeginInfo) {
-			.render_pass = &render_pass,
-			.framebuffer = &framebuffers[image_index],
-			.num_clear_values = 2,
-			.clear_values = (GpuClearValue[2]){
-				{
-				.clear_color = { 0.392f, 0.584f, 0.929f, 0.0f},
-				},
-				{
-					.depth_stencil = {
-						.depth = 1.0f,
-						.stencil = 0,
-					}
-				}
-			},
-		});
 		gpu_cmd_bind_pipeline(&command_buffers[current_frame], &pipeline);
 		gpu_cmd_set_viewport(&command_buffers[current_frame], &(GpuViewport) {
 			.x = 0,
@@ -790,25 +733,8 @@ int main() {
 			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &collider_descriptor_sets[i]);
 			gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count);
 		}
-		gpu_cmd_end_render_pass(&command_buffers[current_frame]);
 
 		//BEGIN gui rendering
-		gpu_cmd_begin_render_pass(&command_buffers[current_frame], &(GpuRenderPassBeginInfo) {
-			.render_pass = &gui_render_pass,
-			.framebuffer = &framebuffers[image_index],
-			.num_clear_values = 2,
-			.clear_values = (GpuClearValue[2]){
-				{
-				.clear_color = { 0.0f, 0.0f, 0.0, 0.0f},
-				},
-				{
-					.depth_stencil = {
-						.depth = 1.0f,
-						.stencil = 0,
-					}
-				}
-			},
-		});
 		gpu_cmd_bind_pipeline(&command_buffers[current_frame], &gui_pipeline);
 		gpu_cmd_set_viewport(&command_buffers[current_frame], &(GpuViewport) {
 			.x = 0,
@@ -822,9 +748,9 @@ int main() {
 		gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &gui_vertex_buffer);
 		gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &gui_index_buffer);
 		gpu_cmd_draw_indexed(&command_buffers[current_frame], sb_count(gui_context.draw_data.indices));
-		gpu_cmd_end_render_pass(&command_buffers[current_frame]);
 		//END gui rendering
 
+		gpu_cmd_end_rendering(&command_buffers[current_frame]);
 		gpu_end_command_buffer(&command_buffers[current_frame]);
 
 		gpu_queue_submit(&gpu_context,
@@ -940,11 +866,6 @@ int main() {
 		gpu_destroy_fence(&gpu_context, &in_flight_fences[i]);
 	}
 
-	for (size_t i = 0; i < gpu_context.swapchain_image_count; ++i)
-	{
-		gpu_destroy_framebuffer(&gpu_context, &framebuffers[i]);
-	}
-
 	for (uint32_t i = 0; i < sb_count(colliders); ++i) {
 		gpu_destroy_descriptor_set(&gpu_context, &collider_descriptor_sets[i]);
 		gpu_destroy_buffer(&gpu_context, &collider_uniform_buffers[i]);
@@ -957,7 +878,6 @@ int main() {
 	gpu_destroy_pipeline(&gpu_context, &gui_pipeline);
 	gpu_destroy_descriptor_set(&gpu_context, &gui_descriptor_set);
 	gpu_destroy_pipeline_layout(&gpu_context, &gui_pipeline_layout);
-	gpu_destroy_render_pass(&gpu_context, &gui_render_pass);
 	gpu_destroy_sampler(&gpu_context, &font_sampler);
 	gpu_destroy_image_view(&gpu_context, &font_image_view);
 	gpu_destroy_image(&gpu_context, &font_image);
@@ -966,7 +886,6 @@ int main() {
 	gpu_destroy_pipeline(&gpu_context, &pipeline);
 	
 	gpu_destroy_pipeline_layout(&gpu_context, &pipeline_layout);
-	gpu_destroy_render_pass(&gpu_context, &render_pass);
 	gpu_destroy_image_view(&gpu_context, &depth_view);
 	gpu_destroy_image(&gpu_context, &depth_image);
 	gpu_destroy_buffer(&gpu_context, &vertex_buffer);

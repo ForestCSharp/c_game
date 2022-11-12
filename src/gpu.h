@@ -227,10 +227,23 @@ typedef struct GpuPipelineDepthStencilState {
     bool depth_write;
 } GpuPipelineDepthStencilState;
 
+
+/*  For usage with Dynamic Rendering. Either this OR a render pass 
+    should be referenced in GpuGraphicsPipelineCreateInfo when 
+    creating a pipeline */
+typedef struct GpuPipelineRenderingCreateInfo {
+    uint32_t color_attachment_count;
+    GpuFormat* color_formats;
+    GpuFormat depth_format;
+    GpuFormat stencil_format;
+
+} GpuPipelineRenderingCreateInfo;
+
 typedef struct GpuGraphicsPipelineCreateInfo {
     GpuShaderModule* vertex_module;
     GpuShaderModule* fragment_module;
 	GpuRenderPass* render_pass;
+    GpuPipelineRenderingCreateInfo* rendering_info;
 	GpuPipelineLayout* layout;
     uint32_t num_attributes;
     GpuFormat* attribute_formats;
@@ -326,7 +339,7 @@ typedef struct {
     VkSurfaceFormatKHR surface_format;
     VkSwapchainKHR swapchain;
     uint32_t swapchain_image_count;
-    VkImage* swapchain_images;
+    VkImage* swapchain_images; //FCS TODO: need to store as GpuImage
     GpuImageView* swapchain_image_views;
 
     //Memory
@@ -407,6 +420,7 @@ void gpu_cmd_set_viewport(GpuCommandBuffer* command_buffer, GpuViewport* viewpor
 
 void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, uint64_t size);
 void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image, GpuImageLayout image_layout, uint64_t width, uint64_t height);
+void gpu_cmd_transition_image_layout(GpuCommandBuffer* command_buffer, GpuImage* image, GpuImageLayout old_layout, GpuImageLayout new_layout);
 
 //TODO: queue argument
 void gpu_queue_submit(GpuContext* context, GpuCommandBuffer* command_buffer, GpuSemaphore* wait_semaphore, GpuSemaphore* signal_semaphore, GpuFence* signal_fence);
