@@ -21,6 +21,9 @@
 #include "physics.h"
 #include "gui.h"
 
+//FCS TODO: Testing collision
+#include "collision.h"
+
 bool read_file(const char* filename, size_t* out_file_size, uint32_t** out_data) {
 	
 	FILE *file = fopen (filename, "rb");
@@ -124,6 +127,8 @@ float rand_float(float lower_bound, float upper_bound) {
 }
 
 int main() {
+
+	test_collision(); //FCS TODO: See Collision.h
 
 	Collider ground_collider = make_cube_collider();
 	
@@ -636,9 +641,6 @@ int main() {
 			gui_window_2.is_resizable = !gui_window_2.is_resizable;
 		}
 		gui_window_end(&gui_context, &gui_window_2);
-
-		const float text_size = 400.0f;
-		gui_text(&gui_context, "NW - 30 - 15 - N - 15 - 30 - NE", vec2_new(((float) width - text_size) / 2.0f, 0.0f), vec2_new(text_size, 50), GUI_ALIGN_CENTER);
 
 		if (show_bezier) {
 			static Vec2 bezier_points[] = {
