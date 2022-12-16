@@ -84,7 +84,7 @@ void physics_add_force_at_location(Collider* in_collider, Vec3 force, Vec3 locat
 
 void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const Vec3 hit_dir, const float restitution, const float delta_time, size_t num_iterations) {
     if (in_collider->is_kinematic) {
-        const float position_correction_scalar = 0.0125f; //TODO:
+        const float position_correction_scalar = 0.025f; //TODO: store in global physics data
         in_collider->position = vec3_add(in_collider->position, vec3_scale(vec3_normalize(hit_dir), position_correction_scalar));
         
         { 
@@ -96,8 +96,7 @@ void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const 
         }
 
         {
-            // TODO: should this scaled by velocity?
-            Vec3 torque_a = vec3_scale(hit_dir, vec3_length(in_collider->velocity) * restitution);
+            Vec3 torque_a = vec3_scale(hit_dir, vec3_length(in_collider->angular_velocity) * restitution);
             torque_a = vec3_scale(torque_a, 1.0f/(float)num_iterations);
             torque_a = vec3_scale(torque_a, 1.0f / delta_time);
             physics_add_torque_at_location(in_collider, torque_a, hit_loc);
@@ -105,7 +104,7 @@ void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const 
 
         {
             // Friction
-            const Vec3 gravity = vec3_new(0, -10, 0); //TODO: store somewhere
+            const Vec3 gravity = vec3_new(0, -10, 0); //TODO: store in global physics data
             const float mu = 0.5f;
             const Vec3 normal_force = vec3_scale(gravity, in_collider->mass * mu);
             const float magnitude = vec3_length(normal_force);
