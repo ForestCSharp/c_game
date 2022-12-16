@@ -119,6 +119,9 @@ bool hit_test_capsule_obb(const Capsule capsule, const OBB obb)
 }
 
 //FCS TODO: computing hit depth
+// i.e. for sphere -> 
+//      if sphere center outside OBB, figure out how much of the radius is inside the OBB
+//      if sphere center inside OBB, compute distance to OBB boundary PLUS radius
 
 void test_collision()
 {
@@ -158,5 +161,9 @@ void test_collision()
 
     //FCS TODO: Test an OBB that's actually oriented
 
-    exit(0);
+    // exit(0);
 }
+
+//FCS TODO: Capsule character moving through OBB-based world
+//FCS TODO: primitive collision penetration depth
+//FCS TODO: MPR collision penetration depth

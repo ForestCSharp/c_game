@@ -51,7 +51,7 @@ Collider make_cube_collider() {
         .scale = vec3_new(1,1,1),
         .mass = 5,
         .moment_of_inertia = 2.5,
-        .friction = 0,
+        .friction = 0.5,
         .restitution = 0,
         .is_kinematic = true,
     };
@@ -84,11 +84,11 @@ void physics_add_force_at_location(Collider* in_collider, Vec3 force, Vec3 locat
 
 void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const Vec3 hit_dir, const float restitution, const float delta_time, size_t num_iterations) {
     if (in_collider->is_kinematic) {
-        const float position_correction_scalar = 0.05f; //TODO:
+        const float position_correction_scalar = 0.0125f; //TODO:
         in_collider->position = vec3_add(in_collider->position, vec3_scale(vec3_normalize(hit_dir), position_correction_scalar));
         
         { 
-            //Stopping accel: accel required to stop object's current velocity F = m * dv / dt
+            // Stopping accel: accel required to stop object's current velocity F = m * dv / dt
             Vec3 impulse_a = vec3_scale(hit_dir, vec3_length(in_collider->velocity) * restitution);
             impulse_a = vec3_scale(impulse_a, 1.0f/(float)num_iterations);
             impulse_a = vec3_scale(impulse_a, in_collider->mass / delta_time);
@@ -96,12 +96,25 @@ void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const 
         }
 
         {
-            //TODO: should this scaled by velocity?
+            // TODO: should this scaled by velocity?
             Vec3 torque_a = vec3_scale(hit_dir, vec3_length(in_collider->velocity) * restitution);
             torque_a = vec3_scale(torque_a, 1.0f/(float)num_iterations);
             torque_a = vec3_scale(torque_a, 1.0f / delta_time);
             physics_add_torque_at_location(in_collider, torque_a, hit_loc);
         }
+
+        {
+            // Friction
+            const Vec3 gravity = vec3_new(0, -10, 0); //TODO: store somewhere
+            const float mu = 0.5f;
+            const Vec3 normal_force = vec3_scale(gravity, in_collider->mass * mu);
+            const float magnitude = vec3_length(normal_force);
+            const Vec3 friction_force = vec3_scale(vec3_negate(vec3_normalize(in_collider->velocity)), magnitude);
+            const Vec3 projected_force = vec3_plane_projection(friction_force, vec3_normalize(hit_dir));
+            physics_add_force(in_collider, projected_force);
+        }
+
+        //TODO: Linear and Angular damping (happens regardless of collision state)
     }
 }
 
@@ -159,21 +172,29 @@ void physics_run_simulation(Collider* in_colliders, float delta_time) {
                 Mat4 transform_b = mat4_mult_mat4(mat4_mult_mat4(scale_b, rotation_b), translation_b);
 
                 //hit_normal is scaled by penetration depth?
-                MprVec3 hit_normal, contact_a, contact_b;
-                int result = mpr_check_collision((MprVec3*) collider_a->convex_points, sb_count(collider_a->convex_points), (float*) transform_a.d,
-                                                (MprVec3*) collider_b->convex_points, sb_count(collider_b->convex_points), (float*) transform_b.d,
-                                                &hit_normal, &contact_a, &contact_b);
+                const MprInputData input_data = {
+                    .convex_a = {
+                        .points = (MprVec3*) collider_a->convex_points,
+                        .num_points = sb_count(collider_a->convex_points),
+                        .transform = (float*) transform_a.d,
+                    },
+                    .convex_b = {
+                        .points = (MprVec3*) collider_b->convex_points,
+                        .num_points = sb_count(collider_b->convex_points),
+                        .transform = (float*) transform_b.d,
+                    },
+                };
+                MprOutputData hit_data;
+                if (mpr_check_collision(&input_data, &hit_data)) {
 
-                if (result) {
-
-                    Vec3 hit_dir_a = vec3_new(hit_normal.x, hit_normal.y, hit_normal.z);
+                    Vec3 hit_dir_a = vec3_new(hit_data.normal.x, hit_data.normal.y, hit_data.normal.z);
                     Vec3 hit_dir_b = vec3_negate(hit_dir_a);
 
                     //TODO: Add to ea. collider, and combine in some way both collider's restitution
-                    static const float restitution = 0.75f;
+                    static const float restitution = 0.25f;
 
-                    physics_resolve_collision(collider_a, vec3_new(contact_a.x, contact_a.y, contact_a.z), hit_dir_a, restitution, delta_time, num_iterations);
-                    physics_resolve_collision(collider_b, vec3_new(contact_b.x, contact_b.y, contact_b.z), hit_dir_b, restitution, delta_time, num_iterations);
+                    physics_resolve_collision(collider_a, vec3_new(hit_data.contact_a.x, hit_data.contact_a.y, hit_data.contact_a.z), hit_dir_a, restitution, delta_time, num_iterations);
+                    physics_resolve_collision(collider_b, vec3_new(hit_data.contact_b.x, hit_data.contact_b.y, hit_data.contact_b.z), hit_dir_b, restitution, delta_time, num_iterations);
                 }
             }
         }

@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <math.h>
+#include <assert.h>
 
 typedef struct MprVec3 { float x; float y; float z; } MprVec3;
 
@@ -23,7 +25,7 @@ MprVec3 mpr_vec3_cross(MprVec3 a, MprVec3 b) {
 float mpr_vec3_length_squared(MprVec3 v) { return v.x * v.x + v.y * v.y + v.z * v.z; }
 float mpr_vec3_length(MprVec3 v) { return sqrt(mpr_vec3_length_squared(v)); }
 MprVec3 mpr_vec3_normalize(MprVec3 v) { float l = mpr_vec3_length(v); v.x /= l; v.y /= l; v.z /= l; return v; }
-int mpr_vec3_is_zero(MprVec3 v) { return v.x == 0 && v.y == 0 && v.z == 0; }
+bool mpr_vec3_is_zero(MprVec3 v) { return v.x == 0 && v.y == 0 && v.z == 0; }
 void mpr_vec3_swap(MprVec3* a, MprVec3* b) {
     MprVec3 tmp = *a;
     *a = *b;
@@ -46,6 +48,7 @@ MprVec3 mpr_mat4_mult_vec3(const float m[/*static*/ 16], MprVec3 v) {
     return result;
 }
 
+//TODO: replace args with MprConvexData
 MprVec3 mpr_average_point(const MprVec3* vertices, size_t count) {
     MprVec3 avg = { 0.f, 0.f, 0.f };
     for (size_t i = 0; i < count; i++) {
@@ -59,7 +62,8 @@ MprVec3 mpr_average_point(const MprVec3* vertices, size_t count) {
     return avg;
 }
 
-size_t index_of_furthest_point(const MprVec3 * vertices, size_t count, const float transform[16], MprVec3 d) {
+//TODO: replace first 3 args with MprConvexData
+size_t index_of_furthest_point(const MprVec3* vertices, size_t count, const float transform[16], MprVec3 d) {
     
     float maxProduct = mpr_vec3_dot(d, mpr_mat4_mult_vec3(transform, vertices[0]));
     size_t index = 0;
@@ -73,7 +77,8 @@ size_t index_of_furthest_point(const MprVec3 * vertices, size_t count, const flo
     return index;
 }
 
-MprVec3 convex_support(const MprVec3 * vertices, size_t count, const float transform[16], MprVec3 d) {
+//TODO: replace first 3 args with MprConvexData
+MprVec3 convex_support(const MprVec3* vertices, size_t count, const float transform[16], MprVec3 d) {
     return mpr_mat4_mult_vec3(transform,vertices[index_of_furthest_point(vertices, count, transform, d)]);
 }
 
@@ -87,18 +92,37 @@ MprVec3 convex_support(const MprVec3 * vertices, size_t count, const float trans
 // the boundary of A-B. Once you hit the surface, the normal of the portal is your contact normal.
 //
 // You now need to find the penetration depth along this contact normal. To do that, run MPR again, using the contact normal as the 
-// direction of your origin ray. (You can do this by using "origin - contactNormal" as your interior point.) The distance between the
-// origin and the surface of A-B along the direction of the contact normal is the penetration depth.
+// direction of your origin ray. (You can do this by using "origin - contactNormal" as your interior point.) FCS TODO: v0? 
+// The distance between the origin and the surface of A-B along the direction of the contact normal is the penetration depth.
 
 static float K_COLLIDE_EPSILON = 1e-3f;
 
-int mpr_check_collision(const MprVec3* convexA, size_t countA, const float transformA[16],
-                        const MprVec3* convexB, size_t countB, const float transformB[16],
-                        MprVec3* out_normal, MprVec3* out_contact_a, MprVec3* out_contact_b) {
+typedef struct MprConvexData {
+    MprVec3* points;
+    size_t num_points;
+    float* transform; //16 floats, Mat4x4
+} MprConvexData;
+
+typedef struct MprInputData {
+    MprConvexData convex_a;
+    MprConvexData convex_b;
+} MprInputData;
+
+typedef struct MprOutputData {
+    MprVec3 normal;
+    MprVec3 contact_a;
+    MprVec3 contact_b;
+} MprOutputData;
+
+bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data) {
+    assert(input_data);
+    assert(hit_data);
+    const MprConvexData* convex_a = &input_data->convex_a;
+    const MprConvexData* convex_b = &input_data->convex_b;
     
     // v0 - center of Minkowski sum
-    MprVec3 v01 = mpr_mat4_mult_vec3(transformA, mpr_average_point(convexA, countA));
-    MprVec3 v02 = mpr_mat4_mult_vec3(transformB, mpr_average_point(convexB, countB));
+    MprVec3 v01 = mpr_mat4_mult_vec3(convex_a->transform, mpr_average_point(convex_a->points, convex_a->num_points));
+    MprVec3 v02 = mpr_mat4_mult_vec3(convex_b->transform, mpr_average_point(convex_b->points, convex_b->num_points));
     MprVec3 v0 = mpr_vec3_sub(v02, v01);
 
     // Avoid case where centers overlap -- any direction is fine in this case
@@ -107,31 +131,31 @@ int mpr_check_collision(const MprVec3* convexA, size_t countA, const float trans
     MprVec3 dir = mpr_vec3_negate(v0);
 
     // v1 - support in direction of origin
-    MprVec3 v11 = convex_support(convexA, countA, transformA, mpr_vec3_negate(dir));
-	MprVec3 v12 = convex_support(convexB, countB, transformB, dir);
+    MprVec3 v11 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
+	MprVec3 v12 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
     MprVec3 v1 = mpr_vec3_sub(v12, v11);
 
     if (mpr_vec3_dot(dir, v1) <= 0.0) {
-        if (out_normal) *out_normal = dir;
-        return 0;
+        hit_data->normal = dir;
+        return false;
     }
 
     dir = mpr_vec3_cross(v1, v0);
     if (mpr_vec3_is_zero(dir)) {
         dir = mpr_vec3_normalize(mpr_vec3_sub(v1, v0));
-        if (out_normal) *out_normal = dir;
-		if (out_contact_a) *out_contact_a = v11;
-		if (out_contact_b) *out_contact_b = v12;
-        return 1;
+        hit_data->normal = dir;
+		hit_data->contact_a = v11;
+		hit_data->contact_b = v12;
+        return true;
     }
     
     // v2 - support perpendicular to v1,v0
-    MprVec3 v21 = convex_support(convexA, countA, transformA, mpr_vec3_negate(dir));
-	MprVec3 v22 = convex_support(convexB, countB, transformB, dir);
+    MprVec3 v21 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
+	MprVec3 v22 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
     MprVec3 v2 = mpr_vec3_sub(v22, v21);
     if (mpr_vec3_dot(v2, dir) <= 0.0) {
-        if (out_normal) *out_normal = dir;
-        return 0;
+        hit_data->normal = dir;
+        return false;
     }
     
     dir = mpr_vec3_cross(mpr_vec3_sub(v1, v0), mpr_vec3_sub(v2, v0));
@@ -147,13 +171,13 @@ int mpr_check_collision(const MprVec3* convexA, size_t countA, const float trans
     //Phase 1: identify a portal
     while(1) {
         // v3 - support point perpendicular to current plane
-        MprVec3 v31 = convex_support(convexA, countA, transformA, mpr_vec3_negate(dir));
-        MprVec3 v32 = convex_support(convexB, countB, transformB, dir);
+        MprVec3 v31 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
+        MprVec3 v32 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
         MprVec3 v3 = mpr_vec3_sub(v32, v31);
 
         if (mpr_vec3_dot(v3, dir) <= 0.0) {
-            if (out_normal) *out_normal = dir;
-            return 0;
+            hit_data->normal = dir;
+            return false;
         }
 
         // If origin is outside (v1,v0,v3), then eliminate v2 and loop
@@ -175,17 +199,14 @@ int mpr_check_collision(const MprVec3* convexA, size_t countA, const float trans
         }
         
         //Phase 2: refine the portal
-        int hit = 0;
-        int phase2 = 0;
+        bool hit = false;
 
         // We are now inside of a wedge
         while (1) {
-            phase2++;
-
             // compute normal of wedge face
             dir = mpr_vec3_cross(mpr_vec3_sub(v2,v1), mpr_vec3_sub(v3,v1));
             if (mpr_vec3_is_zero(dir)) {
-                return 1;
+                return true;
             }
 
             dir = mpr_vec3_normalize(dir);
@@ -195,7 +216,7 @@ int mpr_check_collision(const MprVec3* convexA, size_t countA, const float trans
 
             // If the origin is inside the wedge, we have a hit
             if (d >= 0.0 && !hit) {
-                if (out_normal) *out_normal = dir;
+                hit_data->normal = dir;
 
                 float b0 = mpr_vec3_dot(mpr_vec3_cross(v1,v2),v3);
                 float b1 = mpr_vec3_dot(mpr_vec3_cross(v3,v2),v0);
@@ -213,22 +234,18 @@ int mpr_check_collision(const MprVec3* convexA, size_t countA, const float trans
 
                 float inv = 1.0f / sum;
 
-                if (out_contact_a) {
-                    *out_contact_a = mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v01, b0), mpr_vec3_scale(v11, b1)), 
-                                                  mpr_vec3_add(mpr_vec3_scale(v21, b2), mpr_vec3_scale(v31, b3))), inv);
-				}
+                hit_data->contact_a = mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v01, b0), mpr_vec3_scale(v11, b1)), 
+                                                mpr_vec3_add(mpr_vec3_scale(v21, b2), mpr_vec3_scale(v31, b3))), inv);
 
-				if (out_contact_b) {
-                    *out_contact_b = mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v02, b0), mpr_vec3_scale(v12, b1)), 
-                                                  mpr_vec3_add(mpr_vec3_scale(v22, b2), mpr_vec3_scale(v32, b3))), inv);
-				}
+                hit_data->contact_b = mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v02, b0), mpr_vec3_scale(v12, b1)), 
+                                                mpr_vec3_add(mpr_vec3_scale(v22, b2), mpr_vec3_scale(v32, b3))), inv);
 
-                hit = 1;
+                hit = true;
             }
 
             // v4 - support point in the direction of the wedge face
-            MprVec3 v41 = convex_support(convexA, countA, transformA, mpr_vec3_negate(dir));
-            MprVec3 v42 = convex_support(convexB, countB, transformB, dir);
+            MprVec3 v41 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
+            MprVec3 v42 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
             MprVec3 v4 = mpr_vec3_sub(v42, v41);
 
             float delta = mpr_vec3_dot(mpr_vec3_sub(v4,v3), dir);
@@ -236,7 +253,7 @@ int mpr_check_collision(const MprVec3* convexA, size_t countA, const float trans
 
             // If the boundary is thin enough or the origin is outside the support plane for the newly discovered vertex, then we can terminate
             if (delta <= K_COLLIDE_EPSILON || separation >= 0.0) {
-                if (out_normal) *out_normal = dir;
+                hit_data->normal = dir;
 				return hit;
             }
             
