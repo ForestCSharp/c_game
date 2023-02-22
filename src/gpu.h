@@ -100,6 +100,24 @@ typedef enum GpuShaderStageFlagBits {
 } GpuShaderStageFlagBits;
 typedef uint32_t GpuShaderStageFlags;
 
+typedef enum GpuPipelineStageFlagBits {
+    GPU_PIPELINE_STAGE_TOP_OF_PIPE = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+    GPU_PIPELINE_STAGE_DRAW_INDIRECT = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+    GPU_PIPELINE_STAGE_VERTEX_INPUT = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+    GPU_PIPELINE_STAGE_VERTEX_SHADER = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+    GPU_PIPELINE_STAGE_FRAGMENT_SHADER = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+    GPU_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+    GPU_PIPELINE_STAGE_LATE_FRAGMENT_TESTS = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+    GPU_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    GPU_PIPELINE_STAGE_COMPUTE_SHADER = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+    GPU_PIPELINE_STAGE_TRANSFER = VK_PIPELINE_STAGE_TRANSFER_BIT,
+    GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+    GPU_PIPELINE_STAGE_HOST = VK_PIPELINE_STAGE_HOST_BIT,
+    GPU_PIPELINE_STAGE_ALL_GRAPHICS = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+    GPU_PIPELINE_STAGE_ALL_COMPUTE = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+} GpuPipelineStage;
+typedef uint32_t GpuPipelineStageFlags;
+
 typedef struct GpuMemoryType {
     struct GpuMemoryBlock* memory_blocks;
 } GpuMemoryType;
@@ -141,7 +159,7 @@ typedef struct GpuImageCreateInfo {
 
 typedef struct GpuImage {
     VkImage   vk_image;
-    GpuMemory* memory;
+    GpuMemory* memory; //If null, memory is managed elsewhere (such as swapchains)
     GpuFormat format;
 } GpuImage;
 
@@ -320,6 +338,15 @@ typedef struct GpuViewport {
     float x, y, width, height, min_depth, max_depth;
 } GpuViewport;
 
+typedef struct GpuImageBarrier
+{
+    GpuImage* image;
+    GpuPipelineStageFlags src_stage;
+    GpuPipelineStageFlags dst_stage;
+    GpuImageLayout old_layout;
+    GpuImageLayout new_layout;
+} GpuImageBarrier;
+
 typedef struct {
     //Main Vulkan Objects
     VkInstance instance;
@@ -339,7 +366,7 @@ typedef struct {
     VkSurfaceFormatKHR surface_format;
     VkSwapchainKHR swapchain;
     uint32_t swapchain_image_count;
-    VkImage* swapchain_images; //FCS TODO: need to store as GpuImage
+    GpuImage* swapchain_images;
     GpuImageView* swapchain_image_views;
 
     //Memory
@@ -420,7 +447,10 @@ void gpu_cmd_set_viewport(GpuCommandBuffer* command_buffer, GpuViewport* viewpor
 
 void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, uint64_t size);
 void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image, GpuImageLayout image_layout, uint64_t width, uint64_t height);
-void gpu_cmd_transition_image_layout(GpuCommandBuffer* command_buffer, GpuImage* image, GpuImageLayout old_layout, GpuImageLayout new_layout);
+
+void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer, GpuImageBarrier* image_barrier);
+//FCS TODO: gpu_cmd_buffer_barrier
+//FCS TODO: gpu_cmd_memory_barrier
 
 //TODO: queue argument
 void gpu_queue_submit(GpuContext* context, GpuCommandBuffer* command_buffer, GpuSemaphore* wait_semaphore, GpuSemaphore* signal_semaphore, GpuFence* signal_fence);

@@ -236,9 +236,14 @@ GpuContext gpu_create_context(const Window* const window) {
     };
     uint32_t device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
 
+
+    VkPhysicalDeviceSynchronization2Features sync_2_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
+        .pNext = NULL,
+    };
     VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
-        .pNext = NULL,
+        .pNext = &sync_2_features,
     };
     VkPhysicalDeviceFeatures2 features_2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
@@ -246,6 +251,11 @@ GpuContext gpu_create_context(const Window* const window) {
         .features = physical_device_features,
     };
     vkGetPhysicalDeviceFeatures2(physical_device_data.physical_device, &features_2);
+
+    if (!sync_2_features.synchronization2) {
+        printf("Error: Synchronization2 Is Required\n");
+        exit(0);
+    }
 
     if (!dynamic_rendering_features.dynamicRendering) {
         printf("Error: Dynamic Rendering Is Required\n");
@@ -407,9 +417,14 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
     if (context->swapchain_images != NULL) {
         free(context->swapchain_images);
     }
-    context->swapchain_images = malloc(swapchain_image_count * sizeof(VkImage));
-    //GpuImageView is a thin wrapper around VkImageView, so we can directly copy the memory
-    memcpy(context->swapchain_images, swapchain_images, swapchain_image_count * sizeof(VkImage));
+    context->swapchain_images = malloc(swapchain_image_count * sizeof(GpuImage));
+    for (int32_t i = 0; i < swapchain_image_count; ++i) {
+        context->swapchain_images[i] = (GpuImage) {
+            .vk_image = swapchain_images[i],
+            .memory = NULL, //Memory managed externally
+            .format = (GpuFormat) context->surface_format.format,
+        };
+    }
 
     if (context->swapchain_image_views != NULL) {
         //use context->swapchain_image_count as thats the previous image count (likely the same)
@@ -755,46 +770,41 @@ void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, uint64_t upload_s
     }
 }
 
-void gpu_cmd_transition_image_layout(GpuCommandBuffer* command_buffer, GpuImage* image, GpuImageLayout old_layout, GpuImageLayout new_layout) {
-
-    VkImageMemoryBarrier vk_barrier ={
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .oldLayout = (VkImageLayout) old_layout,
-        .newLayout = (VkImageLayout) new_layout,
+void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer,  GpuImageBarrier* image_barrier) {
+    VkImageMemoryBarrier2 vk_image_memory_barrier_2 = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .pNext = NULL,
+        .srcStageMask = image_barrier->src_stage,
+        .srcAccessMask = 0, //FCS TODO:
+        .dstStageMask = image_barrier->dst_stage,
+        .dstAccessMask = 0, //FCS TODO:
+        .oldLayout = (VkImageLayout) image_barrier->old_layout,
+        .newLayout = (VkImageLayout) image_barrier->new_layout,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = image->vk_image,
-        .subresourceRange = {
+        .image = image_barrier->image->vk_image,
+        .subresourceRange = { //FCS TODO:
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseMipLevel = 0,
             .levelCount = 1,
             .baseArrayLayer = 0,
             .layerCount = 1,
         },
-        .srcAccessMask = 0, // See Below
-        .dstAccessMask = 0, // See Below
     };
 
-    VkPipelineStageFlags vk_source_stage;
-    VkPipelineStageFlags vk_dest_stage;
+    VkDependencyInfo vk_dependency_info = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .pNext = NULL,
+        .dependencyFlags = 0, //TODO:
+        .memoryBarrierCount = 0,
+        .pMemoryBarriers = NULL,
+        .bufferMemoryBarrierCount = 0,
+        .pBufferMemoryBarriers = NULL,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &vk_image_memory_barrier_2,
+    };
 
-    if (old_layout == GPU_IMAGE_LAYOUT_UNDEFINED && new_layout == GPU_IMAGE_LAYOUT_TRANSFER_DST) {
-        vk_barrier.srcAccessMask = 0;
-        vk_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-        vk_source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        vk_dest_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    } else if (old_layout == GPU_IMAGE_LAYOUT_TRANSFER_DST && new_layout == GPU_IMAGE_LAYOUT_SHADER_READ_ONLY) {
-        vk_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        vk_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        vk_source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        vk_dest_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    } else {
-        printf("gpu_cmd_transition_image_layout: Unsupported Layout Transition\n");
-    }
-
-    vkCmdPipelineBarrier(command_buffer->vk_command_buffer, vk_source_stage, vk_dest_stage, 0, 0, NULL, 0, NULL, 1, &vk_barrier);
+    vkCmdPipelineBarrier2(command_buffer->vk_command_buffer, &vk_dependency_info);
 }
 
 GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, const char* debug_name) {
@@ -872,9 +882,21 @@ void gpu_upload_image(GpuContext* context, GpuImage* image, uint64_t upload_widt
         gpu_memcpy(context, staging_buffer.memory, upload_size, upload_data);
         GpuCommandBuffer command_buffer = gpu_create_command_buffer(context);
         gpu_begin_command_buffer(&command_buffer);
-        gpu_cmd_transition_image_layout(&command_buffer, image, GPU_IMAGE_LAYOUT_UNDEFINED, GPU_IMAGE_LAYOUT_TRANSFER_DST);
+        gpu_cmd_image_barrier(&command_buffer, &(GpuImageBarrier){
+			.image = image, 
+			.src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
+			.dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
+			.old_layout = GPU_IMAGE_LAYOUT_UNDEFINED, 
+			.new_layout = GPU_IMAGE_LAYOUT_TRANSFER_DST,
+		});
         gpu_cmd_copy_buffer_to_image(&command_buffer, &staging_buffer, image, GPU_IMAGE_LAYOUT_TRANSFER_DST /*FCS TODO: */, upload_width, upload_height);
-        gpu_cmd_transition_image_layout(&command_buffer, image, GPU_IMAGE_LAYOUT_TRANSFER_DST, GPU_IMAGE_LAYOUT_SHADER_READ_ONLY); //FCS TODO: Final layout arg?
+        gpu_cmd_image_barrier(&command_buffer, &(GpuImageBarrier){
+			.image = image, 
+			.src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
+			.dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
+			.old_layout = GPU_IMAGE_LAYOUT_TRANSFER_DST, 
+			.new_layout = GPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
+		});
         gpu_end_command_buffer(&command_buffer);
         gpu_queue_submit(context, &command_buffer, NULL, NULL, NULL);
         gpu_wait_idle(context); //TODO: pass back complete semaphore

@@ -96,6 +96,7 @@ void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const 
         }
 
         {
+            // Stopping torque:
             Vec3 torque_a = vec3_scale(hit_dir, vec3_length(in_collider->angular_velocity) * restitution);
             torque_a = vec3_scale(torque_a, 1.0f/(float)num_iterations);
             torque_a = vec3_scale(torque_a, 1.0f / delta_time);

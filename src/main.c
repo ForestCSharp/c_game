@@ -682,10 +682,14 @@ int main() {
 
 		gpu_begin_command_buffer(&command_buffers[current_frame]);
 
-		//FCS TODO:
-		//			1. store swapchain images as GpuImage array
-		//			2. add transitions before + after rendering
-		// gpu_cmd_transition_image_layout(&command_buffers[current_frame], &gpu_context.swapchain_images[current_frame], GPU_IMAGE_LAYOUT_UNDEFINED, GPU_IMAGE_LAYOUT_COLOR_ATACHMENT);
+		//FCS TODO: optimize src+dst stages
+		gpu_cmd_image_barrier(&command_buffers[current_frame], &(GpuImageBarrier){
+			.image = &gpu_context.swapchain_images[current_frame], 
+			.src_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
+			.dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
+			.old_layout = GPU_IMAGE_LAYOUT_UNDEFINED, 
+			.new_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT,
+		});
 
 		gpu_cmd_begin_rendering(&command_buffers[current_frame], &(GpuRenderingInfo) {
 			.render_width = width,
@@ -753,6 +757,15 @@ int main() {
 		//END gui rendering
 
 		gpu_cmd_end_rendering(&command_buffers[current_frame]);
+
+		//FCS TODO: Optimize stages
+		gpu_cmd_image_barrier(&command_buffers[current_frame], &(GpuImageBarrier){
+			.image = &gpu_context.swapchain_images[current_frame], 
+			.src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
+			.dst_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
+			.old_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT, 
+			.new_layout = GPU_IMAGE_LAYOUT_PRESENT_SRC,
+		});
 		gpu_end_command_buffer(&command_buffers[current_frame]);
 
 		gpu_queue_submit(&gpu_context,
