@@ -21,7 +21,7 @@ VkBool32 vulkan_debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData) { 
+    void* pUserData) {
     if (! (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT)) {
         printf("Validation Layer: %s\n", pCallbackData->pMessage);
     }
@@ -71,17 +71,20 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
         {          
             uint32_t format_count;
             VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, NULL));
+            bool found_format = false;
             if (format_count > 0) {
                 VkSurfaceFormatKHR surface_formats[format_count];
                 VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, surface_formats));
                 for (int i = 0; i < format_count; ++i) {
                     if (surface_formats[i].format == GPU_FORMAT_BGRA8_UNORM) { //FIXME: more robust format choosing
                         surface_format = surface_formats[i];
-                        //FIXME: set bool that we found a format, check below
+                        found_format = true;
                         break;
                     }
                 }
             }
+
+            assert(found_format);
 
             uint32_t present_mode_count;
             VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface, &present_mode_count, NULL));
@@ -744,7 +747,6 @@ void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer) {
     }
 }
 
-//TODO: support resizing here, if upload_size is greater than current size
 void gpu_memcpy(GpuContext* context, GpuMemory* memory, uint64_t upload_size, void* upload_data) {
     void* pData;
     gpu_map_memory(context, memory, 0, upload_size, &pData);
@@ -753,7 +755,7 @@ void gpu_memcpy(GpuContext* context, GpuMemory* memory, uint64_t upload_size, vo
 }
 
 void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, uint64_t upload_size, void* upload_data) {
-    //TODO: Warn if not big enough (or re-create buffer)
+    assert(upload_size <= buffer->memory->memory_region->size);
     if (buffer->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE) {
         gpu_memcpy(context, buffer->memory, upload_size, upload_data);
     } else {
@@ -1485,19 +1487,15 @@ VkRenderingAttachmentInfo to_vk_attachment_info(GpuRenderingAttachmentInfo* atta
         .resolveImageLayout = 0,
         .loadOp = (VkAttachmentLoadOp) attachment_info->load_op,
         .storeOp = (VkAttachmentStoreOp) attachment_info->store_op,
-        // .clearValue = (VkClearValue) attachment_info->clear_value,
+        // .clearValue = (VkClearValue) attachment_info->clear_value, //Below
     };
 
-    //TODO: Better way?
     memcpy(&vk_rendering_attachment_info.clearValue, &attachment_info->clear_value, sizeof(VkClearValue));
 
     return vk_rendering_attachment_info;
 }
 
-//FCS TODO: dynamic rendering: handle VkPipelineRenderingCreateInfo
-//          in place of render pass ref when creating pipeline (either/or)
-
-void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info) { //TODO: Add rendering info wrapper struct
+void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info) {
 
     VkRenderingAttachmentInfo vk_color_attachments[rendering_info->color_attachment_count];
     for (uint32_t i = 0; i < rendering_info->color_attachment_count; ++i) {
@@ -1536,13 +1534,10 @@ void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo*
         .pStencilAttachment = rendering_info->stencil_attachment ? &vk_stencil_attachment : NULL,
     };
 
-	//What a waste of fucking time. 
-    //FCS TODO: Why are these functions NULL?
     vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
 }
 
 void gpu_cmd_end_rendering(GpuCommandBuffer* command_buffer) {
-    //FCS TODO: Why are these functions NULL?
     vkCmdEndRendering(command_buffer->vk_command_buffer);
 }
 

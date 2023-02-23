@@ -298,8 +298,8 @@ typedef struct GpuClearDepthStencil {
 } GpuClearDepthStencil;
 
 typedef union GpuClearValue {
-        float clear_color[4];
-        GpuClearDepthStencil depth_stencil;
+    float clear_color[4];
+    GpuClearDepthStencil depth_stencil;
 } GpuClearValue;
 
 typedef struct GpuRenderingAttachmentInfo {
