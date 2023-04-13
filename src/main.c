@@ -685,8 +685,8 @@ int main() {
 		//FCS TODO: optimize src+dst stages
 		gpu_cmd_image_barrier(&command_buffers[current_frame], &(GpuImageBarrier){
 			.image = &gpu_context.swapchain_images[current_frame], 
-			.src_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
-			.dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
+			.src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
+			.dst_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
 			.old_layout = GPU_IMAGE_LAYOUT_UNDEFINED, 
 			.new_layout = GPU_IMAGE_LAYOUT_COLOR_ATACHMENT,
 		});
