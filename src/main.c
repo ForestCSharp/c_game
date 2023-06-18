@@ -12,9 +12,9 @@
 #include "vec.h"
 #include "matrix.h"
 #include "quat.h"
-#include "input.h"
 
-#include "window.c"
+//TODO: rename platform/platform.h
+#include "window/window.h"
 #include "gpu.c"
 
 #include "gltf.h"
@@ -206,8 +206,8 @@ int main() {
 		indices_buffer += indices_byte_stride;
 	}
 
-	Window window = window_create("C Game", 1280, 720);
-
+	Window window = window_create("C Game", 1920, 1080);
+	
 	GpuContext gpu_context = gpu_create_context(&window);
 
 	size_t vertices_size = sizeof(Vertex) * vertices_count;
@@ -496,7 +496,6 @@ int main() {
 
 	uint32_t current_frame = 0;
 	while (window_handle_messages(&window)) {
-
 		if (input_pressed(KEY_ESCAPE)) break;
 
 		int new_width, new_height;

@@ -2,3 +2,5 @@
 *.spv
 *.pdb
 *.ilk
+*.DS_Store
+/bin/*

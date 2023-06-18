@@ -1,8 +1,13 @@
 #pragma once
 
+#if defined(_WIN32)
 #define VK_USE_PLATFORM_WIN32_KHR
+#elif defined(__APPLE__)
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+
 #include <vulkan/vulkan.h>
-#include "window.h"
+#include "window/window.h"
 
 typedef enum GpuFormat {
     GPU_FORMAT_RGBA8_UNORM = VK_FORMAT_R8G8B8A8_UNORM,

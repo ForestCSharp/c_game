@@ -1,5 +1,13 @@
-#include "window.h"
+#pragma once
 #include "stdio.h"
+
+//Win32 API
+#include "windows.h"
+
+typedef struct Window {
+    HINSTANCE hinstance;
+    HWND hwnd;
+} Window;
 
 const char g_WindowClassName[] = "c_game";
 
@@ -107,3 +115,18 @@ void window_get_mouse_pos(const Window* const window, int32_t* out_mouse_x, int3
     *out_mouse_x = out_point.x;
     *out_mouse_y = out_point.y;
 }
+
+//FCS TODO: per-platform keycode translation function, rather than all these constants.
+static const int KEY_ESCAPE = VK_ESCAPE;
+static const int KEY_SHIFT = VK_SHIFT;
+static const int KEY_SPACE = VK_SPACE;
+static const int KEY_LEFT_MOUSE = VK_LBUTTON;
+static const int KEY_RIGHT_MOUSE = VK_RBUTTON;
+static const int KEY_MIDDLE_MOUSE = VK_MBUTTON;
+//TODO: More Special Key Codes (VK_TAB, VK_CTRL, etc.)
+
+//FCS TODO: Make input per-window
+bool input_pressed(int key_code) {
+	return GetKeyState(key_code) < 0;
+}
+

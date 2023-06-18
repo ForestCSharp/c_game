@@ -386,11 +386,16 @@ Vec2 recursive_bezier_deriv(const float t, const uint32_t num_points, const Vec2
 
     switch (num_points)
     {
-        case 1: return vec2_new(0.0f, 0.0f);
+        case 1:
+		{
+			return vec2_new(0.0f, 0.0f);
+		}
         default:
+		{
             const Vec2 left = recursive_bezier(t, num_points-1, in_points);
             const Vec2 right = recursive_bezier(t, num_points-1, in_points+1);
             return vec2_scale(vec2_sub(left, right), num_points);
+		}
     }
 }
 
@@ -478,7 +483,7 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
         float bounding_rect_width = in_bounding_rect->size.x;
 
         //Compute baed on bounding rect width, but never greater than num_chars
-        size_t max_possible_chars = min(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
+        size_t max_possible_chars = MIN(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
         float text_width = max_possible_chars * (char_size + spacing);
 
         Vec2 current_offset;
@@ -848,7 +853,7 @@ void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window) {
                     window_rect->size.y = MAX(window_resize_control_size.y, window_rect->size.y);
 
                     float minimum_window_height = window_top_bar_height + window_resize_control_size.y;
-                    window_rect->size.y = max(minimum_window_height, window_rect->size.y);
+                    window_rect->size.y = MAX(minimum_window_height, window_rect->size.y);
                 }
             }
         }

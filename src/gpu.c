@@ -1,11 +1,25 @@
 #include "gpu.h"
-#include "window.h"
 #include "stretchy_buffer.h"
 #include "basic_math.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
+#include <limits.h>
+
+//FCS TODO: Move these to somewhere generic
+#ifndef MIN
+#define MIN(a,b) ((a) < (b) ? (a) : (b)) 
+#endif
+
+#ifndef MAX
+#define MAX(a,b) ((a) > (b) ? (a) : (b)) 
+#endif
+
+//FCS TODO: MoltenVK testing
+PFN_vkCmdBeginRenderingKHR pfn_begin_rendering = NULL;
+PFN_vkCmdEndRenderingKHR pfn_end_rendering = NULL;
 
 #define VK_CHECK(f)                                        \
 {                                                          \
@@ -68,14 +82,16 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
         VkPhysicalDevice physical_devices[physical_device_count];
         VK_CHECK(vkEnumeratePhysicalDevices(instance, &physical_device_count, physical_devices));
         for (int i = 0; i < physical_device_count; ++i)
-        {          
+        {
             uint32_t format_count;
             VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, NULL));
             bool found_format = false;
             if (format_count > 0) {
                 VkSurfaceFormatKHR surface_formats[format_count];
+				
                 VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, surface_formats));
                 for (int i = 0; i < format_count; ++i) {
+					printf("format: %i\n", surface_formats[i].format);
                     if (surface_formats[i].format == GPU_FORMAT_BGRA8_UNORM) { //FIXME: more robust format choosing
                         surface_format = surface_formats[i];
                         found_format = true;
@@ -118,7 +134,7 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
                     VkBool32 surface_supported = VK_FALSE;
                     vkGetPhysicalDeviceSurfaceSupportKHR(physical_devices[i], i, surface, &surface_supported);
 
-                    if ( surface_supported == VK_TRUE && queue_families[i].queueCount > 0 && queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT ) {
+                    if (surface_supported == VK_TRUE && queue_families[i].queueCount > 0 && queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                         physical_device = physical_devices[i];
                         graphics_family_index = i;
                         break;
@@ -147,7 +163,7 @@ GpuContext gpu_create_context(const Window* const window) {
         .applicationVersion = VK_MAKE_VERSION(1,0,0),
         .pEngineName = "C Game",
         .engineVersion = VK_MAKE_VERSION(1,0,0),
-        .apiVersion = VK_API_VERSION_1_3,
+        .apiVersion = VK_API_VERSION_1_3, 
     };
 
     uint32_t enumerated_layer_count;
@@ -167,16 +183,29 @@ GpuContext gpu_create_context(const Window* const window) {
     };
     uint32_t validation_layer_count = sizeof(validation_layers) / sizeof(validation_layers[0]);
 
+	//FCS TODO: Clean up defines. query surface extension string from window system?
     const char* extensions[] = {
         "VK_KHR_surface",
+#if defined(_WIN32)
         "VK_KHR_win32_surface",
+#elif defined(__APPLE__)
+		VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+		VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+#endif
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
     uint32_t extension_count = sizeof(extensions) / sizeof(extensions[0]);
+	printf("Extensions (%u)\n", extension_count);
+	for (int32_t i = 0; i < extension_count; ++i)
+	{
+		printf("\t%s\n", extensions[i]);
+	}
 
     VkInstanceCreateInfo instance_create_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR, //FCS TODO: Mac Only
         .pApplicationInfo = &app_info,
         .enabledLayerCount = validation_layer_count,
         .ppEnabledLayerNames = validation_layers,
@@ -207,6 +236,11 @@ GpuContext gpu_create_context(const Window* const window) {
     VkDebugUtilsMessengerEXT debug_messenger;
     VK_CHECK(CreateDebugUtilsMessenger(instance, &debug_utils_create_info, NULL, &debug_messenger));
 
+	VkSurfaceKHR surface;
+
+	
+	//FCS TODO: Clean up defines. request surface creation from Window system? 
+	#if defined(_WIN32)
     VkWin32SurfaceCreateInfoKHR surface_create_info = {
         .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
         .pNext= NULL,
@@ -214,8 +248,16 @@ GpuContext gpu_create_context(const Window* const window) {
         .hinstance = window->hinstance,
         .hwnd = window->hwnd,
     };
-    VkSurfaceKHR surface;
     VK_CHECK(vkCreateWin32SurfaceKHR(instance, &surface_create_info, NULL, &surface));
+	#elif defined(__APPLE__)
+	VkMetalSurfaceCreateInfoEXT surface_create_info = {
+		.sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+		.pNext = NULL,
+		.flags = 0,
+		.pLayer = window->metal_layer,
+	};
+	VK_CHECK(vkCreateMetalSurfaceEXT(instance, &surface_create_info, NULL, &surface));
+	#endif
 
     VulkanPhysicalDeviceData physical_device_data = vulkan_choose_physical_device(instance, surface);
     
@@ -236,6 +278,10 @@ GpuContext gpu_create_context(const Window* const window) {
     const char* device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+		VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, //FCS TODO: MOLTEN_VK
+#if defined(__APPLE__)
+		"VK_KHR_portability_subset",
+#endif
     };
     uint32_t device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
 
@@ -244,10 +290,12 @@ GpuContext gpu_create_context(const Window* const window) {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
         .pNext = NULL,
     };
+
     VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
         .pNext = &sync_2_features,
     };
+	
     VkPhysicalDeviceFeatures2 features_2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &dynamic_rendering_features,
@@ -255,10 +303,12 @@ GpuContext gpu_create_context(const Window* const window) {
     };
     vkGetPhysicalDeviceFeatures2(physical_device_data.physical_device, &features_2);
 
+#if defined(ENABLE_VULKAN_SYNC2)
     if (!sync_2_features.synchronization2) {
         printf("Error: Synchronization2 Is Required\n");
         exit(0);
     }
+#endif
 
     if (!dynamic_rendering_features.dynamicRendering) {
         printf("Error: Dynamic Rendering Is Required\n");
@@ -280,6 +330,11 @@ GpuContext gpu_create_context(const Window* const window) {
 
     VkDevice device = VK_NULL_HANDLE;
     VK_CHECK(vkCreateDevice(physical_device_data.physical_device, &device_create_info, NULL, &device));
+
+	//FCS TODO: Testing MoltenVK
+	pfn_begin_rendering = vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR");
+	pfn_end_rendering = vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR");
+	assert(pfn_begin_rendering && pfn_end_rendering);
 
     VkQueue graphics_queue;
     vkGetDeviceQueue(device, physical_device_data.graphics_family_index, 0, &graphics_queue);
@@ -541,7 +596,7 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, uint32_t type_filter, GpuMem
 
     uint32_t heap_index = context->vk_memory_properties.memoryTypes[memory_type_index].heapIndex;
     VkDeviceSize heap_size = context->vk_memory_properties.memoryHeaps[heap_index].size;
-    VkDeviceSize allocation_size = min(heap_size / 2, GPU_BLOCK_SIZE); //Don't try to allocate entire heap if below the size of GPU_BLOCK_SIZE
+    VkDeviceSize allocation_size = MIN(heap_size / 2, GPU_BLOCK_SIZE); //Don't try to allocate entire heap if below the size of GPU_BLOCK_SIZE
 
     //FIXME: Need to get heap budget information, which is what we should use for heap_size above
     //          this is why our GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT allocation was failing
@@ -559,7 +614,7 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, uint32_t type_filter, GpuMem
 
     VkDeviceMemory vk_memory = VK_NULL_HANDLE;
     VK_CHECK(vkAllocateMemory(context->device, &alloc_info, NULL, &vk_memory));
-    
+ 
     gpu_memory_used += allocation_size;
 
     // Create a new block
@@ -773,6 +828,7 @@ void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, uint64_t upload_s
 }
 
 void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer,  GpuImageBarrier* image_barrier) {
+#if defined(ENABLE_VULKAN_SYNC2)
     VkImageMemoryBarrier2 vk_image_memory_barrier_2 = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .pNext = NULL,
@@ -807,6 +863,40 @@ void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer,  GpuImageBarrier* i
     };
 
     vkCmdPipelineBarrier2(command_buffer->vk_command_buffer, &vk_dependency_info);
+#else
+	//FCS TODO: vanilla vkCmdPipelineBarrier
+	VkImageMemoryBarrier vk_image_memory_barrier = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.pNext = NULL,
+		.srcAccessMask = 0, //FCS TODO: 	
+		.dstAccessMask = 0, //FCS TODO:
+		.oldLayout = (VkImageLayout) image_barrier->old_layout,
+        .newLayout = (VkImageLayout) image_barrier->new_layout,
+ 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = image_barrier->image->vk_image,
+        .subresourceRange = { //FCS TODO:
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+	};	
+	
+	vkCmdPipelineBarrier(
+		command_buffer->vk_command_buffer,
+		image_barrier->src_stage,
+		image_barrier->dst_stage,
+		0, 		// dependencyFlags
+		0, 		// memoryBarrierCount
+		NULL, 	// pMemoryBarriers
+		0, 		// bufferMemoryBarrierCount
+		NULL, 	// pBufferMemoryBarriers
+		1, 		// imageMemoryBarrierCount
+		&vk_image_memory_barrier
+	);
+#endif
 }
 
 GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, const char* debug_name) {
@@ -890,7 +980,7 @@ void gpu_upload_image(GpuContext* context, GpuImage* image, uint64_t upload_widt
 			.dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
 			.old_layout = GPU_IMAGE_LAYOUT_UNDEFINED, 
 			.new_layout = GPU_IMAGE_LAYOUT_TRANSFER_DST,
-		});
+		});	
         gpu_cmd_copy_buffer_to_image(&command_buffer, &staging_buffer, image, GPU_IMAGE_LAYOUT_TRANSFER_DST /*FCS TODO: */, upload_width, upload_height);
         gpu_cmd_image_barrier(&command_buffer, &(GpuImageBarrier){
 			.image = image, 
@@ -1534,11 +1624,14 @@ void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo*
         .pStencilAttachment = rendering_info->stencil_attachment ? &vk_stencil_attachment : NULL,
     };
 
-    vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
+    //vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
+	pfn_begin_rendering(command_buffer->vk_command_buffer, &vk_rendering_info);
+
 }
 
 void gpu_cmd_end_rendering(GpuCommandBuffer* command_buffer) {
-    vkCmdEndRendering(command_buffer->vk_command_buffer);
+    //vkCmdEndRendering(command_buffer->vk_command_buffer);
+	pfn_end_rendering(command_buffer->vk_command_buffer);
 }
 
 void gpu_cmd_begin_render_pass(GpuCommandBuffer* command_buffer, GpuRenderPassBeginInfo* begin_info) {
@@ -1678,7 +1771,8 @@ void gpu_queue_present(GpuContext* context, uint32_t image_index, GpuSemaphore* 
         .pResults = NULL,
     };
 
-    VK_CHECK(vkQueuePresentKHR(context->graphics_queue, &vk_present_info));
+	//FCS TODO: MoltenVk returning VK_SUBOPTIMAL_KHR, likely due to invalid swapchain size (need to implement window functions)
+    /*VK_CHECK*/(vkQueuePresentKHR(context->graphics_queue, &vk_present_info));
 }
 
 GpuFence gpu_create_fence(GpuContext* context, bool signaled) {

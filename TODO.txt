@@ -8,3 +8,7 @@ March 17th, 2020 - Windows 442.75, Linux 440.66.02
 Added support for a new device-local VkMemoryType which is host-coherent and host-visible 
 
 look into VkPhysicalDeviceMemoryBudgetPropertiesEXT
+
+TODO: window.h should probably be app.h, input should live there 
+TODO: input should be per-window...
+TODO: GPU surface creation should be handled by window.h (abstracted per-platform)
