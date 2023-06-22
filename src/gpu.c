@@ -332,8 +332,8 @@ GpuContext gpu_create_context(const Window* const window) {
     VK_CHECK(vkCreateDevice(physical_device_data.physical_device, &device_create_info, NULL, &device));
 
 	//FCS TODO: Testing MoltenVK
-	pfn_begin_rendering = vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR");
-	pfn_end_rendering = vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR");
+	pfn_begin_rendering = (PFN_vkCmdBeginRenderingKHR) vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR");
+	pfn_end_rendering = (PFN_vkCmdEndRenderingKHR) vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR");
 	assert(pfn_begin_rendering && pfn_end_rendering);
 
     VkQueue graphics_queue;
