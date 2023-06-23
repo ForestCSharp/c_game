@@ -116,7 +116,7 @@ void window_get_mouse_pos(const Window* const window, int32_t* out_mouse_x, int3
     *out_mouse_y = out_point.y;
 }
 
-//FCS TODO: per-platform keycode translation function, rather than all these constants.
+//FCS TODO: per-platform keycode translation function, rather than all these constants (see mac/window.h)
 static const int KEY_ESCAPE = VK_ESCAPE;
 static const int KEY_SHIFT = VK_SHIFT;
 static const int KEY_SPACE = VK_SPACE;

@@ -496,7 +496,11 @@ int main() {
 
 	uint32_t current_frame = 0;
 	while (window_handle_messages(&window)) {
-		if (input_pressed(KEY_ESCAPE)) break;
+		
+		if (input_pressed(KEY_ESCAPE))
+		{
+			break;
+		}
 
 		int new_width, new_height;
 		window_get_dimensions(&window, &new_width, &new_height);
@@ -534,6 +538,7 @@ int main() {
 		int32_t mouse_x, mouse_y;
 		window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
+		//FCS TODO: open_windows memory leak here
 		GuiFrameState gui_frame_state = {
 			.screen_size = vec2_new(width, height),
 			.mouse_pos = vec2_new(mouse_x, mouse_y),
@@ -782,7 +787,8 @@ int main() {
 		accumulated_delta_time += delta_time;
 		frames_rendered++;
 
-		float move_speed = (input_pressed(KEY_SHIFT) ? 36.0 : 12.0) * delta_time;
+		const float base_move_speed = 36.0f; 
+		const float move_speed = (input_pressed(KEY_SHIFT) ? base_move_speed * 3 : base_move_speed) * delta_time;
 
 		if (input_pressed('W')) {
 			position.z += move_speed;

@@ -2,10 +2,49 @@
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <Carbon/Carbon.h>
 
-//FCS TODO: Hacky test, make per-window
-bool global_key_states[1024];
-bool mouse_button_states[3];
+//FCS TODO: make per-window
+bool global_key_states[KEY_MAX_VALUE];
+
+KeyCode translate_macos_key_code(unsigned short key_code)
+{
+	switch (key_code)
+	{
+		case kVK_ANSI_A: return 'A';
+		case kVK_ANSI_B: return 'B';
+		case kVK_ANSI_C: return 'C';
+		case kVK_ANSI_D: return 'D';
+		case kVK_ANSI_E: return 'E';
+		case kVK_ANSI_F: return 'F';
+		case kVK_ANSI_G: return 'G';
+		case kVK_ANSI_H: return 'H';
+		case kVK_ANSI_I: return 'I';
+		case kVK_ANSI_J: return 'J';
+		case kVK_ANSI_K: return 'K';
+		case kVK_ANSI_L: return 'L';
+		case kVK_ANSI_M: return 'M';
+		case kVK_ANSI_N: return 'N';
+		case kVK_ANSI_O: return 'O';
+		case kVK_ANSI_P: return 'P';
+		case kVK_ANSI_Q: return 'Q';
+		case kVK_ANSI_R: return 'R';
+		case kVK_ANSI_S: return 'S';
+		case kVK_ANSI_T: return 'T';
+		case kVK_ANSI_U: return 'U';
+		case kVK_ANSI_V: return 'V';
+		case kVK_ANSI_W: return 'W';
+		case kVK_ANSI_X: return 'X';
+		case kVK_ANSI_Y: return 'Y';
+		case kVK_ANSI_Z: return 'Z';
+		//FCS TODO: the rest of the kVK_ANSI_... values
+		case kVK_Escape: return KEY_ESCAPE;
+		case kVK_Space: return KEY_SPACE;
+		//FCS TODO: the rest of the kVK_... values
+	}
+
+	return KEY_MAX_VALUE;	
+}
 
 @interface WindowView : NSView
 {
@@ -60,30 +99,46 @@ bool mouse_button_states[3];
 }
 
 - (void)keyDown:(NSEvent*)event {
-	unsigned short key_code = [event keyCode];
-	global_key_states[key_code] = true;
-	printf("key code: %u\n", key_code);
+	KeyCode key_code = translate_macos_key_code([event keyCode]);	
+	if (key_code != KEY_MAX_VALUE)
+	{
+		global_key_states[key_code] = true;
+	}
 }
 
 - (void)keyUp:(NSEvent*)event {
-	unsigned short key_code = [event keyCode];
-	global_key_states[key_code] = false;
+	KeyCode key_code = translate_macos_key_code([event keyCode]);	
+	if (key_code != KEY_MAX_VALUE)
+	{
+		global_key_states[key_code] = false;
+	}
+}
+
+- (void) flagsChanged:(NSEvent *) event {
+    if ([event modifierFlags] & NSShiftKeyMask) {
+        //Do something
+		global_key_states[KEY_SHIFT] = true;
+    }
+	else
+	{
+		global_key_states[KEY_SHIFT] = false;
+	}
 }
 
 - (void)mouseDown:(NSEvent*)event {
-	mouse_button_states[0] = true;	
+	global_key_states[KEY_LEFT_MOUSE] = true;
 }
 
 - (void)mouseUp:(NSEvent*)event {
-	mouse_button_states[0] = false;	
+	global_key_states[KEY_LEFT_MOUSE] = false;
 }
 
 - (void)rightMouseDown:(NSEvent*)event {
-	mouse_button_states[1] = true;	
+	global_key_states[KEY_RIGHT_MOUSE] = true;
 }
 
 - (void)rightMouseUp:(NSEvent*)event {
-	mouse_button_states[1] = false;	
+	global_key_states[KEY_RIGHT_MOUSE] = false;
 }
 
 - (void)mouseMoved:(NSEvent*)event {
@@ -105,7 +160,6 @@ bool mouse_button_states[3];
 - (void)otherMouseDragged:(NSEvent*)event {
 	[self mouseMoved:event];
 }
-
 @end
 
 typedef struct Window {
@@ -116,47 +170,48 @@ typedef struct Window {
 
 Window window_create(const char* name, int width, int height)
 {	
-	[NSAutoreleasePool new];
+	@autoreleasepool
+	{
+		//FCS TODO: Only create app once
+		NSApplication* app = [NSApplication sharedApplication];
+		[app setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-	//FCS TODO: Only create app once
-	NSApplication* app = [NSApplication sharedApplication];
-	[app setActivationPolicy:NSApplicationActivationPolicyRegular];
+		NSRect frame = NSMakeRect(0, 0, width, height);
+		const NSUInteger window_style = NSWindowStyleMaskTitled |
+			NSWindowStyleMaskClosable |
+			NSWindowStyleMaskMiniaturizable |
+			NSWindowStyleMaskResizable;
+		NSWindow* window  = [[[NSWindow alloc] initWithContentRect:frame
+			styleMask:window_style
+			backing:NSBackingStoreBuffered
+			defer:NO] autorelease];
+		[window setBackgroundColor:[NSColor blueColor]];
+		[window makeKeyAndOrderFront:window];
 
-	NSRect frame = NSMakeRect(0, 0, width, height);
-	const NSUInteger window_style = NSWindowStyleMaskTitled |
-		        					NSWindowStyleMaskClosable |
-									NSWindowStyleMaskMiniaturizable |
-									NSWindowStyleMaskResizable;
-	NSWindow* window  = [[[NSWindow alloc] initWithContentRect:frame
-		styleMask:window_style
-		backing:NSBackingStoreBuffered
-		defer:NO] autorelease];
-	[window setBackgroundColor:[NSColor blueColor]];
-	[window makeKeyAndOrderFront:window];
-	
-	NSString *ns_string_name = [[NSString alloc] initWithUTF8String: name];
-	[window setTitle:ns_string_name ];
+		NSString *ns_string_name = [[NSString alloc] initWithUTF8String: name];
+		[window setTitle:ns_string_name ];
 
-	WindowView* view = [[[WindowView alloc] init] autorelease];
-	[window setContentView:view];
+		WindowView* view = [[[WindowView alloc] init] autorelease];
+		[window setContentView:view];
 
-	CAMetalLayer* layer = [[CAMetalLayer alloc] init];
-	[view setWantsLayer:YES];
-	[view setLayer:layer];
+		CAMetalLayer* layer = [[CAMetalLayer alloc] init];
+		[view setWantsLayer:YES];
+		[view setLayer:layer];
 
-	[NSApp activateIgnoringOtherApps:YES];
-	
-	NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
-		untilDate:[NSDate distantFuture]
-		inMode:NSDefaultRunLoopMode
-		dequeue:YES];
-	[NSApp sendEvent:event];
-		
-	return (Window) {
-		.ns_window = window,
-		.ns_view = view,
-		.metal_layer = layer,
-	};
+		[NSApp activateIgnoringOtherApps:YES];
+
+		NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
+			untilDate:[NSDate distantFuture]
+			inMode:NSDefaultRunLoopMode
+			dequeue:YES];
+		[NSApp sendEvent:event];
+
+		return (Window) {
+			.ns_window = window,
+				.ns_view = view,
+				.metal_layer = layer,
+		};
+	}
 }
 
 bool window_handle_messages(const Window* const window)
@@ -165,9 +220,10 @@ bool window_handle_messages(const Window* const window)
         NSEvent* ev;
         do {
             ev = [NSApp nextEventMatchingMask: NSEventMaskAny
-                                    untilDate: nil
-                                       inMode: NSDefaultRunLoopMode
-                                      dequeue: YES];
+					untilDate: nil
+					inMode: NSDefaultRunLoopMode
+					dequeue: YES
+				];
             if (ev) {
                 // handle events here
                 [NSApp sendEvent: ev];
@@ -179,9 +235,11 @@ bool window_handle_messages(const Window* const window)
 
 void window_get_dimensions(const Window* const window, int* out_width, int* out_height)
 {
-	NSSize ns_size = [[window->ns_window contentView] frame].size;
-	*out_width = ns_size.width;
-	*out_height = ns_size.height;
+	@autoreleasepool {
+		NSSize ns_size = [[window->ns_window contentView] frame].size;
+		*out_width = ns_size.width;
+		*out_height = ns_size.height;
+	}
 }
 
 void window_get_mouse_pos(const Window* const window, int32_t* out_mouse_x, int32_t* out_mouse_y)
@@ -190,25 +248,8 @@ void window_get_mouse_pos(const Window* const window, int32_t* out_mouse_x, int3
 	*out_mouse_y = window->ns_view->cached_mouse_y;
 }
 
-//FCS TODO: per-platform keycode translation function, rather than all these constants.
-static const int KEY_ESCAPE = 53; //TODO:
-static const int KEY_SHIFT = 57; //TODO:
-static const int KEY_SPACE = 49; //TODO:
-
-static const int KEY_LEFT_MOUSE = 201; //TODO:
-static const int KEY_RIGHT_MOUSE = 202; //TODO:
-static const int KEY_MIDDLE_MOUSE = 203; //TODO:
-
-//FCS TODO: Make input per-window
-bool input_pressed(int key_code) {
-	if (key_code == KEY_LEFT_MOUSE)
-	{
-		return mouse_button_states[0];
-	}
-	else if (key_code == KEY_RIGHT_MOUSE)
-	{
-		return mouse_button_states[1];
-	}
+bool input_pressed(int key_code)
+{
 	return global_key_states[key_code];
 }
 

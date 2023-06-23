@@ -280,7 +280,9 @@ void gui_shutdown(GuiContext* in_context) {
 }
 
 void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state) {
-    
+   
+	// Clean up previous frame state before reassign
+    sb_free(in_context->prev_frame_state.open_windows);
     in_context->prev_frame_state = in_context->frame_state;
     in_context->frame_state = frame_state;
 
@@ -475,7 +477,7 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
         size_t num_chars = strlen(in_text);
     
         const float char_size = 22.5f; //TODO: style setting
-        const float spacing = -13.5f; //TODO: style setting
+        const float spacing = -12.0f; //TODO: style setting
 
         //TODO: Ensure we have enough height for char_size
 

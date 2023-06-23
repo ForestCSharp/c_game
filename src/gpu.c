@@ -119,7 +119,7 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
                         break;
                     } 
                 }
-            }   
+            } 
 
             //Check for correct queue families
             uint32_t queue_family_count = 0;
@@ -278,7 +278,7 @@ GpuContext gpu_create_context(const Window* const window) {
     const char* device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-		VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, //FCS TODO: MOLTEN_VK
+		VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, //FCS TODO: MOLTEN_VK is on Vulkan 1.2, so request extension
 #if defined(__APPLE__)
 		"VK_KHR_portability_subset",
 #endif
@@ -1035,9 +1035,9 @@ GpuSampler gpu_create_sampler(GpuContext* context, GpuSamplerCreateInfo* create_
         .magFilter = (VkFilter) create_info->mag_filter,
         .minFilter = (VkFilter) create_info->min_filter,
         .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
         .mipLodBias = 0.0f,
         .anisotropyEnable = create_info->max_anisotropy != 0,
         .maxAnisotropy = (float) create_info->max_anisotropy,
