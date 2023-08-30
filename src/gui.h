@@ -19,13 +19,13 @@
     -> low-level drawing functions
         -> gui_draw_<primitive>
         -> doesn't depend on context, only takes in draw_data
-
 */
 
 typedef struct GuiVert {
     Vec2 position;
     Vec2 uv;
     Vec4 color;
+	int32_t has_texture;
 } GuiVert;
 
 typedef struct GuiRect {
@@ -343,6 +343,7 @@ void gui_draw_quad(GuiDrawData* const in_draw_data, const GuiVert vertices[4]) {
 /* Currently takes in screen-space coordinates (i.e in pixels) and converts to [0,1] range where (0,0) is top-left and (1,1) is bottom right */
 void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect, const Vec4* const in_color, const GuiRect* const in_uv_rect) {
 
+	const bool has_uvs = in_uv_rect != NULL;
     const Vec2 position = in_rect->position;
     const Vec2 size = in_rect->size;
 
@@ -354,21 +355,25 @@ void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect,
             .position = position,
             .uv = uv_start,
             .color = *in_color,
+			.has_texture = has_uvs,
         },
         (GuiVert) {
             .position = vec2_add(position, vec2_new(size.x, 0)),
             .uv = vec2_add(uv_start, vec2_new(uv_size.x, 0)),
             .color = *in_color,
+			.has_texture = has_uvs,
         },
         (GuiVert) {
             .position = vec2_add(position, vec2_new(0, size.y)),
             .uv = vec2_add(uv_start, vec2_new(0, uv_size.y)),
             .color = *in_color,
+			.has_texture = has_uvs,
         },
         (GuiVert) {
             .position = vec2_add(position, size),
             .uv = vec2_add(uv_start, uv_size),
             .color = *in_color,
+			.has_texture = has_uvs,
         },
     });
 }

@@ -44,6 +44,7 @@ VkBool32 vulkan_debug_callback(
 
 uint32_t gpu_format_stride(GpuFormat format) {
     switch(format) {
+		case GPU_FORMAT_R32_SINT:
         case GPU_FORMAT_RGBA8_UNORM:
         case GPU_FORMAT_BGRA8_UNORM:
         case GPU_FORMAT_RGBA8_SRGB:
@@ -57,6 +58,7 @@ uint32_t gpu_format_stride(GpuFormat format) {
             return sizeof(float) * 4;
         default:
             printf("Error: Unhandled Format in gpu_format_stride\n");
+			exit(0);
             return 0;
     }
 }
@@ -1330,7 +1332,7 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         attribute_descriptions[i].location = location++;
         attribute_descriptions[i].format = (VkFormat) create_info->attribute_formats[i];
         attribute_descriptions[i].offset = total_stride;
-        
+
         total_stride += gpu_format_stride(create_info->attribute_formats[i]);
     }
 

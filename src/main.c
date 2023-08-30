@@ -24,6 +24,9 @@
 //FCS TODO: Testing collision
 #include "collision.h"
 
+//FCS TODO: Testing truetype
+#include "truetype.h"
+
 bool read_file(const char* filename, size_t* out_file_size, uint32_t** out_data) {
 	
 	FILE *file = fopen (filename, "rb");
@@ -127,6 +130,13 @@ float rand_float(float lower_bound, float upper_bound) {
 }
 
 int main() {
+	
+	TrueTypeFont true_type_font = {};
+	if (truetype_load_file("data/fonts/Menlo-Regular.ttf", &true_type_font))
+	{
+		printf("Font Loaded \n");
+		//exit(0);
+	}
 
 	test_collision(); //FCS TODO: See Collision.h
 
@@ -287,7 +297,9 @@ int main() {
 		GPU_FORMAT_RG32_SFLOAT,   // Position
 		GPU_FORMAT_RG32_SFLOAT,   // UVs
 		GPU_FORMAT_RGBA32_SFLOAT, // Color
+		GPU_FORMAT_R32_SINT,	  // Has Texture?
 	};
+	size_t num_gui_attributes = sizeof(gui_attribute_formats) / sizeof(gui_attribute_formats[0]);
 
 	GpuPipelineRenderingCreateInfo dynamic_rendering_info = {
 		.color_attachment_count = 1,
@@ -300,7 +312,7 @@ int main() {
 		.fragment_module = &gui_fragment_module,
 		.rendering_info = &dynamic_rendering_info,
 		.layout = &gui_pipeline_layout,
-		.num_attributes = 3,
+		.num_attributes = num_gui_attributes,
 		.attribute_formats = gui_attribute_formats,
 		.depth_stencil = {
 			.depth_test = false,
@@ -315,7 +327,6 @@ int main() {
 	gpu_destroy_shader_module(&gpu_context, &gui_vertex_module);
 	gpu_destroy_shader_module(&gpu_context, &gui_fragment_module);
 
-	//TODO: vbuf & ibuf
 	size_t max_gui_vertices = sizeof(GuiVert) * 10000; //TODO: need to support gpu buffer resizing
 	GpuBuffer gui_vertex_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_VERTEX_BUFFER, GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, max_gui_vertices, "gui vertex buffer");
 

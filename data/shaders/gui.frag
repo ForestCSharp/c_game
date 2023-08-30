@@ -6,13 +6,14 @@ layout(binding = 0) uniform sampler2D tex_sampler;
 layout(location = 0) in vec2 in_position;
 layout(location = 1) in vec2 in_uv;
 layout(location = 2) in vec4 in_color;
+layout(location = 3) flat in int in_has_texture;
 
 layout(location = 0) out vec4 out_color;
 
 #define TEXTURE_MULTISAMPLE 1
 
 void main() {
-    if (in_uv.x >= 0.0f) {
+    if (in_has_texture != 0) {
         out_color = vec4(0.0);
 
 #if TEXTURE_MULTISAMPLE

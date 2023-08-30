@@ -115,8 +115,8 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 }
 
 - (void) flagsChanged:(NSEvent *) event {
-    if ([event modifierFlags] & NSShiftKeyMask) {
-        //Do something
+    if ([event modifierFlags] & NSEventModifierFlagShift)
+	{
 		global_key_states[KEY_SHIFT] = true;
     }
 	else

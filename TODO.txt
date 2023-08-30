@@ -17,3 +17,5 @@ TODO: GPU surface creation should be handled by window.h (abstracted per-platfor
 TODO: Still some leaked memory reported by "leaks game" (before our rendering loop) 
 		- Create header with custom alloc functions and only use those
 
+
+TODO: better delta_time calculation (seemingly busted on MAC)
