@@ -49,8 +49,8 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 @interface WindowView : NSView
 {
 	NSTrackingArea* trackingArea;
-	@public int32_t cached_mouse_x;
-	@public int32_t cached_mouse_y;
+	@public i32 cached_mouse_x;
+	@public i32 cached_mouse_y;
 }
 @end
 
@@ -144,9 +144,9 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 - (void)mouseMoved:(NSEvent*)event {
 	NSPoint mouse_pos = event.locationInWindow;
 	NSSize view_size = self.frame.size;
-	cached_mouse_x = (int32_t) mouse_pos.x;
+	cached_mouse_x = (i32) mouse_pos.x;
 	// Note: In Cocoa, (0,0) is bottom left instead of top left like in Win32
-	cached_mouse_y = view_size.height - (int32_t) mouse_pos.y - 1;
+	cached_mouse_y = view_size.height - (i32) mouse_pos.y - 1;
 }
 
 - (void)mouseDragged:(NSEvent*)event {
@@ -242,7 +242,7 @@ void window_get_dimensions(const Window* const window, int* out_width, int* out_
 	}
 }
 
-void window_get_mouse_pos(const Window* const window, int32_t* out_mouse_x, int32_t* out_mouse_y)
+void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y)
 {
 	*out_mouse_x = window->ns_view->cached_mouse_x;
 	*out_mouse_y = window->ns_view->cached_mouse_y;

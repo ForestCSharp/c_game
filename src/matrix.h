@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdint.h>
+#include "types.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -21,9 +21,9 @@ const Mat4 mat4_identity = {
 
 static inline void mat4_print(const Mat4 m) {
     printf("[");
-    for (uint32_t row = 0; row < 4; ++row) {
+    for (u32 row = 0; row < 4; ++row) {
         if (row > 0) { printf(" "); }
-        for (uint32_t col = 0; col < 4; ++col) {
+        for (u32 col = 0; col < 4; ++col) {
             printf("%f", m.d[row][col]);
             if (row < 3 || col < 3) { printf(", "); }
         }
@@ -35,9 +35,9 @@ static inline void mat4_print(const Mat4 m) {
 Mat4 mat4_mult_mat4(const Mat4 a, const Mat4 b) {
     Mat4 result = {0};
 
-    for (uint32_t row = 0; row < 4; ++row) {
-        for (uint32_t col = 0; col < 4; ++col) {
-            for (uint32_t i = 0; i < 4; ++i) {
+    for (u32 row = 0; row < 4; ++row) {
+        for (u32 col = 0; col < 4; ++col) {
+            for (u32 i = 0; i < 4; ++i) {
                 result.d[row][col] += a.d[row][i] * b.d[i][col];
             }
         }

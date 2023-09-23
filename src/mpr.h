@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <stdbool.h>
+#include "types.h"
 #include <stdio.h>
 #include <math.h>
 #include <assert.h>

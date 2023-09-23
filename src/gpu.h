@@ -8,6 +8,7 @@
 
 #include <vulkan/vulkan.h>
 #include "window/window.h"
+#include "types.h"
 
 typedef enum GpuFormat {
     GPU_FORMAT_RGBA8_UNORM = VK_FORMAT_R8G8B8A8_UNORM,
@@ -52,7 +53,7 @@ typedef enum {
     GPU_MEMORY_PROPERTY_HOST_VISIBLE = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
     GPU_MEMORY_PROPERTY_HOST_COHERENT = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 } GpuMemoryPropertyFlagsBits;
-typedef uint32_t GpuMemoryPropertyFlags;
+typedef u32 GpuMemoryPropertyFlags;
 
 typedef enum GpuBufferUsageFlagBits {
     GPU_BUFFER_USAGE_TRANSFER_SRC = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -62,7 +63,7 @@ typedef enum GpuBufferUsageFlagBits {
     GPU_BUFFER_USAGE_INDEX_BUFFER = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
     GPU_BUFFER_USAGE_VERTEX_BUFFER = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 } GpuBufferUsageFlagBits;
-typedef uint32_t GpuBufferUsageFlags;
+typedef u32 GpuBufferUsageFlags;
 
 typedef enum GpuImageUsageFlagBits {
     GPU_IMAGE_USAGE_TRANSFER_SRC = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -72,7 +73,7 @@ typedef enum GpuImageUsageFlagBits {
     GPU_IMAGE_USAGE_COLOR_ATTACHMENT = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
     GPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
 } GpuImageUsageFlagBits;
-typedef uint32_t GpuImageUsageFlags;
+typedef u32 GpuImageUsageFlags;
 
 typedef enum GpuImageViewType {
     GPU_IMAGE_VIEW_1D = VK_IMAGE_VIEW_TYPE_1D,
@@ -104,7 +105,7 @@ typedef enum GpuShaderStageFlagBits {
     GPU_SHADER_STAGE_COMPUTE = VK_SHADER_STAGE_COMPUTE_BIT,
     GPU_SHADER_STAGE_ALL_GRAPHICS = VK_SHADER_STAGE_ALL_GRAPHICS,
 } GpuShaderStageFlagBits;
-typedef uint32_t GpuShaderStageFlags;
+typedef u32 GpuShaderStageFlags;
 
 typedef enum GpuPipelineStageFlagBits {
     GPU_PIPELINE_STAGE_TOP_OF_PIPE = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -122,14 +123,14 @@ typedef enum GpuPipelineStageFlagBits {
     GPU_PIPELINE_STAGE_ALL_GRAPHICS = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
     GPU_PIPELINE_STAGE_ALL_COMPUTE = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 } GpuPipelineStage;
-typedef uint32_t GpuPipelineStageFlags;
+typedef u32 GpuPipelineStageFlags;
 
 typedef struct GpuMemoryType {
     struct GpuMemoryBlock* memory_blocks;
 } GpuMemoryType;
 
 typedef struct GpuMemoryBlock {
-    uint64_t size;
+    u64 size;
     struct GpuMemoryRegion* free_list;
     struct GpuMemoryRegion* used_list;
     struct GpuMemoryType* owning_type;
@@ -137,9 +138,9 @@ typedef struct GpuMemoryBlock {
 } GpuMemoryBlock;
 
 typedef struct GpuMemoryRegion {
-    uint64_t padding; //Padding on front of region (for alignment requirement)
-    uint64_t offset;
-    uint64_t size;
+    u64 padding; //Padding on front of region (for alignment requirement)
+    u64 offset;
+    u64 size;
     struct GpuMemoryBlock* owning_block;
     struct GpuMemory* alloc_ref; //Null in free list, non-null in used_list
 } GpuMemoryRegion;
@@ -156,9 +157,9 @@ typedef struct GpuBuffer {
 } GpuBuffer;
 
 typedef struct GpuImageCreateInfo {
-    uint32_t dimensions[3]; //determines VkImageType
+    u32 dimensions[3]; //determines VkImageType
     GpuFormat format;
-    uint32_t mip_levels;
+    u32 mip_levels;
     GpuImageUsageFlags usage;
     GpuMemoryPropertyFlags memory_properties;
 } GpuImageCreateInfo;
@@ -183,7 +184,7 @@ typedef struct GpuImageView {
 typedef struct GpuSamplerCreateInfo {
     GpuFilter mag_filter;
     GpuFilter min_filter;
-    uint32_t  max_anisotropy;
+    u32  max_anisotropy;
 } GpuSamplerCreateInfo;
 
 typedef struct GpuSampler {
@@ -203,12 +204,12 @@ typedef struct GpuDescriptorWriteImage {
 
 typedef struct GpuDescriptorWriteBuffer {
     GpuBuffer* buffer;
-    uint64_t offset;
-    uint64_t range;
+    u64 offset;
+    u64 range;
 } GpuDescriptorWriteBuffer;
 
 typedef struct GpuDescriptorBinding {
-    uint32_t binding;
+    u32 binding;
     GpuDescriptorType type;
     GpuShaderStageFlags stage_flags;
 } GpuDescriptorBinding;
@@ -236,7 +237,7 @@ typedef struct GpuShaderModule {
 } GpuShaderModule;
 
 typedef struct GpuDescriptorLayout {
-    uint32_t binding_count;
+    u32 binding_count;
     GpuDescriptorBinding* bindings;
 } GpuDescriptorLayout;
 
@@ -256,7 +257,7 @@ typedef struct GpuPipelineDepthStencilState {
     should be referenced in GpuGraphicsPipelineCreateInfo when 
     creating a pipeline */
 typedef struct GpuPipelineRenderingCreateInfo {
-    uint32_t color_attachment_count;
+    u32 color_attachment_count;
     GpuFormat* color_formats;
     GpuFormat depth_format;
     GpuFormat stencil_format;
@@ -269,7 +270,7 @@ typedef struct GpuGraphicsPipelineCreateInfo {
 	GpuRenderPass* render_pass;
     GpuPipelineRenderingCreateInfo* rendering_info;
 	GpuPipelineLayout* layout;
-    uint32_t num_attributes;
+    u32 num_attributes;
     GpuFormat* attribute_formats;
     GpuPipelineDepthStencilState depth_stencil;
     bool enable_color_blending; //FCS TODO: need to pass in per-color attachment for this
@@ -282,16 +283,16 @@ typedef struct GpuPipeline {
 
 typedef struct GpuFramebufferCreateInfo {
     GpuRenderPass* render_pass;
-    uint32_t width;
-    uint32_t height;
-    uint32_t attachment_count;
+    u32 width;
+    u32 height;
+    u32 attachment_count;
     GpuImageView* attachments;
 } GpuFramebufferCreateInfo;
 
 typedef struct GpuFramebuffer {
     VkFramebuffer vk_framebuffer;
-    uint32_t width;
-    uint32_t height;
+    u32 width;
+    u32 height;
 } GpuFramebuffer;
 
 typedef struct GpuCommandBuffer {
@@ -300,7 +301,7 @@ typedef struct GpuCommandBuffer {
 
 typedef struct GpuClearDepthStencil {
     float depth;
-    uint32_t stencil;
+    u32 stencil;
 } GpuClearDepthStencil;
 
 typedef union GpuClearValue {
@@ -317,9 +318,9 @@ typedef struct GpuRenderingAttachmentInfo {
 } GpuRenderingAttachmentInfo;
 
 typedef struct GpuRenderingInfo {
-    uint32_t render_width;
-    uint32_t render_height;
-    uint32_t color_attachment_count;
+    u32 render_width;
+    u32 render_height;
+    u32 color_attachment_count;
     GpuRenderingAttachmentInfo* color_attachments;
     GpuRenderingAttachmentInfo* depth_attachment;
     GpuRenderingAttachmentInfo* stencil_attachment;
@@ -328,7 +329,7 @@ typedef struct GpuRenderingInfo {
 typedef struct GpuRenderPassBeginInfo {
     GpuRenderPass* render_pass;
     GpuFramebuffer* framebuffer; 
-    uint32_t num_clear_values;
+    u32 num_clear_values;
     const GpuClearValue* clear_values;
 } GpuRenderPassBeginInfo;
 
@@ -371,7 +372,7 @@ typedef struct {
     VkPresentModeKHR present_mode;
     VkSurfaceFormatKHR surface_format;
     VkSwapchainKHR swapchain;
-    uint32_t swapchain_image_count;
+    u32 swapchain_image_count;
     GpuImage* swapchain_images;
     GpuImageView* swapchain_image_views;
 
@@ -387,15 +388,15 @@ void       gpu_destroy_context(GpuContext* context);
 void       gpu_wait_idle(GpuContext* context);
 
 void       gpu_resize_swapchain(GpuContext* context, const Window* const window);
-uint32_t   gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore);
+u32   gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore);
 
-GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage, GpuMemoryPropertyFlags memory_properties, uint64_t buffer_size, const char* debug_name);
+GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage, GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char* debug_name);
 void      gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer);
-void      gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, uint64_t upload_size, void* upload_data);
+void      gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, u64 upload_size, void* upload_data);
 
 GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, const char* debug_name);
 void     gpu_destroy_image(GpuContext* context, GpuImage* image);
-void     gpu_upload_image(GpuContext* context, GpuImage* image, uint64_t upload_width, uint64_t upload_height, void* upload_data);
+void     gpu_upload_image(GpuContext* context, GpuImage* image, u64 upload_width, u64 upload_height, void* upload_data);
 
 GpuImageView gpu_create_image_view(GpuContext* context, GpuImageViewCreateInfo* create_info);
 void         gpu_destroy_image_view(GpuContext* context, GpuImageView* image_view);
@@ -406,15 +407,15 @@ void       gpu_destroy_sampler(GpuContext* context, GpuSampler* sampler);
 //FIXME: consolidate final two args somehow
 GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, GpuPipelineLayout* pipeline_layout);
 void             gpu_destroy_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set);
-void             gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, uint32_t write_count, GpuDescriptorWrite* descriptor_writes);
+void             gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, u32 write_count, GpuDescriptorWrite* descriptor_writes);
 
-void       gpu_map_memory(GpuContext* context, GpuMemory* memory, uint64_t offset, uint64_t size, void** ppData);
+void       gpu_map_memory(GpuContext* context, GpuMemory* memory, u64 offset, u64 size, void** ppData);
 void       gpu_unmap_memory(GpuContext* context, GpuMemory* memory);
 
-GpuShaderModule gpu_create_shader_module(GpuContext* context, uint64_t code_size, const uint32_t* code);
+GpuShaderModule gpu_create_shader_module(GpuContext* context, u64 code_size, const u32* code);
 void            gpu_destroy_shader_module(GpuContext* context, GpuShaderModule* shader_module);
 
-GpuRenderPass gpu_create_render_pass(GpuContext* context, uint32_t color_attachment_count, GpuAttachmentDesc* color_attachments, GpuAttachmentDesc* depth_stencil_attachment);
+GpuRenderPass gpu_create_render_pass(GpuContext* context, u32 color_attachment_count, GpuAttachmentDesc* color_attachments, GpuAttachmentDesc* depth_stencil_attachment);
 void          gpu_destroy_render_pass(GpuContext* context, GpuRenderPass* render_pass);
 
 GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorLayout* descriptor_layout);
@@ -446,13 +447,13 @@ void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* ver
 void gpu_cmd_bind_descriptor_set(GpuCommandBuffer* command_buffer, GpuPipelineLayout* layout, GpuDescriptorSet* descriptor_set);
 
 //TODO: non-indexed-draw, instance_count for both draw types
-void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, uint32_t index_count);
-void gpu_cmd_draw(GpuCommandBuffer* command_buffer, uint32_t vertex_count);
+void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, u32 index_count);
+void gpu_cmd_draw(GpuCommandBuffer* command_buffer, u32 vertex_count);
 
 void gpu_cmd_set_viewport(GpuCommandBuffer* command_buffer, GpuViewport* viewport);
 
-void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, uint64_t size);
-void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image, GpuImageLayout image_layout, uint64_t width, uint64_t height);
+void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, u64 size);
+void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image, GpuImageLayout image_layout, u64 width, u64 height);
 
 void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer, GpuImageBarrier* image_barrier);
 //FCS TODO: gpu_cmd_buffer_barrier
@@ -460,7 +461,7 @@ void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer, GpuImageBarrier* im
 
 //TODO: queue argument
 void gpu_queue_submit(GpuContext* context, GpuCommandBuffer* command_buffer, GpuSemaphore* wait_semaphore, GpuSemaphore* signal_semaphore, GpuFence* signal_fence);
-void gpu_queue_present(GpuContext* context, uint32_t image_index, GpuSemaphore* wait_semaphore);
+void gpu_queue_present(GpuContext* context, u32 image_index, GpuSemaphore* wait_semaphore);
 
 GpuFence gpu_create_fence(GpuContext* context, bool signaled);
 void     gpu_destroy_fence(GpuContext* context, GpuFence* fence);

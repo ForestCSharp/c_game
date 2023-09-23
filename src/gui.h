@@ -1,6 +1,5 @@
 #pragma once
-#include <stdint.h>
-#include <stdbool.h>
+#include "types.h"
 #include "stretchy_buffer.h"
 #include "vec.h"
 #include "basic_math.h"
@@ -25,13 +24,13 @@ typedef struct GuiVert {
     Vec2 position;
     Vec2 uv;
     Vec4 color;
-	int32_t has_texture;
+	i32 has_texture;
 } GuiVert;
 
 typedef struct GuiRect {
     Vec2 position;
     Vec2 size;
-    uint32_t z_order;
+    u32 z_order;
 } GuiRect;
 
 typedef struct GuiWindow {
@@ -47,7 +46,7 @@ typedef struct GuiWindow {
     bool is_moving;         //Are we currently dragging this window
     bool is_resizing;       //Are we currently resizing this window
     bool is_scrolling;      //Are we currently scrolling this window
-    uint32_t num_controls;  //Next Index in window's list of controls
+    u32 num_controls;  //Next Index in window's list of controls
 
     // GuiDrawData draw_data;  //Stores window's local draw data //TODO:
 } GuiWindow;
@@ -61,7 +60,7 @@ typedef struct GuiFrameState {
 
 typedef struct GuiDrawData {
     sbuffer(GuiVert)  vertices;
-    sbuffer(uint32_t) indices;
+    sbuffer(u32) indices;
 } GuiDrawData;
 
 #define BFF_ID 0xF2BF
@@ -73,15 +72,15 @@ typedef enum GuiFontType {
 } GuiFontType;
 
 typedef struct GuiFont {
-    uint32_t            image_width;
-    uint32_t            image_height;
-    uint32_t            cell_width;
-    uint32_t            cell_height;
+    u32            image_width;
+    u32            image_height;
+    u32            cell_width;
+    u32            cell_height;
     GuiFontType         font_type;
     char                first_char;
-    uint8_t             char_widths[256];
-    sbuffer(uint8_t)    image_data;
-    uint64_t            image_data_size;
+    u8             char_widths[256];
+    sbuffer(u8)    image_data;
+    u64            image_data_size;
 } GuiFont;
 
 typedef struct GuiContext {
@@ -140,7 +139,7 @@ bool gui_load_font(const char* filename, GuiFont* out_font) {
     if (file && out_font) {
         *out_font = (GuiFont){};
 
-        uint16_t bff_id;
+        u16 bff_id;
         if (fread(&bff_id, 2, 1, file) != 1 || bff_id != BFF_ID) {
             return false;
         }
@@ -157,7 +156,7 @@ bool gui_load_font(const char* filename, GuiFont* out_font) {
             return false;
         }
 
-        uint8_t font_type;
+        u8 font_type;
         if (fread(&font_type, 1, 1, file) == 1) {
             out_font->font_type = font_type;
         } else {
@@ -192,13 +191,13 @@ bool gui_load_font(const char* filename, GuiFont* out_font) {
 
 bool gui_font_get_uvs(const GuiFont* const in_font, char in_char, GuiRect* out_uv_rect) {
    
-    int32_t chars_per_row = in_font->image_width / in_font->cell_width;
-    int32_t chars_per_col = in_font->image_height / in_font->cell_height;
-    int32_t total_chars = chars_per_row * chars_per_col;
+    i32 chars_per_row = in_font->image_width / in_font->cell_width;
+    i32 chars_per_col = in_font->image_height / in_font->cell_height;
+    i32 total_chars = chars_per_row * chars_per_col;
     
     if (in_char >= in_font->first_char && in_char <= in_font->first_char + total_chars) {
-        int32_t row = (in_char - in_font->first_char) / chars_per_row;
-        int32_t col = (in_char - in_font->first_char) - (row * chars_per_row);
+        i32 row = (in_char - in_font->first_char) / chars_per_row;
+        i32 col = (in_char - in_font->first_char) - (row * chars_per_row);
 
         float row_factor = (float)in_font->cell_height / (float)in_font->image_height;
         float col_factor = (float)in_font->cell_width  / (float)in_font->image_width;
@@ -292,7 +291,7 @@ void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state) {
     sb_free(in_context->draw_data.indices);
 }
 
-GuiRect gui_make_fullscreen_rect(const GuiContext* const in_context, const uint32_t in_z_order) {
+GuiRect gui_make_fullscreen_rect(const GuiContext* const in_context, const u32 in_z_order) {
     return (GuiRect) {
         .position = {
             .x = 0,
@@ -306,7 +305,7 @@ GuiRect gui_make_fullscreen_rect(const GuiContext* const in_context, const uint3
 /* positions: [0,1] range */
 void gui_draw_tri(GuiDrawData* const in_draw_data, const GuiVert vertices[3]) {
 
-    uint32_t next_vert_idx = sb_count(in_draw_data->vertices);
+    u32 next_vert_idx = sb_count(in_draw_data->vertices);
 
     //Indices
     sb_push(in_draw_data->indices, next_vert_idx + 0);
@@ -322,7 +321,7 @@ void gui_draw_tri(GuiDrawData* const in_draw_data, const GuiVert vertices[3]) {
 /* positions: [0,1] range */
 void gui_draw_quad(GuiDrawData* const in_draw_data, const GuiVert vertices[4]) {
 
-    uint32_t next_vert_idx = sb_count(in_draw_data->vertices);
+    u32 next_vert_idx = sb_count(in_draw_data->vertices);
 
     //Indices
     sb_push(in_draw_data->indices, next_vert_idx + 0);
@@ -378,7 +377,7 @@ void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect,
     });
 }
 
-Vec2 recursive_bezier(const float t, const uint32_t num_points, const Vec2* in_points) {
+Vec2 recursive_bezier(const float t, const u32 num_points, const Vec2* in_points) {
     assert(num_points > 0);
 
     switch (num_points)
@@ -388,7 +387,7 @@ Vec2 recursive_bezier(const float t, const uint32_t num_points, const Vec2* in_p
     }
 }
 
-Vec2 recursive_bezier_deriv(const float t, const uint32_t num_points, const Vec2* in_points) {
+Vec2 recursive_bezier_deriv(const float t, const u32 num_points, const Vec2* in_points) {
     assert(num_points > 0);
 
     switch (num_points)
@@ -406,7 +405,7 @@ Vec2 recursive_bezier_deriv(const float t, const uint32_t num_points, const Vec2
     }
 }
 
-void gui_draw_bezier(GuiDrawData* const in_draw_data, const uint32_t num_points, Vec2* points, const uint32_t num_samples, const Vec4 color, const float width) {
+void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const float width) {
     assert(num_points > 0);
     assert(num_samples > 0);
 
@@ -414,7 +413,7 @@ void gui_draw_bezier(GuiDrawData* const in_draw_data, const uint32_t num_points,
 
     float current_t = 0.0f;
    
-    for (uint32_t current_idx = 0; current_idx < num_samples; ++current_idx) {
+    for (u32 current_idx = 0; current_idx < num_samples; ++current_idx) {
         const float next_t = current_t + step_amount;
 
         const Vec2 current_pos = recursive_bezier(current_t, num_points, points);
@@ -462,12 +461,12 @@ void gui_draw_bezier(GuiDrawData* const in_draw_data, const uint32_t num_points,
 }
 
 /* Same as above, but in screen-space */
-void gui_bezier(GuiContext* const in_context, const uint32_t num_points, Vec2* points, const uint32_t num_samples, const Vec4 color, const float width) {
+void gui_bezier(GuiContext* const in_context, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const float width) {
     Vec2 normalized_points[num_points];
     memcpy(normalized_points, points, sizeof(Vec2) * num_points);
 
     const Vec2 window_size = in_context->frame_state.screen_size;
-    for (uint32_t i = 0; i < num_points; ++i) {
+    for (u32 i = 0; i < num_points; ++i) {
         normalized_points[i].x /= window_size.x;
         normalized_points[i].y /= window_size.y;
     }
@@ -547,7 +546,7 @@ void gui_text(GuiContext* const in_context, const char* in_text, Vec2 position, 
 //Hit-Test with previous-frame geometry: fail if we intersect with a higher z-order window OR a higher z-order window is moving/resizing
 //FCS TODO: Make sure to handle is_expanded
 bool gui_hit_test(const GuiContext* const in_context, const GuiRect in_rect) {
-    for (uint32_t i = 0; i < sb_count(in_context->prev_frame_state.open_windows); ++i) {
+    for (u32 i = 0; i < sb_count(in_context->prev_frame_state.open_windows); ++i) {
         const GuiWindow current_window = in_context->prev_frame_state.open_windows[i];
         const GuiRect window_rect = current_window.window_rect;
         const bool current_window_is_busy = current_window.is_moving || current_window.is_resizing || current_window.is_scrolling;
@@ -737,13 +736,13 @@ bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_re
     bool out_success = false;
     if (in_window->is_open && in_window->is_expanded) {
         //Store and increment control index
-        const uint32_t control_index = in_window->num_controls++;
+        const u32 control_index = in_window->num_controls++;
 
         //FCS TODO: Scrolling math
-        const uint32_t first_visible_index = (uint32_t) in_window->scroll_amount;
+        const u32 first_visible_index = (u32) in_window->scroll_amount;
         // const float first_visible_offset = float_fractional(in_window->scroll_amount);
-        const uint32_t max_visible_controls = (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
-        const uint32_t last_visible_index = first_visible_index + max_visible_controls;
+        const u32 max_visible_controls = (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
+        const u32 last_visible_index = first_visible_index + max_visible_controls;
                 
         const GuiRect* const window_rect = &in_window->window_rect;
         const Vec2 window_pos = window_rect->position;
@@ -812,7 +811,7 @@ void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window) {
             if (has_space_for_scrollbar) {   //Scrollbar FCS TODO: only draw if we need to be able to scroll
             
                 //TODO: option to allow overscrolling
-                const uint32_t max_visible_controls = (window_rect->size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
+                const u32 max_visible_controls = (window_rect->size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
                 const float max_scroll_amount = (float) MAX(0, in_window->num_controls - (window_allow_overscroll ? 1 : max_visible_controls));
                 in_window->scroll_amount = CLAMP(in_window->scroll_amount, 0.0, max_scroll_amount);
 

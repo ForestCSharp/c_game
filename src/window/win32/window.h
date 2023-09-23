@@ -107,7 +107,7 @@ void window_get_dimensions(const Window* const window, int* out_width, int* out_
     }
 }
 
-void window_get_mouse_pos(const Window* const window, int32_t* out_mouse_x, int32_t* out_mouse_y) {
+void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y) {
     POINT out_point;
     //TODO: Check these two fns succeeded
     GetCursorPos(&out_point);

@@ -42,7 +42,7 @@ VkBool32 vulkan_debug_callback(
     return VK_FALSE;
 }
 
-uint32_t gpu_format_stride(GpuFormat format) {
+u32 gpu_format_stride(GpuFormat format) {
     switch(format) {
 		case GPU_FORMAT_R32_SINT:
         case GPU_FORMAT_RGBA8_UNORM:
@@ -77,7 +77,7 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
     VkSurfaceFormatKHR surface_format = {};
     VkPresentModeKHR present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
 
-    uint32_t physical_device_count = 0;
+    u32 physical_device_count = 0;
     VK_CHECK(vkEnumeratePhysicalDevices(instance, &physical_device_count, NULL));
     if (physical_device_count > 0)
     {
@@ -85,7 +85,7 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
         VK_CHECK(vkEnumeratePhysicalDevices(instance, &physical_device_count, physical_devices));
         for (int i = 0; i < physical_device_count; ++i)
         {
-            uint32_t format_count;
+            u32 format_count;
             VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, NULL));
             bool found_format = false;
             if (format_count > 0) {
@@ -104,7 +104,7 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
 
             assert(found_format);
 
-            uint32_t present_mode_count;
+            u32 present_mode_count;
             VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface, &present_mode_count, NULL));
             if (present_mode_count > 0) {
                 VkPresentModeKHR present_modes[present_mode_count];
@@ -124,7 +124,7 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
             } 
 
             //Check for correct queue families
-            uint32_t queue_family_count = 0;
+            u32 queue_family_count = 0;
             vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[i], &queue_family_count, NULL);
             if (queue_family_count > 0)
             {
@@ -168,13 +168,13 @@ GpuContext gpu_create_context(const Window* const window) {
         .apiVersion = VK_API_VERSION_1_3, 
     };
 
-    uint32_t enumerated_layer_count;
+    u32 enumerated_layer_count;
     VK_CHECK(vkEnumerateInstanceLayerProperties(&enumerated_layer_count, NULL));
     if (enumerated_layer_count > 0) {
         VkLayerProperties enumerated_layer_properties[enumerated_layer_count];
         VK_CHECK(vkEnumerateInstanceLayerProperties(&enumerated_layer_count, enumerated_layer_properties));
 
-        for (uint32_t i = 0; i < enumerated_layer_count; ++i) {
+        for (u32 i = 0; i < enumerated_layer_count; ++i) {
             printf("Instance Layer: %s\n", enumerated_layer_properties[i].layerName);
         }
     }
@@ -183,7 +183,7 @@ GpuContext gpu_create_context(const Window* const window) {
         "VK_LAYER_KHRONOS_validation",
         // "VK_LAYER_LUNARG_api_dump"
     };
-    uint32_t validation_layer_count = sizeof(validation_layers) / sizeof(validation_layers[0]);
+    u32 validation_layer_count = sizeof(validation_layers) / sizeof(validation_layers[0]);
 
 	//FCS TODO: Clean up defines. query surface extension string from window system?
     const char* extensions[] = {
@@ -197,9 +197,9 @@ GpuContext gpu_create_context(const Window* const window) {
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
-    uint32_t extension_count = sizeof(extensions) / sizeof(extensions[0]);
+    u32 extension_count = sizeof(extensions) / sizeof(extensions[0]);
 	printf("Extensions (%u)\n", extension_count);
-	for (int32_t i = 0; i < extension_count; ++i)
+	for (i32 i = 0; i < extension_count; ++i)
 	{
 		printf("\t%s\n", extensions[i]);
 	}
@@ -285,7 +285,7 @@ GpuContext gpu_create_context(const Window* const window) {
 		"VK_KHR_portability_subset",
 #endif
     };
-    uint32_t device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
+    u32 device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
 
 
     VkPhysicalDeviceSynchronization2Features sync_2_features = {
@@ -424,7 +424,7 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
         .height = CLAMP(swapchain_height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height),
     };
 
-    uint32_t swapchain_image_count = surface_capabilities.minImageCount + 1;
+    u32 swapchain_image_count = surface_capabilities.minImageCount + 1;
     if (swapchain_image_count > surface_capabilities.maxImageCount) {
         swapchain_image_count = surface_capabilities.maxImageCount;
     }
@@ -478,7 +478,7 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
         free(context->swapchain_images);
     }
     context->swapchain_images = malloc(swapchain_image_count * sizeof(GpuImage));
-    for (int32_t i = 0; i < swapchain_image_count; ++i) {
+    for (i32 i = 0; i < swapchain_image_count; ++i) {
         context->swapchain_images[i] = (GpuImage) {
             .vk_image = swapchain_images[i],
             .memory = NULL, //Memory managed externally
@@ -503,17 +503,17 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
 // vkQueuePresentKHR in the next chapter, because their failure does not necessarily mean 
 // that the program should terminate, unlike the functions we've seen so far.
 
-uint32_t gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore) {
-    uint32_t image_index;
+u32 gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore) {
+    u32 image_index;
     vkAcquireNextImageKHR(context->device, context->swapchain, UINT64_MAX, semaphore->vk_semaphore, VK_NULL_HANDLE, &image_index);
     return image_index;
 }
 
-uint32_t vulkan_find_memory_type(VkPhysicalDevice* physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties) {
+u32 vulkan_find_memory_type(VkPhysicalDevice* physical_device, u32 type_filter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memory_properties;
     vkGetPhysicalDeviceMemoryProperties(*physical_device, &memory_properties);
 
-    for (uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i)
+    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i)
     {
         if ((type_filter & (1 << i)) && ((memory_properties.memoryTypes[i].propertyFlags & properties) == properties)) {
             return i;
@@ -536,9 +536,9 @@ uint32_t vulkan_find_memory_type(VkPhysicalDevice* physical_device, uint32_t typ
 
 VkDeviceSize gpu_memory_used = 0;
 
-GpuMemory* gpu_allocate_memory(GpuContext* context, uint32_t type_filter, GpuMemoryPropertyFlags memory_properties, uint64_t alloc_size, uint64_t alignment) {
+GpuMemory* gpu_allocate_memory(GpuContext* context, u32 type_filter, GpuMemoryPropertyFlags memory_properties, u64 alloc_size, u64 alignment) {
 
-    uint32_t memory_type_index = vulkan_find_memory_type(&context->physical_device, type_filter, memory_properties);
+    u32 memory_type_index = vulkan_find_memory_type(&context->physical_device, type_filter, memory_properties);
     assert(memory_type_index < context->num_memory_types);
 
     GpuMemoryType* memory_type = &context->memory_types[memory_type_index];
@@ -546,18 +546,18 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, uint32_t type_filter, GpuMem
     printf("memory type index: %i\n", memory_type_index);
 
     //Search Blocks of Memory Type for free list entry of sufficient size
-    for (uint32_t block_index = 0; block_index < sb_count(memory_type->memory_blocks); ++block_index) {
+    for (u32 block_index = 0; block_index < sb_count(memory_type->memory_blocks); ++block_index) {
         printf("\tblock index: %i \n", block_index);
         GpuMemoryBlock* block = &memory_type->memory_blocks[block_index];
         assert(block);
 
-        for (uint32_t free_list_index = 0; free_list_index < sb_count(block->free_list); ++free_list_index) {
+        for (u32 free_list_index = 0; free_list_index < sb_count(block->free_list); ++free_list_index) {
             printf("\t\tfree_list_index: %i\n", free_list_index);
             GpuMemoryRegion* free_list_region = &block->free_list[free_list_index];
             assert(free_list_region);
 
-            uint64_t padding = alignment - free_list_region->offset % alignment;
-            uint64_t new_region_size = alloc_size + padding;
+            u64 padding = alignment - free_list_region->offset % alignment;
+            u64 new_region_size = alloc_size + padding;
 
             printf("Alignment: %llu Offset: %llu Padding: %llu\n", alignment, free_list_region->offset, padding);
 
@@ -575,7 +575,7 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, uint32_t type_filter, GpuMem
                 out_region->alloc_ref->memory_properties = memory_properties;
 
                 //Fix backwards reference in used_list elements
-                for (uint32_t i = 0; i < sb_count(block->used_list); ++i) {
+                for (u32 i = 0; i < sb_count(block->used_list); ++i) {
                     block->used_list[i].alloc_ref->memory_region = &block->used_list[i];
                 }
 
@@ -596,7 +596,7 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, uint32_t type_filter, GpuMem
 
     //If we've reached here, we need a new allocation
 
-    uint32_t heap_index = context->vk_memory_properties.memoryTypes[memory_type_index].heapIndex;
+    u32 heap_index = context->vk_memory_properties.memoryTypes[memory_type_index].heapIndex;
     VkDeviceSize heap_size = context->vk_memory_properties.memoryHeaps[heap_index].size;
     VkDeviceSize allocation_size = MIN(heap_size / 2, GPU_BLOCK_SIZE); //Don't try to allocate entire heap if below the size of GPU_BLOCK_SIZE
 
@@ -632,12 +632,12 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, uint32_t type_filter, GpuMem
     printf("ALLOC: NUM BLOCKS: %i\n", sb_count(memory_type->memory_blocks));
 
     // fix backwards-references in free/used lists of old blocks
-    for (uint32_t block_idx = 0; block_idx < sb_count(memory_type->memory_blocks) - 1; ++block_idx) {
+    for (u32 block_idx = 0; block_idx < sb_count(memory_type->memory_blocks) - 1; ++block_idx) {
         GpuMemoryBlock* block = &memory_type->memory_blocks[block_idx];
-        for (uint32_t free_idx = 0; free_idx < sb_count(block->free_list); ++free_idx) {
+        for (u32 free_idx = 0; free_idx < sb_count(block->free_list); ++free_idx) {
             block->free_list[free_idx].owning_block = block;
         }
-        for (uint32_t used_idx = 0; used_idx < sb_count(block->used_list); ++used_idx) {
+        for (u32 used_idx = 0; used_idx < sb_count(block->used_list); ++used_idx) {
             block->used_list[used_idx].owning_block = block;
         }
     }
@@ -680,14 +680,14 @@ void gpu_free_memory(GpuContext* context, GpuMemory* gpu_memory) {
     assert(owning_block);
 
     //1. Find where our element lies in used_list
-    uint32_t used_list_index = memory_region - owning_block->used_list;
+    u32 used_list_index = memory_region - owning_block->used_list;
     printf("used_list_index: %u count: %u \n", used_list_index, sb_count(owning_block->used_list));
     assert(used_list_index < sb_count(owning_block->used_list));
 
     //FIXME: if free_list count is 0, just add a new entry, otherwise do the search below
 
     //2. Find insertion point in free list (used_region->offset > current_free_region->offset)
-    for (uint32_t free_list_index = 0; free_list_index < sb_count(owning_block->free_list); ++free_list_index) {
+    for (u32 free_list_index = 0; free_list_index < sb_count(owning_block->free_list); ++free_list_index) {
         GpuMemoryRegion* free_entry = &owning_block->free_list[free_list_index];
         if (memory_region->offset < free_entry->offset) {
             printf("free_list_index: %u \n", free_list_index);
@@ -698,7 +698,7 @@ void gpu_free_memory(GpuContext* context, GpuMemory* gpu_memory) {
             memory_region->padding = 0;
             //TODO: Check this padding logic
 
-            const int32_t previous_index = free_list_index - 1;
+            const i32 previous_index = free_list_index - 1;
             GpuMemoryRegion* preceding_entry = previous_index >= 0 ? &owning_block->free_list[previous_index] : NULL;
 
             const bool merge_with_current = memory_region->offset + memory_region->size == free_entry->offset;
@@ -732,7 +732,7 @@ void gpu_free_memory(GpuContext* context, GpuMemory* gpu_memory) {
             sb_del(owning_block->used_list, used_list_index);
 
             //Fix backwards reference in used_list elements
-            for (uint32_t i = 0; i < sb_count(owning_block->used_list); ++i) {
+            for (u32 i = 0; i < sb_count(owning_block->used_list); ++i) {
                 owning_block->used_list[i].alloc_ref->memory_region = &owning_block->used_list[i];
             }
 
@@ -750,7 +750,7 @@ void gpu_free_memory(GpuContext* context, GpuMemory* gpu_memory) {
         vkFreeMemory(context->device, owning_block->vk_memory, NULL);
         GpuMemoryType* owning_type = owning_block->owning_type;
         assert(owning_type);
-        uint32_t owning_block_index = owning_block - owning_type->memory_blocks;
+        u32 owning_block_index = owning_block - owning_type->memory_blocks;
         printf("BLOCK INDEX TO REMOVE: %u \n", owning_block_index);
         sb_del(owning_type->memory_blocks, owning_block_index);
 
@@ -763,7 +763,7 @@ void gpu_free_memory(GpuContext* context, GpuMemory* gpu_memory) {
 // 1. Test all 4 free-list merge cases
 // 2. Ensure that the loop in gpu_free_memory is always able to succeed (should be true as memory is allocated from the front of the block)
 
-GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage, GpuMemoryPropertyFlags memory_properties, uint64_t buffer_size, const char* debug_name) {
+GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage, GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char* debug_name) {
     VkBufferCreateInfo buffer_create_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size  = buffer_size,
@@ -785,7 +785,7 @@ GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usag
         VkDebugUtilsObjectNameInfoEXT vk_name_info = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             .objectType = VK_OBJECT_TYPE_BUFFER,
-            .objectHandle = (uint64_t)vk_buffer, // this cast may vary by platform/compiler
+            .objectHandle = (u64)vk_buffer, // this cast may vary by platform/compiler
             .pObjectName = debug_name,
         };
         context->pfn_set_object_name(context->device, &vk_name_info);
@@ -804,14 +804,14 @@ void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer) {
     }
 }
 
-void gpu_memcpy(GpuContext* context, GpuMemory* memory, uint64_t upload_size, void* upload_data) {
+void gpu_memcpy(GpuContext* context, GpuMemory* memory, u64 upload_size, void* upload_data) {
     void* pData;
     gpu_map_memory(context, memory, 0, upload_size, &pData);
     memcpy(pData, upload_data, upload_size);
     gpu_unmap_memory(context, memory);
 }
 
-void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, uint64_t upload_size, void* upload_data) {
+void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, u64 upload_size, void* upload_data) {
     assert(upload_size <= buffer->memory->memory_region->size);
     if (buffer->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE) {
         gpu_memcpy(context, buffer->memory, upload_size, upload_data);
@@ -946,7 +946,7 @@ GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, 
         VkDebugUtilsObjectNameInfoEXT vk_name_info = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             .objectType = VK_OBJECT_TYPE_IMAGE,
-            .objectHandle = (uint64_t)vk_image, // this cast may vary by platform/compiler
+            .objectHandle = (u64)vk_image, // this cast may vary by platform/compiler
             .pObjectName = debug_name,
         };
         context->pfn_set_object_name(context->device, &vk_name_info);
@@ -966,8 +966,8 @@ void gpu_destroy_image(GpuContext* context, GpuImage* image) {
     }
 }
 
-void gpu_upload_image(GpuContext* context, GpuImage* image, uint64_t upload_width, uint64_t upload_height, void* upload_data) {
-    uint64_t upload_size = upload_width * upload_height * gpu_format_stride(image->format);
+void gpu_upload_image(GpuContext* context, GpuImage* image, u64 upload_width, u64 upload_height, void* upload_data) {
+    u64 upload_size = upload_width * upload_height * gpu_format_stride(image->format);
     if (image->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE) {
         gpu_memcpy(context, image->memory, upload_size, upload_data);
     } else {
@@ -1066,7 +1066,7 @@ void gpu_destroy_sampler(GpuContext* context, GpuSampler* sampler) {
 GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, GpuPipelineLayout* pipeline_layout) {
 
     VkDescriptorPoolSize vk_pool_sizes[pipeline_layout->descriptor_layout.binding_count];
-    for (uint32_t i = 0; i < pipeline_layout->descriptor_layout.binding_count; ++i)
+    for (u32 i = 0; i < pipeline_layout->descriptor_layout.binding_count; ++i)
     {
         vk_pool_sizes[i].type = (VkDescriptorType) pipeline_layout->descriptor_layout.bindings[i].type;
         vk_pool_sizes[i].descriptorCount = 1;
@@ -1105,9 +1105,9 @@ void gpu_destroy_descriptor_set(GpuContext* context, GpuDescriptorSet* descripto
     vkDestroyDescriptorPool(context->device, descriptor_set->vk_descriptor_pool, NULL);
 }
 
-void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, uint32_t write_count, GpuDescriptorWrite* descriptor_writes) {
+void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, u32 write_count, GpuDescriptorWrite* descriptor_writes) {
     VkWriteDescriptorSet vk_descriptor_writes[write_count];
-    for (uint32_t i = 0; i < write_count; ++i) {
+    for (u32 i = 0; i < write_count; ++i) {
         
         VkDescriptorImageInfo* vk_desc_image_info = descriptor_writes[i].image_write ? 
             &(VkDescriptorImageInfo) {
@@ -1140,7 +1140,7 @@ void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_
     vkUpdateDescriptorSets(context->device, write_count, vk_descriptor_writes, 0, NULL);
 }
 
-void gpu_map_memory(GpuContext* context, GpuMemory* memory, uint64_t offset, uint64_t size, void** ppData) {
+void gpu_map_memory(GpuContext* context, GpuMemory* memory, u64 offset, u64 size, void** ppData) {
     VK_CHECK(vkMapMemory(context->device, memory->memory_region->owning_block->vk_memory, memory->memory_region->offset + offset, size, 0, ppData));
 }
 
@@ -1148,7 +1148,7 @@ void gpu_unmap_memory(GpuContext* context, GpuMemory* memory) {
     vkUnmapMemory(context->device, memory->memory_region->owning_block->vk_memory);
 }
 
-GpuShaderModule gpu_create_shader_module(GpuContext* context, uint64_t code_size, const uint32_t* code) {
+GpuShaderModule gpu_create_shader_module(GpuContext* context, u64 code_size, const u32* code) {
     VkShaderModuleCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .pNext = NULL,
@@ -1168,16 +1168,16 @@ void gpu_destroy_shader_module(GpuContext* context, GpuShaderModule* shader_modu
     vkDestroyShaderModule(context->device, shader_module->vk_shader_module, NULL);
 }
 
-GpuRenderPass gpu_create_render_pass(GpuContext* context, uint32_t color_attachment_count, GpuAttachmentDesc* color_attachments, GpuAttachmentDesc* depth_stencil_attachment) {
+GpuRenderPass gpu_create_render_pass(GpuContext* context, u32 color_attachment_count, GpuAttachmentDesc* color_attachments, GpuAttachmentDesc* depth_stencil_attachment) {
     
-    uint32_t depth_attachment_count = depth_stencil_attachment != NULL ? 1 : 0;
+    u32 depth_attachment_count = depth_stencil_attachment != NULL ? 1 : 0;
 
     VkAttachmentDescription vk_attachments[color_attachment_count + depth_attachment_count];
     VkAttachmentReference vk_attachment_refs[color_attachment_count + depth_attachment_count];
 
     //Order of attachments/refs: Color Attachments, then Depth Attachment
 
-    for (uint32_t i = 0; i < color_attachment_count + depth_attachment_count; ++i) {
+    for (u32 i = 0; i < color_attachment_count + depth_attachment_count; ++i) {
 
         //Whether we are currently building a color attachment or the depth-stencil attachment
         bool is_color_attachment = i < color_attachment_count;
@@ -1240,7 +1240,7 @@ void gpu_destroy_render_pass(GpuContext* context, GpuRenderPass* render_pass) {
 
 GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorLayout* descriptor_layout) {
 
-    uint32_t set_layout_count = 0;
+    u32 set_layout_count = 0;
     VkDescriptorSetLayout vk_descriptor_set_layout = VK_NULL_HANDLE;
     if (descriptor_layout != NULL) {
         set_layout_count = 1;
@@ -1278,7 +1278,7 @@ GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorL
     VkPipelineLayout vk_pipeline_layout = VK_NULL_HANDLE;
     VK_CHECK(vkCreatePipelineLayout(context->device, &create_info, NULL, &vk_pipeline_layout));
 
-    uint32_t binding_size = descriptor_layout->binding_count * sizeof(GpuDescriptorBinding);
+    u32 binding_size = descriptor_layout->binding_count * sizeof(GpuDescriptorBinding);
     GpuDescriptorBinding* descriptor_bindings = binding_size > 0 ? malloc(binding_size) : NULL;
     if (descriptor_bindings != NULL) {
         memcpy(descriptor_bindings, descriptor_layout->bindings, binding_size);
@@ -1322,9 +1322,9 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         }
     };
 
-    const uint32_t binding = 0; //Only using binding 0 for now
-    uint32_t location = 0; //Locations are provided in-order from attributes
-    uint32_t total_stride = 0;
+    const u32 binding = 0; //Only using binding 0 for now
+    u32 location = 0; //Locations are provided in-order from attributes
+    u32 total_stride = 0;
 
     VkVertexInputAttributeDescription attribute_descriptions[create_info->num_attributes];
     for (int i = 0; i < create_info->num_attributes; ++i) {
@@ -1590,7 +1590,7 @@ VkRenderingAttachmentInfo to_vk_attachment_info(GpuRenderingAttachmentInfo* atta
 void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info) {
 
     VkRenderingAttachmentInfo vk_color_attachments[rendering_info->color_attachment_count];
-    for (uint32_t i = 0; i < rendering_info->color_attachment_count; ++i) {
+    for (u32 i = 0; i < rendering_info->color_attachment_count; ++i) {
         vk_color_attachments[i] = to_vk_attachment_info(&rendering_info->color_attachments[i]);
     }
 
@@ -1688,11 +1688,11 @@ void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* ver
     vkCmdBindVertexBuffers(command_buffer->vk_command_buffer, 0, 1, &vertex_buffer->vk_buffer, offsets);
 }
 
-void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, uint32_t index_count) {
+void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, u32 index_count) {
     vkCmdDrawIndexed(command_buffer->vk_command_buffer, index_count, 1, 0, 0, 0);
 }
 
-void gpu_cmd_draw(GpuCommandBuffer* command_buffer, uint32_t vertex_count) {
+void gpu_cmd_draw(GpuCommandBuffer* command_buffer, u32 vertex_count) {
     vkCmdDraw(command_buffer->vk_command_buffer, vertex_count, 1, 0, 0);
 }
 
@@ -1704,13 +1704,13 @@ void gpu_cmd_set_viewport(GpuCommandBuffer* command_buffer, GpuViewport* viewpor
             .y = viewport->y,
         },
         .extent = {
-            .width = (uint32_t) viewport->width,
-            .height = (uint32_t) viewport->height,
+            .width = (u32) viewport->width,
+            .height = (u32) viewport->height,
         },
     });
 }
 
-void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, uint64_t size) {
+void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, u64 size) {
     VkBufferCopy vk_buffer_copy = {
         .srcOffset = 0,
         .dstOffset = 0,
@@ -1719,7 +1719,7 @@ void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer
     vkCmdCopyBuffer(command_buffer->vk_command_buffer, src_buffer->vk_buffer, dst_buffer->vk_buffer, 1, &vk_buffer_copy);
 }
 
-void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image, GpuImageLayout image_layout, uint64_t width, uint64_t height) {
+void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image, GpuImageLayout image_layout, u64 width, u64 height) {
     VkBufferImageCopy vk_buffer_image_copy = {
         .bufferOffset = 0,
         .bufferRowLength = 0,
@@ -1761,7 +1761,7 @@ void gpu_queue_submit(GpuContext* context, GpuCommandBuffer* command_buffer, Gpu
     VK_CHECK(vkQueueSubmit(context->graphics_queue, 1, &vk_submit_info, signal_fence ? signal_fence->vk_fence : VK_NULL_HANDLE));
 }
 
-void gpu_queue_present(GpuContext* context, uint32_t image_index, GpuSemaphore* wait_semaphore) {
+void gpu_queue_present(GpuContext* context, u32 image_index, GpuSemaphore* wait_semaphore) {
     VkPresentInfoKHR vk_present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = NULL,

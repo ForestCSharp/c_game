@@ -1,6 +1,6 @@
 #pragma once
 
-#include "stdbool.h"
+#include "types.h"
 
 bool test_stretchy_buffer() {
 
@@ -32,7 +32,7 @@ bool test_stretchy_buffer() {
     }
 
     //TODO: Test sb_del and sb_ins
-    uint32_t* int_array = NULL;
+    u32* int_array = NULL;
     sb_push(int_array, 1);
     sb_ins(int_array, 0, 2);
     sb_ins(int_array, 1, 3);

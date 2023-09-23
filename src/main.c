@@ -1,7 +1,8 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+
+#include "timer.h"
 
 // #define DISABLE_LOG
 #ifdef DISABLE_LOG
@@ -27,7 +28,7 @@
 //FCS TODO: Testing truetype
 #include "truetype.h"
 
-bool read_file(const char* filename, size_t* out_file_size, uint32_t** out_data) {
+bool read_file(const char* filename, size_t* out_file_size, u32** out_data) {
 	
 	FILE *file = fopen (filename, "rb");
 	if(!file) return false;
@@ -54,7 +55,7 @@ bool read_file(const char* filename, size_t* out_file_size, uint32_t** out_data)
 
 GpuShaderModule create_shader_module_from_file(GpuContext* gpu_context, const char* filename) {
 	size_t shader_size = 0;
-	uint32_t* shader_code = NULL;
+	u32* shader_code = NULL;
 	if (!read_file(filename, &shader_size, &shader_code)) {
 		exit(1);
 	}
@@ -74,7 +75,7 @@ typedef struct Vertex {
 //Computes all possible triangles (as vertices) for a convex solid, returned in a stretchy buffer
 Vertex* compute_all_triangles(Vec3* in_vertices, Vec4 in_color) {
     sbuffer(Vertex) out_verts = NULL;
-	uint32_t num_verts = sb_count(in_vertices);
+	u32 num_verts = sb_count(in_vertices);
 
 	Vec3 center = vec3_new(0,0,0);
     for (size_t i = 0; i < num_verts; i++) {
@@ -150,10 +151,10 @@ int main() {
 	ground_collider.is_kinematic = false;
 	sb_push(colliders, ground_collider);
 
-	const uint32_t dimensions = 3;
-	for (int32_t x = 0; x < dimensions; ++x) {
-		for (int32_t y = 0; y < dimensions; ++y) {
-			for (int32_t z = 0; z < dimensions; ++z) {		
+	const u32 dimensions = 3;
+	for (i32 x = 0; x < dimensions; ++x) {
+		for (i32 y = 0; y < dimensions; ++y) {
+			for (i32 z = 0; z < dimensions; ++z) {		
 				Collider collider = make_cube_collider();
 
 				// collider.rotation = quat_new(vec3_new(1,0,0), 3.14/4);
@@ -178,19 +179,19 @@ int main() {
 
 	GltfPrimitive* primitive = &gltf_asset.meshes[0].primitives[0];
 
-	uint8_t* positions_buffer = primitive->positions->buffer_view->buffer->data;
+	u8* positions_buffer = primitive->positions->buffer_view->buffer->data;
 	positions_buffer += gltf_accessor_get_initial_offset(primitive->positions);
-	uint32_t positions_byte_stride = gltf_accessor_get_stride(primitive->positions);
+	u32 positions_byte_stride = gltf_accessor_get_stride(primitive->positions);
 
-	uint8_t* normals_buffer = primitive->normals->buffer_view->buffer->data;
+	u8* normals_buffer = primitive->normals->buffer_view->buffer->data;
 	normals_buffer += gltf_accessor_get_initial_offset(primitive->normals);
-	uint32_t normals_byte_stride = gltf_accessor_get_stride(primitive->normals);
+	u32 normals_byte_stride = gltf_accessor_get_stride(primitive->normals);
 	
-	uint8_t* uvs_buffer = primitive->texcoord0->buffer_view->buffer->data;
+	u8* uvs_buffer = primitive->texcoord0->buffer_view->buffer->data;
 	uvs_buffer += gltf_accessor_get_initial_offset(primitive->texcoord0);
-	uint32_t uvs_byte_stride = gltf_accessor_get_stride(primitive->texcoord0);
+	u32 uvs_byte_stride = gltf_accessor_get_stride(primitive->texcoord0);
 
-	uint32_t vertices_count = primitive->positions->count;
+	u32 vertices_count = primitive->positions->count;
 	Vertex* vertices = calloc(vertices_count, sizeof(Vertex));
 
 	for (int i = 0; i < vertices_count; ++i) {
@@ -204,12 +205,12 @@ int main() {
 		uvs_buffer += uvs_byte_stride;
 	}
 
-	uint8_t* indices_buffer = primitive->indices->buffer_view->buffer->data;
+	u8* indices_buffer = primitive->indices->buffer_view->buffer->data;
 	indices_buffer += gltf_accessor_get_initial_offset(primitive->indices);
-	uint32_t indices_byte_stride = gltf_accessor_get_stride(primitive->indices);
+	u32 indices_byte_stride = gltf_accessor_get_stride(primitive->indices);
 
-	uint32_t indices_count = primitive->indices->count;
-	uint32_t* indices = calloc(indices_count, sizeof(uint32_t));
+	u32 indices_count = primitive->indices->count;
+	u32* indices = calloc(indices_count, sizeof(u32));
 
 	for (int i = 0; i < indices_count; ++i) {
 		memcpy(&indices[i], indices_buffer, indices_byte_stride);
@@ -226,7 +227,7 @@ int main() {
 	gpu_upload_buffer(&gpu_context, &vertex_buffer, vertices_size, vertices);
 	free(vertices);
 
-	size_t indices_size = sizeof(uint32_t) * indices_count;
+	size_t indices_size = sizeof(u32) * indices_count;
 	GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
 	GpuBuffer index_buffer = gpu_create_buffer(&gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
 	gpu_upload_buffer(&gpu_context, &index_buffer, indices_size, indices);
@@ -330,7 +331,7 @@ int main() {
 	size_t max_gui_vertices = sizeof(GuiVert) * 10000; //TODO: need to support gpu buffer resizing
 	GpuBuffer gui_vertex_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_VERTEX_BUFFER, GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, max_gui_vertices, "gui vertex buffer");
 
-	size_t max_gui_indices = sizeof(uint32_t) * 30000; //TODO: need to support gpu buffer resizing
+	size_t max_gui_indices = sizeof(u32) * 30000; //TODO: need to support gpu buffer resizing
 	GpuBuffer gui_index_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_INDEX_BUFFER, GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, max_gui_indices, "gui index buffer");
 
 	//END GUI SETUP
@@ -348,7 +349,7 @@ int main() {
 	};
 
 	GpuBuffer uniform_buffers[gpu_context.swapchain_image_count];
-	for (uint32_t i = 0; i < gpu_context.swapchain_image_count; ++i)
+	for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
 	{
 		uniform_buffers[i] = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_UNIFORM_BUFFER
 											    , GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT
@@ -378,7 +379,7 @@ int main() {
 	GpuPipelineLayout pipeline_layout = gpu_create_pipeline_layout(&gpu_context, &descriptor_layout);
 	GpuDescriptorSet descriptor_sets[gpu_context.swapchain_image_count];
 
-	for (uint32_t i = 0; i < gpu_context.swapchain_image_count; ++i)
+	for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
 	{
 		descriptor_sets[i] = gpu_create_descriptor_set(&gpu_context, &pipeline_layout);
 
@@ -406,7 +407,7 @@ int main() {
 
 	//BEGIN COLLIDERS GPU DATA SETUP
 	sbuffer(Vertex) cube_render_vertices = compute_all_triangles(ground_collider.convex_points, vec4_new(0,0.5, 0.0, 1.0));
-	uint32_t cube_vertices_count = sb_count(cube_render_vertices);
+	u32 cube_vertices_count = sb_count(cube_render_vertices);
 	size_t cube_vertices_size = sizeof(Vertex) * cube_vertices_count;
 	GpuBuffer cube_vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, cube_vertices_size, "cube vertex buffer");
 	gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertices_size, cube_render_vertices);
@@ -417,7 +418,7 @@ int main() {
 	GpuDescriptorSet* collider_descriptor_sets = NULL;
 	sb_add(collider_descriptor_sets, sb_count(colliders));
 	
-	for (uint32_t i = 0; i < sb_count(collider_uniform_buffers); ++i) {
+	for (u32 i = 0; i < sb_count(collider_uniform_buffers); ++i) {
 		char debug_name[50];
 		sprintf(debug_name, "collider uniform buffer #%i", i);
 		collider_uniform_buffers[i] = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_UNIFORM_BUFFER
@@ -476,7 +477,7 @@ int main() {
 	gpu_destroy_shader_module(&gpu_context, &vertex_module);
 	gpu_destroy_shader_module(&gpu_context, &fragment_module);
 
-    clock_t time = clock();
+	u64 time = time_now();
 	double accumulated_delta_time = 0.0f;
 	size_t frames_rendered = 0;
 
@@ -485,7 +486,7 @@ int main() {
 	GpuSemaphore image_acquired_semaphores[gpu_context.swapchain_image_count];
 	GpuSemaphore render_complete_semaphores[gpu_context.swapchain_image_count];
 	GpuFence in_flight_fences[gpu_context.swapchain_image_count];
-	for (uint32_t i = 0; i < gpu_context.swapchain_image_count; ++i) {
+	for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i) {
 		command_buffers[i] = gpu_create_command_buffer(&gpu_context);
 		image_acquired_semaphores[i] = gpu_create_semaphore(&gpu_context);
 		render_complete_semaphores[i] = gpu_create_semaphore(&gpu_context);
@@ -505,7 +506,7 @@ int main() {
 	int width = 0;
 	int height = 0;
 
-	uint32_t current_frame = 0;
+	u32 current_frame = 0;
 	while (window_handle_messages(&window)) {
 		
 		if (input_pressed(KEY_ESCAPE))
@@ -546,7 +547,7 @@ int main() {
 
 		//BEGIN Gui Test
 
-		int32_t mouse_x, mouse_y;
+		i32 mouse_x, mouse_y;
 		window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
 		//FCS TODO: open_windows memory leak here
@@ -639,7 +640,7 @@ int main() {
 
 		static float rotation_rate = 1.25f;
 		gui_window_slider_float(&gui_context, &gui_window_1, &rotation_rate, vec2_new(-25.0, 25.0), "Rot Rate");
-		for (uint32_t i = 0; i < 12; ++i) {
+		for (u32 i = 0; i < 12; ++i) {
 			char buffer[256];
 			snprintf(buffer, sizeof(buffer), "Btn %u", i);
 			if (gui_window_button(&gui_context, &gui_window_1, buffer) == GUI_CLICKED) {
@@ -667,7 +668,7 @@ int main() {
 			gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0.6,0,0,1), 0.01);
 
 			//Bezier Controls
-			for (uint32_t i = 0; i < 4; ++i) {
+			for (u32 i = 0; i < 4; ++i) {
 				const Vec2 window_size = gui_context.frame_state.screen_size;
 				const Vec2 point_pos_screen_space = {
 					.x = bezier_points[i].x * window_size.x,
@@ -686,14 +687,14 @@ int main() {
 
 		//TODO: should be per-frame resources
 		gpu_upload_buffer(&gpu_context, &gui_vertex_buffer, sizeof(GuiVert)  * sb_count(gui_context.draw_data.vertices), gui_context.draw_data.vertices);
-		gpu_upload_buffer(&gpu_context, &gui_index_buffer,  sizeof(uint32_t) * sb_count(gui_context.draw_data.indices), gui_context.draw_data.indices);
+		gpu_upload_buffer(&gpu_context, &gui_index_buffer,  sizeof(u32) * sb_count(gui_context.draw_data.indices), gui_context.draw_data.indices);
 
 		//END Gui Test
 
 		gpu_wait_for_fence(&gpu_context, &in_flight_fences[current_frame]);
 		gpu_reset_fence(&gpu_context, &in_flight_fences[current_frame]);
 
-		uint32_t image_index = gpu_acquire_next_image(&gpu_context, &image_acquired_semaphores[current_frame]);
+		u32 image_index = gpu_acquire_next_image(&gpu_context, &image_acquired_semaphores[current_frame]);
 
 		gpu_begin_command_buffer(&command_buffers[current_frame]);
 
@@ -748,7 +749,7 @@ int main() {
 		gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &descriptor_sets[current_frame]);
 		gpu_cmd_draw_indexed(&command_buffers[current_frame], indices_count);
 
-		for (uint32_t i = 0; i < sb_count(colliders); ++i) {
+		for (u32 i = 0; i < sb_count(colliders); ++i) {
 			//FIXME: one vertex buffer per collider (we're assuming all same-data (cubes) currently)
 			gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
 			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &collider_descriptor_sets[i]);
@@ -791,8 +792,8 @@ int main() {
 
 		gpu_queue_present(&gpu_context, image_index, &render_complete_semaphores[current_frame]);
 
-		clock_t new_time = clock();
-		double delta_time = ((double) (new_time - time)) / CLOCKS_PER_SEC;
+		u64 new_time = time_now();
+		double delta_time = time_seconds(new_time - time);
 		time = new_time;
 
 		accumulated_delta_time += delta_time;
@@ -850,7 +851,7 @@ int main() {
 
 			//BEGIN COLLIDERS GPU DATA UPDATE
 			if (input_pressed(KEY_SPACE)) {
-				for (int32_t i = 1; i < sb_count(colliders); ++i) {
+				for (i32 i = 1; i < sb_count(colliders); ++i) {
 					Vec3 collider_position = colliders[i].position;
 					// Vec3 force = vec3_scale(vec3_negate(vec3_normalize(collider_position)), 10.0f);
 					// if (input_pressed(KEY_SPACE)) {
@@ -862,7 +863,7 @@ int main() {
 				physics_run_simulation(colliders, delta_time);
 			}
 
-			for (uint32_t i = 0; i < sb_count(collider_uniform_buffers); ++i) {
+			for (u32 i = 0; i < sb_count(collider_uniform_buffers); ++i) {
 				Mat4 collider_scale = mat4_scale(colliders[i].scale);
 				Mat4 collider_rotation = quat_to_mat4(colliders[i].rotation);
 				Mat4 collider_translation = mat4_translation(colliders[i].position);
@@ -890,14 +891,14 @@ int main() {
 
 	gpu_wait_idle(&gpu_context);
 
-	for (uint32_t i = 0; i < gpu_context.swapchain_image_count; ++i) {
+	for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i) {
 		gpu_free_command_buffer(&gpu_context, &command_buffers[i]);
 		gpu_destroy_semaphore(&gpu_context, &image_acquired_semaphores[i]);
 		gpu_destroy_semaphore(&gpu_context, &render_complete_semaphores[i]);
 		gpu_destroy_fence(&gpu_context, &in_flight_fences[i]);
 	}
 
-	for (uint32_t i = 0; i < sb_count(colliders); ++i) {
+	for (u32 i = 0; i < sb_count(colliders); ++i) {
 		gpu_destroy_descriptor_set(&gpu_context, &collider_descriptor_sets[i]);
 		gpu_destroy_buffer(&gpu_context, &collider_uniform_buffers[i]);
 	}
@@ -921,7 +922,7 @@ int main() {
 	gpu_destroy_image(&gpu_context, &depth_image);
 	gpu_destroy_buffer(&gpu_context, &vertex_buffer);
 	gpu_destroy_buffer(&gpu_context, &index_buffer);
-	for (uint32_t i = 0; i < gpu_context.swapchain_image_count; ++i)
+	for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
 	{
 		gpu_destroy_buffer(&gpu_context, &uniform_buffers[i]);
 		gpu_destroy_descriptor_set(&gpu_context, &descriptor_sets[i]);

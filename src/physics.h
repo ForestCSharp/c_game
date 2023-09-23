@@ -56,7 +56,7 @@ Collider make_cube_collider() {
         .is_kinematic = true,
     };
 
-    uint32_t num_points = sizeof(cube_points) / sizeof(Vec3);
+    u32 num_points = sizeof(cube_points) / sizeof(Vec3);
     sb_add(out_cube.convex_points, num_points);
     memcpy(out_cube.convex_points, cube_points, sizeof(cube_points));
 
@@ -119,12 +119,12 @@ void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const 
 }
 
 void physics_run_simulation(Collider* in_colliders, float delta_time) {
-    uint32_t collider_count = sb_count(in_colliders);
+    u32 collider_count = sb_count(in_colliders);
 
     //1. TODO: Apply new Forces / Torques to in_colliders (acceleration update)
     //2. Compute new velocity based on acceleration (velocity update)
     //3. Move objects based on velocity (position/rotation update)
-    for (uint32_t i = 0; i < collider_count; ++i) {
+    for (u32 i = 0; i < collider_count; ++i) {
         Collider* collider = &in_colliders[i];
 
         // Acceleration this frame: pending_force * delta_time / mass;
@@ -156,8 +156,8 @@ void physics_run_simulation(Collider* in_colliders, float delta_time) {
     for (size_t i = 0; i < num_iterations; ++i)
     {
         //4. Check for collisions
-        for (uint32_t index_a = 0; index_a < collider_count; ++index_a) {
-            for (uint32_t index_b = index_a + 1; index_b < collider_count; ++index_b) {
+        for (u32 index_a = 0; index_a < collider_count; ++index_a) {
+            for (u32 index_b = index_a + 1; index_b < collider_count; ++index_b) {
                 Collider* collider_a = &in_colliders[index_a];
                 Collider* collider_b = &in_colliders[index_b];
 

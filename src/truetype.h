@@ -1,24 +1,24 @@
 #pragma once
 
-#include "stdint.h"
+#include "types.h"
 #include "stdio.h"
 
 typedef struct TrueTypeTable
 {
 	char tag[4];
-	uint32_t checksum;
-	uint32_t offset;
-	uint32_t length;
+	u32 checksum;
+	u32 offset;
+	u32 length;
 } TrueTypeTable;
 
 typedef struct TrueTypeFontDirectory
 {
 	//Begin Offset Subtable
-	uint32_t scaler;
-	uint16_t num_tables;
-	uint16_t search_range;
-	uint16_t entry_selector;
-	uint16_t range_shift;
+	u32 scaler;
+	u16 num_tables;
+	u16 search_range;
+	u16 entry_selector;
+	u16 range_shift;
 	//End Offset Subtable
 
 	//Begin table Directory
@@ -32,7 +32,7 @@ typedef struct TrueTypeFont
 	
 } TrueTypeFont;
 
-bool truetype_read_file(const char* filename, size_t* out_file_size, uint8_t** out_data) {
+bool truetype_read_file(const char* filename, size_t* out_file_size, u8** out_data) {
 	
 	FILE *file = fopen (filename, "rb");
 	if(!file) return false;
@@ -57,28 +57,28 @@ bool truetype_read_file(const char* filename, size_t* out_file_size, uint8_t** o
 	return true;
 }
 
-uint8_t read_u8(void* src, size_t offset)
+u8 read_u8(void* src, size_t offset)
 {
-	uint8_t num = *(uint8_t*)(src + offset);
+	u8 num = *(u8*)(src + offset);
 	return num;
 }
 
 //FCS TODO: Big-Endian systems shouldn't byte swap
-uint16_t read_u16(void* src, size_t offset)
+u16 read_u16(void* src, size_t offset)
 {	
-	uint16_t num = *(uint16_t*)(src + offset);
+	u16 num = *(u16*)(src + offset);
 	return (num>>8) | (num<<8);
 }
 
-int16_t read_i16(void* src, size_t offset)
+i16 read_i16(void* src, size_t offset)
 {	
-	int16_t num = *(int16_t*)(src + offset);
+	i16 num = *(i16*)(src + offset);
 	return (num>>8) | (num<<8);
 }
 
-uint32_t read_u32(void* src, size_t offset)
+u32 read_u32(void* src, size_t offset)
 {
-	uint32_t num = *(uint32_t*)(src + offset);	
+	u32 num = *(u32*)(src + offset);	
 	return  ((num>>24)&0xff) 	| 	// move byte 3 to byte 0
 			((num<<8)&0xff0000) | 	// move byte 1 to byte 2
 			((num>>8)&0xff00) 	| 	// move byte 2 to byte 1
@@ -86,9 +86,9 @@ uint32_t read_u32(void* src, size_t offset)
 }
 
 
-int32_t read_i32(void* src, size_t offset)
+i32 read_i32(void* src, size_t offset)
 {
-	int32_t num = *(int32_t*)(src + offset);	
+	i32 num = *(i32*)(src + offset);	
 	return  ((num>>24)&0xff) 	| 	// move byte 3 to byte 0
 			((num<<8)&0xff0000) | 	// move byte 1 to byte 2
 			((num>>8)&0xff00) 	| 	// move byte 2 to byte 1
@@ -103,12 +103,12 @@ void read_bytes(void* dst, void* src, size_t offset, size_t num_bytes)
 bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
 {
 	size_t file_size = 0;
-	uint8_t* file_data = NULL;
+	u8* file_data = NULL;
 	if (truetype_read_file(filename, &file_size, &file_data))
 	{
 		printf("Font File Size: %zu\n", file_size);
 
-		uint8_t* font_directory_start = file_data;
+		u8* font_directory_start = file_data;
 
 		TrueTypeFontDirectory font_directory = {};
 		font_directory.scaler = read_u32(font_directory_start, 0); 
@@ -124,15 +124,15 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
 		printf("\tEntry Selector: %u\n", font_directory.entry_selector);
 		printf("\tRange Shift: %u\n", font_directory.range_shift);
 
-		uint8_t* table_directory_start = font_directory_start + 12;
+		u8* table_directory_start = font_directory_start + 12;
 		
 		font_directory.table_directory = calloc(font_directory.num_tables, sizeof(TrueTypeTable));
-		for (int32_t table_index = 0; table_index < font_directory.num_tables; ++table_index)
+		for (i32 table_index = 0; table_index < font_directory.num_tables; ++table_index)
 		{
-			uint8_t* current_table_start = table_directory_start + (16 * table_index); 
+			u8* current_table_start = table_directory_start + (16 * table_index); 
 			TrueTypeTable* current_table = &font_directory.table_directory[table_index];
 			
-			for (int32_t i = 3; i >=0; --i)
+			for (i32 i = 3; i >=0; --i)
 			{
 				current_table->tag[i] = read_u8(current_table_start, i);
 			}
