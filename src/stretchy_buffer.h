@@ -34,22 +34,22 @@
 #define stb_sb_ins(a, i, v) (stb_sb_insn((a), (i), 1), (a)[i] = (v))
 // END FCS: adapted from stbds
 
-#define stb__sbraw(a) ((int *)(void *)(a)-2) // actual start of malloc'd data (the two integers described below)
-#define stb__sbm(a) stb__sbraw(a)[0]         // array capacity
-#define stb__sbn(a) stb__sbraw(a)[1]         // array count
+#define stb__sbraw(a) ((int*)(void*)(a)-2) // actual start of malloc'd data (the two integers described below)
+#define stb__sbm(a) stb__sbraw(a)[0]       // array capacity
+#define stb__sbn(a) stb__sbraw(a)[1]       // array count
 
 #define stb__sbneedgrow(a, n) ((a) == 0 || stb__sbn(a) + (n) >= stb__sbm(a))
 #define stb__sbmaybegrow(a, n) (stb__sbneedgrow(a, (n)) ? stb__sbgrow(a, n) : 0)
-#define stb__sbgrow(a, n) (*((void **)&(a)) = stb__sbgrowf((a), (n), sizeof(*(a))))
+#define stb__sbgrow(a, n) (*((void**)&(a)) = stb__sbgrowf((a), (n), sizeof(*(a))))
 
 #include <stdlib.h>
 
-static void *stb__sbgrowf(void *arr, int increment, int itemsize)
+static void* stb__sbgrowf(void* arr, int increment, int itemsize)
 {
     int dbl_cur = arr ? 2 * stb__sbm(arr) : 0;
     int min_needed = stb_sb_count(arr) + increment;
     int m = dbl_cur > min_needed ? dbl_cur : min_needed;
-    int *p = (int *)realloc(arr ? stb__sbraw(arr) : 0, itemsize * m + sizeof(int) * 2);
+    int* p = (int*)realloc(arr ? stb__sbraw(arr) : 0, itemsize * m + sizeof(int) * 2);
     if (p)
     {
         if (!arr)
@@ -62,10 +62,10 @@ static void *stb__sbgrowf(void *arr, int increment, int itemsize)
 #ifdef STRETCHY_BUFFER_OUT_OF_MEMORY
         STRETCHY_BUFFER_OUT_OF_MEMORY;
 #endif
-        return (void *)(2 * sizeof(int)); // try to force a NULL pointer exception later
+        return (void*)(2 * sizeof(int)); // try to force a NULL pointer exception later
     }
 }
 #endif // STB_STRETCHY_BUFFER_H_INCLUDED
 
 // useful for denoting that a type is a stretchy buffer and not just a regular pointer/array
-#define sbuffer(t) t *
+#define sbuffer(t) t*

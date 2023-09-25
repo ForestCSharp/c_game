@@ -27,7 +27,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 // TODO: Better error handling
-Window window_create(const char *name, int width, int height)
+Window window_create(const char* name, int width, int height)
 {
     Window window;
 
@@ -83,7 +83,7 @@ Window window_create(const char *name, int width, int height)
     return window;
 }
 
-bool window_handle_messages(const Window *const window)
+bool window_handle_messages(const Window* const window)
 {
     MSG msg;
     bool bGotMessage = PeekMessage(&msg, NULL, 0, 0, PM_REMOVE);
@@ -99,7 +99,7 @@ bool window_handle_messages(const Window *const window)
     return true;
 }
 
-void window_get_dimensions(const Window *const window, int *out_width, int *out_height)
+void window_get_dimensions(const Window* const window, int* out_width, int* out_height)
 {
     RECT window_rect;
     if (GetClientRect(window->hwnd, &window_rect))
@@ -109,7 +109,7 @@ void window_get_dimensions(const Window *const window, int *out_width, int *out_
     }
 }
 
-void window_get_mouse_pos(const Window *const window, i32 *out_mouse_x, i32 *out_mouse_y)
+void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y)
 {
     POINT out_point;
     // TODO: Check these two fns succeeded

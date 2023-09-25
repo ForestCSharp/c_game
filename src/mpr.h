@@ -75,7 +75,7 @@ bool mpr_vec3_is_zero(MprVec3 v)
 {
     return v.x == 0 && v.y == 0 && v.z == 0;
 }
-void mpr_vec3_swap(MprVec3 *a, MprVec3 *b)
+void mpr_vec3_swap(MprVec3* a, MprVec3* b)
 {
     MprVec3 tmp = *a;
     *a = *b;
@@ -100,7 +100,7 @@ MprVec3 mpr_mat4_mult_vec3(const float m[/*static*/ 16], MprVec3 v)
 }
 
 // TODO: replace args with MprConvexData
-MprVec3 mpr_average_point(const MprVec3 *vertices, size_t count)
+MprVec3 mpr_average_point(const MprVec3* vertices, size_t count)
 {
     MprVec3 avg = {0.f, 0.f, 0.f};
     for (size_t i = 0; i < count; i++)
@@ -116,7 +116,7 @@ MprVec3 mpr_average_point(const MprVec3 *vertices, size_t count)
 }
 
 // TODO: replace first 3 args with MprConvexData
-size_t index_of_furthest_point(const MprVec3 *vertices, size_t count, const float transform[16], MprVec3 d)
+size_t index_of_furthest_point(const MprVec3* vertices, size_t count, const float transform[16], MprVec3 d)
 {
 
     float maxProduct = mpr_vec3_dot(d, mpr_mat4_mult_vec3(transform, vertices[0]));
@@ -134,7 +134,7 @@ size_t index_of_furthest_point(const MprVec3 *vertices, size_t count, const floa
 }
 
 // TODO: replace first 3 args with MprConvexData
-MprVec3 convex_support(const MprVec3 *vertices, size_t count, const float transform[16], MprVec3 d)
+MprVec3 convex_support(const MprVec3* vertices, size_t count, const float transform[16], MprVec3 d)
 {
     return mpr_mat4_mult_vec3(transform, vertices[index_of_furthest_point(vertices, count, transform, d)]);
 }
@@ -159,9 +159,9 @@ static float K_COLLIDE_EPSILON = 1e-3f;
 
 typedef struct MprConvexData
 {
-    MprVec3 *points;
+    MprVec3* points;
     size_t num_points;
-    float *transform; // 16 floats, Mat4x4
+    float* transform; // 16 floats, Mat4x4
 } MprConvexData;
 
 typedef struct MprInputData
@@ -177,12 +177,12 @@ typedef struct MprOutputData
     MprVec3 contact_b;
 } MprOutputData;
 
-bool mpr_check_collision(const MprInputData *input_data, MprOutputData *hit_data)
+bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data)
 {
     assert(input_data);
     assert(hit_data);
-    const MprConvexData *convex_a = &input_data->convex_a;
-    const MprConvexData *convex_b = &input_data->convex_b;
+    const MprConvexData* convex_a = &input_data->convex_a;
+    const MprConvexData* convex_b = &input_data->convex_b;
 
     // v0 - center of Minkowski sum
     MprVec3 v01 = mpr_mat4_mult_vec3(convex_a->transform, mpr_average_point(convex_a->points, convex_a->num_points));

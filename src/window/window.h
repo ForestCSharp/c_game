@@ -4,10 +4,10 @@
 
 typedef struct Window Window;
 
-Window window_create(const char *name, int width, int height);
-bool window_handle_messages(const Window *const window);
-void window_get_dimensions(const Window *const window, int *out_width, int *out_height);
-void window_get_mouse_pos(const Window *const window, i32 *out_mouse_x, i32 *out_mouse_y);
+Window window_create(const char* name, int width, int height);
+bool window_handle_messages(const Window* const window);
+void window_get_dimensions(const Window* const window, int* out_width, int* out_height);
+void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y);
 
 typedef enum KeyCode
 {

@@ -140,15 +140,15 @@ typedef u32 GpuPipelineStageFlags;
 
 typedef struct GpuMemoryType
 {
-    struct GpuMemoryBlock *memory_blocks;
+    struct GpuMemoryBlock* memory_blocks;
 } GpuMemoryType;
 
 typedef struct GpuMemoryBlock
 {
     u64 size;
-    struct GpuMemoryRegion *free_list;
-    struct GpuMemoryRegion *used_list;
-    struct GpuMemoryType *owning_type;
+    struct GpuMemoryRegion* free_list;
+    struct GpuMemoryRegion* used_list;
+    struct GpuMemoryType* owning_type;
     VkDeviceMemory vk_memory;
 } GpuMemoryBlock;
 
@@ -157,13 +157,13 @@ typedef struct GpuMemoryRegion
     u64 padding; // Padding on front of region (for alignment requirement)
     u64 offset;
     u64 size;
-    struct GpuMemoryBlock *owning_block;
-    struct GpuMemory *alloc_ref; // Null in free list, non-null in used_list
+    struct GpuMemoryBlock* owning_block;
+    struct GpuMemory* alloc_ref; // Null in free list, non-null in used_list
 } GpuMemoryRegion;
 
 typedef struct GpuMemory
 {
-    GpuMemoryRegion *memory_region;
+    GpuMemoryRegion* memory_region;
     // FIXME: if we make above a reference, reallocing can break. Instead our external handles can be 3 indices:
     // mem_type, mem_block, used_list_index
     GpuMemoryPropertyFlags memory_properties;
@@ -172,7 +172,7 @@ typedef struct GpuMemory
 typedef struct GpuBuffer
 {
     VkBuffer vk_buffer;
-    GpuMemory *memory;
+    GpuMemory* memory;
 } GpuBuffer;
 
 typedef struct GpuImageCreateInfo
@@ -187,13 +187,13 @@ typedef struct GpuImageCreateInfo
 typedef struct GpuImage
 {
     VkImage vk_image;
-    GpuMemory *memory; // If null, memory is managed elsewhere (such as swapchains)
+    GpuMemory* memory; // If null, memory is managed elsewhere (such as swapchains)
     GpuFormat format;
 } GpuImage;
 
 typedef struct GpuImageViewCreateInfo
 {
-    GpuImage *image;
+    GpuImage* image;
     GpuImageViewType type;
     GpuFormat format;
     GpuImageAspect aspect;
@@ -224,14 +224,14 @@ typedef struct GpuDescriptorSet
 
 typedef struct GpuDescriptorWriteImage
 {
-    GpuImageView *image_view;
-    GpuSampler *sampler;
+    GpuImageView* image_view;
+    GpuSampler* sampler;
     GpuImageLayout layout;
 } GpuDescriptorWriteImage;
 
 typedef struct GpuDescriptorWriteBuffer
 {
-    GpuBuffer *buffer;
+    GpuBuffer* buffer;
     u64 offset;
     u64 range;
 } GpuDescriptorWriteBuffer;
@@ -245,9 +245,9 @@ typedef struct GpuDescriptorBinding
 
 typedef struct GpuDescriptorWrite
 {
-    GpuDescriptorBinding *binding_desc;
-    GpuDescriptorWriteImage *image_write;
-    GpuDescriptorWriteBuffer *buffer_write;
+    GpuDescriptorBinding* binding_desc;
+    GpuDescriptorWriteImage* image_write;
+    GpuDescriptorWriteBuffer* buffer_write;
 } GpuDescriptorWrite;
 
 typedef struct GpuAttachmentDesc
@@ -272,7 +272,7 @@ typedef struct GpuShaderModule
 typedef struct GpuDescriptorLayout
 {
     u32 binding_count;
-    GpuDescriptorBinding *bindings;
+    GpuDescriptorBinding* bindings;
 } GpuDescriptorLayout;
 
 typedef struct GpuPipelineLayout
@@ -294,7 +294,7 @@ typedef struct GpuPipelineDepthStencilState
 typedef struct GpuPipelineRenderingCreateInfo
 {
     u32 color_attachment_count;
-    GpuFormat *color_formats;
+    GpuFormat* color_formats;
     GpuFormat depth_format;
     GpuFormat stencil_format;
 
@@ -302,13 +302,13 @@ typedef struct GpuPipelineRenderingCreateInfo
 
 typedef struct GpuGraphicsPipelineCreateInfo
 {
-    GpuShaderModule *vertex_module;
-    GpuShaderModule *fragment_module;
-    GpuRenderPass *render_pass;
-    GpuPipelineRenderingCreateInfo *rendering_info;
-    GpuPipelineLayout *layout;
+    GpuShaderModule* vertex_module;
+    GpuShaderModule* fragment_module;
+    GpuRenderPass* render_pass;
+    GpuPipelineRenderingCreateInfo* rendering_info;
+    GpuPipelineLayout* layout;
     u32 num_attributes;
-    GpuFormat *attribute_formats;
+    GpuFormat* attribute_formats;
     GpuPipelineDepthStencilState depth_stencil;
     bool enable_color_blending; // FCS TODO: need to pass in per-color attachment for this
     // TODO: More FixedFunction State
@@ -321,11 +321,11 @@ typedef struct GpuPipeline
 
 typedef struct GpuFramebufferCreateInfo
 {
-    GpuRenderPass *render_pass;
+    GpuRenderPass* render_pass;
     u32 width;
     u32 height;
     u32 attachment_count;
-    GpuImageView *attachments;
+    GpuImageView* attachments;
 } GpuFramebufferCreateInfo;
 
 typedef struct GpuFramebuffer
@@ -353,7 +353,7 @@ typedef union GpuClearValue {
 
 typedef struct GpuRenderingAttachmentInfo
 {
-    GpuImageView *image_view;
+    GpuImageView* image_view;
     GpuImageLayout image_layout;
     GpuLoadOp load_op;
     GpuStoreOp store_op;
@@ -365,17 +365,17 @@ typedef struct GpuRenderingInfo
     u32 render_width;
     u32 render_height;
     u32 color_attachment_count;
-    GpuRenderingAttachmentInfo *color_attachments;
-    GpuRenderingAttachmentInfo *depth_attachment;
-    GpuRenderingAttachmentInfo *stencil_attachment;
+    GpuRenderingAttachmentInfo* color_attachments;
+    GpuRenderingAttachmentInfo* depth_attachment;
+    GpuRenderingAttachmentInfo* stencil_attachment;
 } GpuRenderingInfo;
 
 typedef struct GpuRenderPassBeginInfo
 {
-    GpuRenderPass *render_pass;
-    GpuFramebuffer *framebuffer;
+    GpuRenderPass* render_pass;
+    GpuFramebuffer* framebuffer;
     u32 num_clear_values;
-    const GpuClearValue *clear_values;
+    const GpuClearValue* clear_values;
 } GpuRenderPassBeginInfo;
 
 typedef struct GpuFence
@@ -395,7 +395,7 @@ typedef struct GpuViewport
 
 typedef struct GpuImageBarrier
 {
-    GpuImage *image;
+    GpuImage* image;
     GpuPipelineStageFlags src_stage;
     GpuPipelineStageFlags dst_stage;
     GpuImageLayout old_layout;
@@ -422,106 +422,106 @@ typedef struct
     VkSurfaceFormatKHR surface_format;
     VkSwapchainKHR swapchain;
     u32 swapchain_image_count;
-    GpuImage *swapchain_images;
-    GpuImageView *swapchain_image_views;
+    GpuImage* swapchain_images;
+    GpuImageView* swapchain_image_views;
 
     // Memory
     int num_memory_types;
-    GpuMemoryType *memory_types;
+    GpuMemoryType* memory_types;
     VkPhysicalDeviceMemoryProperties vk_memory_properties;
 
 } GpuContext;
 
-GpuContext gpu_create_context(const Window *const window);
-void gpu_destroy_context(GpuContext *context);
-void gpu_wait_idle(GpuContext *context);
+GpuContext gpu_create_context(const Window* const window);
+void gpu_destroy_context(GpuContext* context);
+void gpu_wait_idle(GpuContext* context);
 
-void gpu_resize_swapchain(GpuContext *context, const Window *const window);
-u32 gpu_acquire_next_image(GpuContext *context, GpuSemaphore *semaphore);
+void gpu_resize_swapchain(GpuContext* context, const Window* const window);
+u32 gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore);
 
-GpuBuffer gpu_create_buffer(GpuContext *context, GpuBufferUsageFlags buffer_usage,
-                            GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char *debug_name);
-void gpu_destroy_buffer(GpuContext *context, GpuBuffer *buffer);
-void gpu_upload_buffer(GpuContext *context, GpuBuffer *buffer, u64 upload_size, void *upload_data);
+GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage,
+                            GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char* debug_name);
+void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer);
+void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, u64 upload_size, void* upload_data);
 
-GpuImage gpu_create_image(GpuContext *context, GpuImageCreateInfo *create_info, const char *debug_name);
-void gpu_destroy_image(GpuContext *context, GpuImage *image);
-void gpu_upload_image(GpuContext *context, GpuImage *image, u64 upload_width, u64 upload_height, void *upload_data);
+GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, const char* debug_name);
+void gpu_destroy_image(GpuContext* context, GpuImage* image);
+void gpu_upload_image(GpuContext* context, GpuImage* image, u64 upload_width, u64 upload_height, void* upload_data);
 
-GpuImageView gpu_create_image_view(GpuContext *context, GpuImageViewCreateInfo *create_info);
-void gpu_destroy_image_view(GpuContext *context, GpuImageView *image_view);
+GpuImageView gpu_create_image_view(GpuContext* context, GpuImageViewCreateInfo* create_info);
+void gpu_destroy_image_view(GpuContext* context, GpuImageView* image_view);
 
-GpuSampler gpu_create_sampler(GpuContext *context, GpuSamplerCreateInfo *create_info);
-void gpu_destroy_sampler(GpuContext *context, GpuSampler *sampler);
+GpuSampler gpu_create_sampler(GpuContext* context, GpuSamplerCreateInfo* create_info);
+void gpu_destroy_sampler(GpuContext* context, GpuSampler* sampler);
 
 // FIXME: consolidate final two args somehow
-GpuDescriptorSet gpu_create_descriptor_set(GpuContext *context, GpuPipelineLayout *pipeline_layout);
-void gpu_destroy_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set);
-void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set, u32 write_count,
-                              GpuDescriptorWrite *descriptor_writes);
+GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, GpuPipelineLayout* pipeline_layout);
+void gpu_destroy_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set);
+void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, u32 write_count,
+                              GpuDescriptorWrite* descriptor_writes);
 
-void gpu_map_memory(GpuContext *context, GpuMemory *memory, u64 offset, u64 size, void **ppData);
-void gpu_unmap_memory(GpuContext *context, GpuMemory *memory);
+void gpu_map_memory(GpuContext* context, GpuMemory* memory, u64 offset, u64 size, void** ppData);
+void gpu_unmap_memory(GpuContext* context, GpuMemory* memory);
 
-GpuShaderModule gpu_create_shader_module(GpuContext *context, u64 code_size, const u32 *code);
-void gpu_destroy_shader_module(GpuContext *context, GpuShaderModule *shader_module);
+GpuShaderModule gpu_create_shader_module(GpuContext* context, u64 code_size, const u32* code);
+void gpu_destroy_shader_module(GpuContext* context, GpuShaderModule* shader_module);
 
-GpuRenderPass gpu_create_render_pass(GpuContext *context, u32 color_attachment_count,
-                                     GpuAttachmentDesc *color_attachments, GpuAttachmentDesc *depth_stencil_attachment);
-void gpu_destroy_render_pass(GpuContext *context, GpuRenderPass *render_pass);
+GpuRenderPass gpu_create_render_pass(GpuContext* context, u32 color_attachment_count,
+                                     GpuAttachmentDesc* color_attachments, GpuAttachmentDesc* depth_stencil_attachment);
+void gpu_destroy_render_pass(GpuContext* context, GpuRenderPass* render_pass);
 
-GpuPipelineLayout gpu_create_pipeline_layout(GpuContext *context, GpuDescriptorLayout *descriptor_layout);
-void gpu_destroy_pipeline_layout(GpuContext *context, GpuPipelineLayout *layout);
+GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorLayout* descriptor_layout);
+void gpu_destroy_pipeline_layout(GpuContext* context, GpuPipelineLayout* layout);
 
-GpuPipeline gpu_create_graphics_pipeline(GpuContext *context, GpuGraphicsPipelineCreateInfo *create_info);
-void gpu_destroy_pipeline(GpuContext *context, GpuPipeline *pipeline);
+GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelineCreateInfo* create_info);
+void gpu_destroy_pipeline(GpuContext* context, GpuPipeline* pipeline);
 
-GpuFramebuffer gpu_create_framebuffer(GpuContext *context, GpuFramebufferCreateInfo *create_info);
-void gpu_destroy_framebuffer(GpuContext *context, GpuFramebuffer *framebuffer);
+GpuFramebuffer gpu_create_framebuffer(GpuContext* context, GpuFramebufferCreateInfo* create_info);
+void gpu_destroy_framebuffer(GpuContext* context, GpuFramebuffer* framebuffer);
 
-GpuCommandBuffer gpu_create_command_buffer(GpuContext *context);
-void gpu_free_command_buffer(GpuContext *context, GpuCommandBuffer *command_buffer);
+GpuCommandBuffer gpu_create_command_buffer(GpuContext* context);
+void gpu_free_command_buffer(GpuContext* context, GpuCommandBuffer* command_buffer);
 
-void gpu_begin_command_buffer(GpuCommandBuffer *command_buffer);
-void gpu_end_command_buffer(GpuCommandBuffer *command_buffer);
+void gpu_begin_command_buffer(GpuCommandBuffer* command_buffer);
+void gpu_end_command_buffer(GpuCommandBuffer* command_buffer);
 
-void gpu_cmd_begin_rendering(GpuCommandBuffer *command_buffer, GpuRenderingInfo *rendering_info);
-void gpu_cmd_end_rendering(GpuCommandBuffer *command_buffer);
+void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info);
+void gpu_cmd_end_rendering(GpuCommandBuffer* command_buffer);
 
-void gpu_cmd_begin_render_pass(GpuCommandBuffer *command_buffer, GpuRenderPassBeginInfo *begin_info);
-void gpu_cmd_end_render_pass(GpuCommandBuffer *command_buffer);
+void gpu_cmd_begin_render_pass(GpuCommandBuffer* command_buffer, GpuRenderPassBeginInfo* begin_info);
+void gpu_cmd_end_render_pass(GpuCommandBuffer* command_buffer);
 
-void gpu_cmd_bind_pipeline(GpuCommandBuffer *command_buffer, GpuPipeline *pipeline);
+void gpu_cmd_bind_pipeline(GpuCommandBuffer* command_buffer, GpuPipeline* pipeline);
 
-void gpu_cmd_bind_index_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *index_buffer);
+void gpu_cmd_bind_index_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* index_buffer);
 // TODO: multiple vertex buffer bindings
-void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *vertex_buffer);
-void gpu_cmd_bind_descriptor_set(GpuCommandBuffer *command_buffer, GpuPipelineLayout *layout,
-                                 GpuDescriptorSet *descriptor_set);
+void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* vertex_buffer);
+void gpu_cmd_bind_descriptor_set(GpuCommandBuffer* command_buffer, GpuPipelineLayout* layout,
+                                 GpuDescriptorSet* descriptor_set);
 
 // TODO: non-indexed-draw, instance_count for both draw types
-void gpu_cmd_draw_indexed(GpuCommandBuffer *command_buffer, u32 index_count);
-void gpu_cmd_draw(GpuCommandBuffer *command_buffer, u32 vertex_count);
+void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, u32 index_count);
+void gpu_cmd_draw(GpuCommandBuffer* command_buffer, u32 vertex_count);
 
-void gpu_cmd_set_viewport(GpuCommandBuffer *command_buffer, GpuViewport *viewport);
+void gpu_cmd_set_viewport(GpuCommandBuffer* command_buffer, GpuViewport* viewport);
 
-void gpu_cmd_copy_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *src_buffer, GpuBuffer *dst_buffer, u64 size);
-void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer *command_buffer, GpuBuffer *src_buffer, GpuImage *dst_image,
+void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, u64 size);
+void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image,
                                   GpuImageLayout image_layout, u64 width, u64 height);
 
-void gpu_cmd_image_barrier(GpuCommandBuffer *command_buffer, GpuImageBarrier *image_barrier);
+void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer, GpuImageBarrier* image_barrier);
 // FCS TODO: gpu_cmd_buffer_barrier
 // FCS TODO: gpu_cmd_memory_barrier
 
 // TODO: queue argument
-void gpu_queue_submit(GpuContext *context, GpuCommandBuffer *command_buffer, GpuSemaphore *wait_semaphore,
-                      GpuSemaphore *signal_semaphore, GpuFence *signal_fence);
-void gpu_queue_present(GpuContext *context, u32 image_index, GpuSemaphore *wait_semaphore);
+void gpu_queue_submit(GpuContext* context, GpuCommandBuffer* command_buffer, GpuSemaphore* wait_semaphore,
+                      GpuSemaphore* signal_semaphore, GpuFence* signal_fence);
+void gpu_queue_present(GpuContext* context, u32 image_index, GpuSemaphore* wait_semaphore);
 
-GpuFence gpu_create_fence(GpuContext *context, bool signaled);
-void gpu_destroy_fence(GpuContext *context, GpuFence *fence);
-void gpu_wait_for_fence(GpuContext *context, GpuFence *fence);
-void gpu_reset_fence(GpuContext *context, GpuFence *fence);
+GpuFence gpu_create_fence(GpuContext* context, bool signaled);
+void gpu_destroy_fence(GpuContext* context, GpuFence* fence);
+void gpu_wait_for_fence(GpuContext* context, GpuFence* fence);
+void gpu_reset_fence(GpuContext* context, GpuFence* fence);
 
-GpuSemaphore gpu_create_semaphore(GpuContext *context);
-void gpu_destroy_semaphore(GpuContext *context, GpuSemaphore *semaphore);
+GpuSemaphore gpu_create_semaphore(GpuContext* context);
+void gpu_destroy_semaphore(GpuContext* context, GpuSemaphore* semaphore);

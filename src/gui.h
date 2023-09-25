@@ -130,7 +130,7 @@ static const GuiButtonStyleArgs default_button_style = {
     .text_padding = 15.0f,
 };
 
-Vec4 gui_style_get_button_color(const GuiButtonStyleArgs *const in_style_args, const GuiClickState in_click_state)
+Vec4 gui_style_get_button_color(const GuiButtonStyleArgs* const in_style_args, const GuiClickState in_click_state)
 {
     switch (in_click_state)
     {
@@ -146,9 +146,9 @@ Vec4 gui_style_get_button_color(const GuiButtonStyleArgs *const in_style_args, c
     }
 }
 
-bool gui_load_font(const char *filename, GuiFont *out_font)
+bool gui_load_font(const char* filename, GuiFont* out_font)
 {
-    FILE *file = fopen(filename, "rb");
+    FILE* file = fopen(filename, "rb");
 
     if (file && out_font)
     {
@@ -215,7 +215,7 @@ bool gui_load_font(const char *filename, GuiFont *out_font)
     return false;
 }
 
-bool gui_font_get_uvs(const GuiFont *const in_font, char in_char, GuiRect *out_uv_rect)
+bool gui_font_get_uvs(const GuiFont* const in_font, char in_char, GuiRect* out_uv_rect)
 {
 
     i32 chars_per_row = in_font->image_width / in_font->cell_width;
@@ -248,7 +248,7 @@ bool gui_font_get_uvs(const GuiFont *const in_font, char in_char, GuiRect *out_u
     return false;
 }
 
-void gui_free_font(GuiFont *in_font)
+void gui_free_font(GuiFont* in_font)
 {
     sb_free(in_font->image_data);
     *in_font = (GuiFont){};
@@ -273,7 +273,7 @@ GuiRect gui_rect_scale(const GuiRect in_rect, const Vec2 in_scale)
                      }};
 }
 
-void gui_init(GuiContext *out_context)
+void gui_init(GuiContext* out_context)
 {
     GuiFrameState default_frame_state = {
         .screen_size = vec2_new(1920, 1080),
@@ -296,7 +296,7 @@ void gui_init(GuiContext *out_context)
     }
 }
 
-void gui_shutdown(GuiContext *in_context)
+void gui_shutdown(GuiContext* in_context)
 {
     sb_free(in_context->draw_data.vertices);
     sb_free(in_context->draw_data.indices);
@@ -306,7 +306,7 @@ void gui_shutdown(GuiContext *in_context)
     gui_free_font(&in_context->default_font);
 }
 
-void gui_begin_frame(GuiContext *const in_context, GuiFrameState frame_state)
+void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state)
 {
 
     // Clean up previous frame state before reassign
@@ -320,7 +320,7 @@ void gui_begin_frame(GuiContext *const in_context, GuiFrameState frame_state)
     sb_free(in_context->draw_data.indices);
 }
 
-GuiRect gui_make_fullscreen_rect(const GuiContext *const in_context, const u32 in_z_order)
+GuiRect gui_make_fullscreen_rect(const GuiContext* const in_context, const u32 in_z_order)
 {
     return (GuiRect){
         .position =
@@ -334,7 +334,7 @@ GuiRect gui_make_fullscreen_rect(const GuiContext *const in_context, const u32 i
 }
 
 /* positions: [0,1] range */
-void gui_draw_tri(GuiDrawData *const in_draw_data, const GuiVert vertices[3])
+void gui_draw_tri(GuiDrawData* const in_draw_data, const GuiVert vertices[3])
 {
 
     u32 next_vert_idx = sb_count(in_draw_data->vertices);
@@ -351,7 +351,7 @@ void gui_draw_tri(GuiDrawData *const in_draw_data, const GuiVert vertices[3])
 }
 
 /* positions: [0,1] range */
-void gui_draw_quad(GuiDrawData *const in_draw_data, const GuiVert vertices[4])
+void gui_draw_quad(GuiDrawData* const in_draw_data, const GuiVert vertices[4])
 {
 
     u32 next_vert_idx = sb_count(in_draw_data->vertices);
@@ -374,8 +374,8 @@ void gui_draw_quad(GuiDrawData *const in_draw_data, const GuiVert vertices[4])
 
 /* Currently takes in screen-space coordinates (i.e in pixels) and converts to [0,1] range where (0,0) is top-left and
  * (1,1) is bottom right */
-void gui_draw_box(GuiDrawData *const in_draw_data, const GuiRect *const in_rect, const Vec4 *const in_color,
-                  const GuiRect *const in_uv_rect)
+void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect, const Vec4* const in_color,
+                  const GuiRect* const in_uv_rect)
 {
 
     const bool has_uvs = in_uv_rect != NULL;
@@ -413,7 +413,7 @@ void gui_draw_box(GuiDrawData *const in_draw_data, const GuiRect *const in_rect,
                                 });
 }
 
-Vec2 recursive_bezier(const float t, const u32 num_points, const Vec2 *in_points)
+Vec2 recursive_bezier(const float t, const u32 num_points, const Vec2* in_points)
 {
     assert(num_points > 0);
 
@@ -427,7 +427,7 @@ Vec2 recursive_bezier(const float t, const u32 num_points, const Vec2 *in_points
     }
 }
 
-Vec2 recursive_bezier_deriv(const float t, const u32 num_points, const Vec2 *in_points)
+Vec2 recursive_bezier_deriv(const float t, const u32 num_points, const Vec2* in_points)
 {
     assert(num_points > 0);
 
@@ -444,7 +444,7 @@ Vec2 recursive_bezier_deriv(const float t, const u32 num_points, const Vec2 *in_
     }
 }
 
-void gui_draw_bezier(GuiDrawData *const in_draw_data, const u32 num_points, Vec2 *points, const u32 num_samples,
+void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2* points, const u32 num_samples,
                      const Vec4 color, const float width)
 {
     assert(num_points > 0);
@@ -503,7 +503,7 @@ void gui_draw_bezier(GuiDrawData *const in_draw_data, const u32 num_points, Vec2
 }
 
 /* Same as above, but in screen-space */
-void gui_bezier(GuiContext *const in_context, const u32 num_points, Vec2 *points, const u32 num_samples,
+void gui_bezier(GuiContext* const in_context, const u32 num_points, Vec2* points, const u32 num_samples,
                 const Vec4 color, const float width)
 {
     Vec2 normalized_points[num_points];
@@ -520,7 +520,7 @@ void gui_bezier(GuiContext *const in_context, const u32 num_points, Vec2 *points
 }
 
 // TODO: Add GuiTextStyleArgs (replace GuiAlignment arg (GuiAlignment should live in style args))
-void gui_make_text(GuiContext *const in_context, const char *in_text, const GuiRect *const in_bounding_rect,
+void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiRect* const in_bounding_rect,
                    GuiAlignment in_alignment)
 {
 
@@ -586,7 +586,7 @@ void gui_make_text(GuiContext *const in_context, const char *in_text, const GuiR
     }
 }
 
-void gui_text(GuiContext *const in_context, const char *in_text, Vec2 position, Vec2 size, GuiAlignment alignment)
+void gui_text(GuiContext* const in_context, const char* in_text, Vec2 position, Vec2 size, GuiAlignment alignment)
 {
     gui_make_text(in_context, in_text,
                   &(GuiRect){
@@ -598,7 +598,7 @@ void gui_text(GuiContext *const in_context, const char *in_text, Vec2 position, 
 
 // Hit-Test with previous-frame geometry: fail if we intersect with a higher z-order window OR a higher z-order window
 // is moving/resizing FCS TODO: Make sure to handle is_expanded
-bool gui_hit_test(const GuiContext *const in_context, const GuiRect in_rect)
+bool gui_hit_test(const GuiContext* const in_context, const GuiRect in_rect)
 {
     for (u32 i = 0; i < sb_count(in_context->prev_frame_state.open_windows); ++i)
     {
@@ -616,12 +616,12 @@ bool gui_hit_test(const GuiContext *const in_context, const GuiRect in_rect)
 }
 
 // If in_style_args is nullptr, this button is "invisible" but can still be used for hit-testing
-GuiClickState gui_make_button(GuiContext *const in_context, const char *in_label, const GuiRect *const in_draw_rect,
-                              const GuiRect *const in_hit_rect, const GuiButtonStyleArgs *in_style_args,
+GuiClickState gui_make_button(GuiContext* const in_context, const char* in_label, const GuiRect* const in_draw_rect,
+                              const GuiRect* const in_hit_rect, const GuiButtonStyleArgs* in_style_args,
                               const bool is_active)
 {
-    const GuiFrameState *const current_frame_state = &in_context->frame_state;
-    const GuiFrameState *const prev_frame_state = &in_context->prev_frame_state;
+    const GuiFrameState* const current_frame_state = &in_context->frame_state;
+    const GuiFrameState* const prev_frame_state = &in_context->prev_frame_state;
 
     GuiRect hit_rect = *in_hit_rect; // TODO: use in_hit_rect if non-null
 
@@ -668,7 +668,7 @@ GuiClickState gui_make_button(GuiContext *const in_context, const char *in_label
     return out_click_state;
 }
 
-GuiClickState gui_button(GuiContext *const in_context, const char *in_label, Vec2 in_position, const Vec2 in_size)
+GuiClickState gui_button(GuiContext* const in_context, const char* in_label, Vec2 in_position, const Vec2 in_size)
 {
     const Vec2 current_mouse_pos = in_context->frame_state.mouse_pos;
     const GuiRect rect = {
@@ -678,8 +678,8 @@ GuiClickState gui_button(GuiContext *const in_context, const char *in_label, Vec
     return gui_make_button(in_context, in_label, &rect, &rect, &default_button_style, true);
 }
 
-GuiClickState gui_make_slider_float(GuiContext *const in_context, float *const data_ptr, const Vec2 in_slider_bounds,
-                                    const char *in_label, const GuiRect *const in_rect, const bool is_active)
+GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds,
+                                    const char* in_label, const GuiRect* const in_rect, const bool is_active)
 {
 
     GuiButtonStyleArgs slider_button_style = default_button_style;
@@ -717,7 +717,7 @@ GuiClickState gui_make_slider_float(GuiContext *const in_context, float *const d
     gui_draw_box(&in_context->draw_data, &normalized_filled_rect, &slider_filled_color, NULL);
 
     // Draw label and current value text
-    const char *format_string = "%s: %.3f";
+    const char* format_string = "%s: %.3f";
     int required_chars = snprintf(NULL, 0, format_string, in_label, *data_ptr);
     char data_as_string[required_chars];
     snprintf(data_as_string, required_chars, format_string, in_label, *data_ptr);
@@ -726,8 +726,8 @@ GuiClickState gui_make_slider_float(GuiContext *const in_context, float *const d
     return clicked_state;
 }
 
-GuiClickState gui_slider_float(GuiContext *const in_context, float *const data_ptr, const Vec2 in_slider_bounds,
-                               const char *in_label, const Vec2 in_position, const Vec2 in_size)
+GuiClickState gui_slider_float(GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds,
+                               const char* in_label, const Vec2 in_position, const Vec2 in_size)
 {
     return gui_make_slider_float(in_context, data_ptr, in_slider_bounds, in_label,
                                  &(GuiRect){
@@ -753,13 +753,13 @@ static const bool window_allow_overscroll = false;
 //  2. 'Active' Window gets drawn last
 //  How? Store vertices/indices separately from free verts indices?
 
-void gui_window_begin(GuiContext *const in_context, GuiWindow *const in_window)
+void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window)
 {
     if (in_window->is_open)
     {
         in_window->num_controls = 0;
 
-        GuiRect *const window_rect = &in_window->window_rect;
+        GuiRect* const window_rect = &in_window->window_rect;
 
         // Main window area
         if (in_window->is_expanded)
@@ -817,7 +817,7 @@ void gui_window_begin(GuiContext *const in_context, GuiWindow *const in_window)
 
 // Attemps to allocate space for a new control in 'in_window'. If there is space, out_rect is written and true is
 // returned.
-bool gui_window_compute_control_rect(GuiWindow *const in_window, GuiRect *out_rect)
+bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_rect)
 {
     bool out_success = false;
     if (in_window->is_open && in_window->is_expanded)
@@ -832,7 +832,7 @@ bool gui_window_compute_control_rect(GuiWindow *const in_window, GuiRect *out_re
             (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
         const u32 last_visible_index = first_visible_index + max_visible_controls;
 
-        const GuiRect *const window_rect = &in_window->window_rect;
+        const GuiRect* const window_rect = &in_window->window_rect;
         const Vec2 window_pos = window_rect->position;
         const Vec2 window_size = window_rect->size;
 
@@ -862,7 +862,7 @@ bool gui_window_compute_control_rect(GuiWindow *const in_window, GuiRect *out_re
     return out_success;
 }
 
-GuiClickState gui_window_button(GuiContext *const in_context, GuiWindow *const in_window, const char *in_label)
+GuiClickState gui_window_button(GuiContext* const in_context, GuiWindow* const in_window, const char* in_label)
 {
 
     GuiClickState out_click_state = GUI_RELEASED;
@@ -877,8 +877,8 @@ GuiClickState gui_window_button(GuiContext *const in_context, GuiWindow *const i
     return out_click_state;
 }
 
-GuiClickState gui_window_slider_float(GuiContext *const in_context, GuiWindow *const in_window, float *const data_ptr,
-                                      const Vec2 in_slider_bounds, const char *in_label)
+GuiClickState gui_window_slider_float(GuiContext* const in_context, GuiWindow* const in_window, float* const data_ptr,
+                                      const Vec2 in_slider_bounds, const char* in_label)
 {
     GuiClickState out_click_state = GUI_RELEASED;
 
@@ -892,7 +892,7 @@ GuiClickState gui_window_slider_float(GuiContext *const in_context, GuiWindow *c
     return out_click_state;
 }
 
-void gui_window_end(GuiContext *const in_context, GuiWindow *const in_window)
+void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window)
 {
 
     if (in_window->is_open)
@@ -902,7 +902,7 @@ void gui_window_end(GuiContext *const in_context, GuiWindow *const in_window)
 
         if (in_window->is_expanded)
         {
-            GuiRect *const window_rect = &in_window->window_rect;
+            GuiRect* const window_rect = &in_window->window_rect;
 
             Vec2 mouse_pos = in_context->frame_state.mouse_pos;
             Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;

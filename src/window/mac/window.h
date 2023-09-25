@@ -76,7 +76,7 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 
 @interface WindowView : NSView
 {
-    NSTrackingArea *trackingArea;
+    NSTrackingArea* trackingArea;
   @public
     i32 cached_mouse_x;
   @public
@@ -120,7 +120,7 @@ KeyCode translate_macos_key_code(unsigned short key_code)
     return YES;
 }
 
-- (void)keyDown:(NSEvent *)event
+- (void)keyDown:(NSEvent*)event
 {
     KeyCode key_code = translate_macos_key_code([event keyCode]);
     if (key_code != KEY_MAX_VALUE)
@@ -129,7 +129,7 @@ KeyCode translate_macos_key_code(unsigned short key_code)
     }
 }
 
-- (void)keyUp:(NSEvent *)event
+- (void)keyUp:(NSEvent*)event
 {
     KeyCode key_code = translate_macos_key_code([event keyCode]);
     if (key_code != KEY_MAX_VALUE)
@@ -138,7 +138,7 @@ KeyCode translate_macos_key_code(unsigned short key_code)
     }
 }
 
-- (void)flagsChanged:(NSEvent *)event
+- (void)flagsChanged:(NSEvent*)event
 {
     if ([event modifierFlags] & NSEventModifierFlagShift)
     {
@@ -150,27 +150,27 @@ KeyCode translate_macos_key_code(unsigned short key_code)
     }
 }
 
-- (void)mouseDown:(NSEvent *)event
+- (void)mouseDown:(NSEvent*)event
 {
     global_key_states[KEY_LEFT_MOUSE] = true;
 }
 
-- (void)mouseUp:(NSEvent *)event
+- (void)mouseUp:(NSEvent*)event
 {
     global_key_states[KEY_LEFT_MOUSE] = false;
 }
 
-- (void)rightMouseDown:(NSEvent *)event
+- (void)rightMouseDown:(NSEvent*)event
 {
     global_key_states[KEY_RIGHT_MOUSE] = true;
 }
 
-- (void)rightMouseUp:(NSEvent *)event
+- (void)rightMouseUp:(NSEvent*)event
 {
     global_key_states[KEY_RIGHT_MOUSE] = false;
 }
 
-- (void)mouseMoved:(NSEvent *)event
+- (void)mouseMoved:(NSEvent*)event
 {
     NSPoint mouse_pos = event.locationInWindow;
     NSSize view_size = self.frame.size;
@@ -179,17 +179,17 @@ KeyCode translate_macos_key_code(unsigned short key_code)
     cached_mouse_y = view_size.height - (i32)mouse_pos.y - 1;
 }
 
-- (void)mouseDragged:(NSEvent *)event
+- (void)mouseDragged:(NSEvent*)event
 {
     [self mouseMoved:event];
 }
 
-- (void)rightMouseDragged:(NSEvent *)event
+- (void)rightMouseDragged:(NSEvent*)event
 {
     [self mouseMoved:event];
 }
 
-- (void)otherMouseDragged:(NSEvent *)event
+- (void)otherMouseDragged:(NSEvent*)event
 {
     [self mouseMoved:event];
 }
@@ -197,42 +197,42 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 
 typedef struct Window
 {
-    NSWindow *ns_window;
-    WindowView *ns_view;
-    CAMetalLayer *metal_layer;
+    NSWindow* ns_window;
+    WindowView* ns_view;
+    CAMetalLayer* metal_layer;
 } Window;
 
-Window window_create(const char *name, int width, int height)
+Window window_create(const char* name, int width, int height)
 {
     @autoreleasepool
     {
         // FCS TODO: Only create app once
-        NSApplication *app = [NSApplication sharedApplication];
+        NSApplication* app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
 
         NSRect frame = NSMakeRect(0, 0, width, height);
         const NSUInteger window_style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                         NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
-        NSWindow *window = [[[NSWindow alloc] initWithContentRect:frame
+        NSWindow* window = [[[NSWindow alloc] initWithContentRect:frame
                                                         styleMask:window_style
                                                           backing:NSBackingStoreBuffered
                                                             defer:NO] autorelease];
         [window setBackgroundColor:[NSColor blueColor]];
         [window makeKeyAndOrderFront:window];
 
-        NSString *ns_string_name = [[NSString alloc] initWithUTF8String:name];
+        NSString* ns_string_name = [[NSString alloc] initWithUTF8String:name];
         [window setTitle:ns_string_name];
 
-        WindowView *view = [[[WindowView alloc] init] autorelease];
+        WindowView* view = [[[WindowView alloc] init] autorelease];
         [window setContentView:view];
 
-        CAMetalLayer *layer = [[CAMetalLayer alloc] init];
+        CAMetalLayer* layer = [[CAMetalLayer alloc] init];
         [view setWantsLayer:YES];
         [view setLayer:layer];
 
         [NSApp activateIgnoringOtherApps:YES];
 
-        NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
+        NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny
                                             untilDate:[NSDate distantFuture]
                                                inMode:NSDefaultRunLoopMode
                                               dequeue:YES];
@@ -246,11 +246,11 @@ Window window_create(const char *name, int width, int height)
     }
 }
 
-bool window_handle_messages(const Window *const window)
+bool window_handle_messages(const Window* const window)
 {
     @autoreleasepool
     {
-        NSEvent *ev;
+        NSEvent* ev;
         do
         {
             ev = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:nil inMode:NSDefaultRunLoopMode dequeue:YES];
@@ -264,7 +264,7 @@ bool window_handle_messages(const Window *const window)
     return true; // FCS TODO: return false on quit event
 }
 
-void window_get_dimensions(const Window *const window, int *out_width, int *out_height)
+void window_get_dimensions(const Window* const window, int* out_width, int* out_height)
 {
     @autoreleasepool
     {
@@ -274,7 +274,7 @@ void window_get_dimensions(const Window *const window, int *out_width, int *out_
     }
 }
 
-void window_get_mouse_pos(const Window *const window, i32 *out_mouse_x, i32 *out_mouse_y)
+void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y)
 {
     *out_mouse_x = window->ns_view->cached_mouse_x;
     *out_mouse_y = window->ns_view->cached_mouse_y;

@@ -13,7 +13,7 @@ bool test_stretchy_buffer()
         double d;
     } TestStruct;
 
-    TestStruct *struct_array = NULL;
+    TestStruct* struct_array = NULL;
     TestStruct t = {
         .a = 1,
         .b = 2,
@@ -35,7 +35,7 @@ bool test_stretchy_buffer()
     }
 
     // TODO: Test sb_del and sb_ins
-    u32 *int_array = NULL;
+    u32* int_array = NULL;
     sb_push(int_array, 1);
     sb_ins(int_array, 0, 2);
     sb_ins(int_array, 1, 3);

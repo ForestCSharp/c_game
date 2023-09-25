@@ -12,7 +12,7 @@ Vec3 cube_points[] = {
 
 typedef struct Collider
 {
-    Vec3 *convex_points;
+    Vec3* convex_points;
 
     Vec3 position;
     Vec3 velocity;
@@ -58,30 +58,30 @@ Collider make_cube_collider()
     return out_cube;
 }
 
-void physics_add_force(Collider *in_collider, Vec3 force)
+void physics_add_force(Collider* in_collider, Vec3 force)
 {
     in_collider->pending_force = vec3_add(in_collider->pending_force, force);
 }
 
-void physics_add_torque(Collider *in_collider, Vec3 torque)
+void physics_add_torque(Collider* in_collider, Vec3 torque)
 {
     in_collider->pending_torque = vec3_add(in_collider->pending_torque, torque);
 }
 
-void physics_add_torque_at_location(Collider *in_collider, Vec3 force, Vec3 location)
+void physics_add_torque_at_location(Collider* in_collider, Vec3 force, Vec3 location)
 {
     Vec3 lever_arm = vec3_sub(location, in_collider->position);
     Vec3 torque = vec3_cross(force, lever_arm);
     physics_add_torque(in_collider, torque);
 }
 
-void physics_add_force_at_location(Collider *in_collider, Vec3 force, Vec3 location)
+void physics_add_force_at_location(Collider* in_collider, Vec3 force, Vec3 location)
 {
     physics_add_torque_at_location(in_collider, force, location);
     physics_add_force(in_collider, force);
 }
 
-void physics_resolve_collision(Collider *in_collider, const Vec3 hit_loc, const Vec3 hit_dir, const float restitution,
+void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const Vec3 hit_dir, const float restitution,
                                const float delta_time, size_t num_iterations)
 {
     if (in_collider->is_kinematic)
@@ -121,7 +121,7 @@ void physics_resolve_collision(Collider *in_collider, const Vec3 hit_loc, const 
     }
 }
 
-void physics_run_simulation(Collider *in_colliders, float delta_time)
+void physics_run_simulation(Collider* in_colliders, float delta_time)
 {
     u32 collider_count = sb_count(in_colliders);
 
@@ -130,7 +130,7 @@ void physics_run_simulation(Collider *in_colliders, float delta_time)
     // 3. Move objects based on velocity (position/rotation update)
     for (u32 i = 0; i < collider_count; ++i)
     {
-        Collider *collider = &in_colliders[i];
+        Collider* collider = &in_colliders[i];
 
         // Acceleration this frame: pending_force * delta_time / mass;
         Vec3 acceleration = vec3_scale(collider->pending_force, delta_time / collider->mass);
@@ -165,8 +165,8 @@ void physics_run_simulation(Collider *in_colliders, float delta_time)
         {
             for (u32 index_b = index_a + 1; index_b < collider_count; ++index_b)
             {
-                Collider *collider_a = &in_colliders[index_a];
-                Collider *collider_b = &in_colliders[index_b];
+                Collider* collider_a = &in_colliders[index_a];
+                Collider* collider_b = &in_colliders[index_b];
 
                 Mat4 scale_a = mat4_scale(collider_a->scale);
                 Mat4 rotation_a = quat_to_mat4(collider_a->rotation);
@@ -182,15 +182,15 @@ void physics_run_simulation(Collider *in_colliders, float delta_time)
                 const MprInputData input_data = {
                     .convex_a =
                         {
-                            .points = (MprVec3 *)collider_a->convex_points,
+                            .points = (MprVec3*)collider_a->convex_points,
                             .num_points = sb_count(collider_a->convex_points),
-                            .transform = (float *)transform_a.d,
+                            .transform = (float*)transform_a.d,
                         },
                     .convex_b =
                         {
-                            .points = (MprVec3 *)collider_b->convex_points,
+                            .points = (MprVec3*)collider_b->convex_points,
                             .num_points = sb_count(collider_b->convex_points),
-                            .transform = (float *)transform_b.d,
+                            .transform = (float*)transform_b.d,
                         },
                 };
                 MprOutputData hit_data;

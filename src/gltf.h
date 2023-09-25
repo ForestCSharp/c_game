@@ -14,19 +14,19 @@ const u32 GLTF_MAGIC_NUMBER = 0x46546C67;
 const u32 GLTF_CHUNK_TYPE_JSON = 0x4E4F534A;
 const u32 GLTF_CHUNK_TYPE_BUFFER = 0x004E4942;
 
-const char *STRING_TRUE = "true";
-const char *STRING_FALSE = "false";
+const char* STRING_TRUE = "true";
+const char* STRING_FALSE = "false";
 
 typedef struct JsonObject
 {
     u32 count;
-    struct JsonKeyValuePair *key_value_pairs;
+    struct JsonKeyValuePair* key_value_pairs;
 } JsonObject;
 
 typedef struct JsonArray
 {
     u32 count;
-    struct JsonValue *values;
+    struct JsonValue* values;
 } JsonArray;
 
 typedef enum JsonValueType
@@ -42,7 +42,7 @@ typedef struct JsonValue
 {
     JsonValueType type;
     union {
-        char *string;
+        char* string;
         float number;
         JsonObject object;
         bool boolean;
@@ -52,12 +52,12 @@ typedef struct JsonValue
 
 typedef struct JsonKeyValuePair
 {
-    char *key;
+    char* key;
     JsonValue value;
 } JsonKeyValuePair;
 
 // returns true if char c exists in string str
-bool is_char_in_string(char c, const char *str)
+bool is_char_in_string(char c, const char* str)
 {
     for (u32 i = 0; i < strlen(str); ++i)
     {
@@ -70,7 +70,7 @@ bool is_char_in_string(char c, const char *str)
 }
 
 // can modify p_string, trims p_string of leading chars_to_trim
-int trim_characters(char **p_string, const char *chars_to_trim)
+int trim_characters(char** p_string, const char* chars_to_trim)
 {
     u32 i = 0;
     for (; i < strlen(*p_string); ++i)
@@ -85,13 +85,13 @@ int trim_characters(char **p_string, const char *chars_to_trim)
 }
 
 // can modify p_string, trims whitespace characters
-int trim_whitespace(char **p_string)
+int trim_whitespace(char** p_string)
 {
     return trim_characters(p_string, " \t\v\n\r\f");
 }
 
 // can modify p_string, trims whitespace and attempts to consume char c
-bool consume(char c, char **p_string)
+bool consume(char c, char** p_string)
 {
     int chars_trimmed = trim_whitespace(p_string);
     if (c == *p_string[0])
@@ -103,7 +103,7 @@ bool consume(char c, char **p_string)
 }
 
 // Finds next occurrence of c in in_string
-int find_next(char c, char *in_string)
+int find_next(char c, char* in_string)
 {
     for (u32 i = 0; i < strlen(in_string); ++i)
     {
@@ -117,7 +117,7 @@ int find_next(char c, char *in_string)
 
 // returns true if the next n-chars of in_string match identifier (n ==
 // strlen(identifier))
-bool string_check(const char *in_string, const char *identifier)
+bool string_check(const char* in_string, const char* identifier)
 {
     for (int i = 0; i < strlen(identifier); ++i)
     {
@@ -130,9 +130,9 @@ bool string_check(const char *in_string, const char *identifier)
 }
 
 // can modify p_string, allocates and returns a new string
-char *parse_string(char **p_string)
+char* parse_string(char** p_string)
 {
-    char **old_string = p_string;
+    char** old_string = p_string;
     bool found_leading_quote = consume('\"', p_string);
     if (found_leading_quote)
     {
@@ -140,7 +140,7 @@ char *parse_string(char **p_string)
         // FIXME: check for escape char before ending quote
         if (key_length >= 0)
         {
-            char *parsed_string = (char *)calloc(key_length + 1, 1);
+            char* parsed_string = (char*)calloc(key_length + 1, 1);
             memcpy(parsed_string, *p_string, key_length);
             *p_string = *p_string + key_length + 1;
             return parsed_string;
@@ -151,11 +151,11 @@ char *parse_string(char **p_string)
 
 // Allocations: Parsed Strings, Arrays, JsonObject KeyValue pairs
 
-bool parse_json_object(char **json_string, JsonObject *out_json_object);
+bool parse_json_object(char** json_string, JsonObject* out_json_object);
 
-bool parse_json_value(char **json_string, JsonValue *out_value)
+bool parse_json_value(char** json_string, JsonValue* out_value)
 {
-    char *current_position = *json_string;
+    char* current_position = *json_string;
 
     trim_whitespace(&current_position);
     if (current_position[0] == '{')
@@ -170,7 +170,7 @@ bool parse_json_value(char **json_string, JsonValue *out_value)
     }
     else if (isdigit(current_position[0]) || current_position[0] == '-')
     {
-        char *end_ptr = NULL;
+        char* end_ptr = NULL;
         out_value->type = JSON_VALUE_TYPE_NUMBER;
         out_value->data.number = strtof(current_position, &end_ptr);
         if (current_position != end_ptr)
@@ -188,8 +188,8 @@ bool parse_json_value(char **json_string, JsonValue *out_value)
         {
             out_value->data.array.count += 1;
             out_value->data.array.values =
-                (JsonValue *)realloc(out_value->data.array.values, sizeof(JsonValue) * out_value->data.array.count);
-            JsonValue *array_value = &out_value->data.array.values[out_value->data.array.count - 1];
+                (JsonValue*)realloc(out_value->data.array.values, sizeof(JsonValue) * out_value->data.array.count);
+            JsonValue* array_value = &out_value->data.array.values[out_value->data.array.count - 1];
             memset(array_value, 0, sizeof(JsonValue));
             if (!parse_json_value(&current_position, array_value))
             {
@@ -217,9 +217,9 @@ bool parse_json_value(char **json_string, JsonValue *out_value)
 }
 
 // Modifies json_string (necessary for recursion)
-bool parse_json_object(char **json_string, JsonObject *out_json_object)
+bool parse_json_object(char** json_string, JsonObject* out_json_object)
 {
-    char *current_position = *json_string;
+    char* current_position = *json_string;
     // 1. Consume leading whitespace and '{'
     if (!consume('{', &current_position))
     {
@@ -232,9 +232,9 @@ bool parse_json_object(char **json_string, JsonObject *out_json_object)
     do
     {
         out_json_object->count += 1;
-        out_json_object->key_value_pairs = (JsonKeyValuePair *)realloc(
+        out_json_object->key_value_pairs = (JsonKeyValuePair*)realloc(
             out_json_object->key_value_pairs, sizeof(JsonKeyValuePair) * out_json_object->count);
-        JsonKeyValuePair *key_value = &out_json_object->key_value_pairs[out_json_object->count - 1];
+        JsonKeyValuePair* key_value = &out_json_object->key_value_pairs[out_json_object->count - 1];
         memset(key_value, 0, sizeof(JsonKeyValuePair));
 
         // Key (string)
@@ -265,7 +265,7 @@ bool parse_json_object(char **json_string, JsonObject *out_json_object)
     return true;
 }
 
-bool json_value_as_float(const JsonValue *value, float *out_float)
+bool json_value_as_float(const JsonValue* value, float* out_float)
 {
     if (value && value->type == JSON_VALUE_TYPE_NUMBER && out_float)
     {
@@ -275,7 +275,7 @@ bool json_value_as_float(const JsonValue *value, float *out_float)
     return false;
 }
 
-bool json_value_as_int32(const JsonValue *value, i32 *out_int)
+bool json_value_as_int32(const JsonValue* value, i32* out_int)
 {
     if (value && value->type == JSON_VALUE_TYPE_NUMBER && out_int)
     {
@@ -285,7 +285,7 @@ bool json_value_as_int32(const JsonValue *value, i32 *out_int)
     return false;
 }
 
-bool json_value_as_uint32(const JsonValue *value, u32 *out_int)
+bool json_value_as_uint32(const JsonValue* value, u32* out_int)
 {
     if (value && value->type == JSON_VALUE_TYPE_NUMBER && out_int)
     {
@@ -295,7 +295,7 @@ bool json_value_as_uint32(const JsonValue *value, u32 *out_int)
     return false;
 }
 
-bool json_value_as_bool(const JsonValue *value, bool *out_bool)
+bool json_value_as_bool(const JsonValue* value, bool* out_bool)
 {
     if (value && value->type == JSON_VALUE_TYPE_BOOLEAN && out_bool)
     {
@@ -305,7 +305,7 @@ bool json_value_as_bool(const JsonValue *value, bool *out_bool)
     return false;
 }
 
-bool json_value_as_string(const JsonValue *value, const char **out_string)
+bool json_value_as_string(const JsonValue* value, const char** out_string)
 {
     if (value && value->type == JSON_VALUE_TYPE_STRING && out_string)
     {
@@ -315,7 +315,7 @@ bool json_value_as_string(const JsonValue *value, const char **out_string)
     return false;
 }
 
-bool json_value_as_array(const JsonValue *value, const JsonArray **out_array)
+bool json_value_as_array(const JsonValue* value, const JsonArray** out_array)
 {
     if (value && value->type == JSON_VALUE_TYPE_ARRAY)
     {
@@ -325,7 +325,7 @@ bool json_value_as_array(const JsonValue *value, const JsonArray **out_array)
     return false;
 }
 
-bool json_value_as_object(const JsonValue *value, const JsonObject **out_object)
+bool json_value_as_object(const JsonValue* value, const JsonObject** out_object)
 {
     if (value && value->type == JSON_VALUE_TYPE_OBJECT)
     {
@@ -335,11 +335,11 @@ bool json_value_as_object(const JsonValue *value, const JsonObject **out_object)
     return false;
 }
 
-const JsonValue *json_object_get_value(const JsonObject *object, const char *key)
+const JsonValue* json_object_get_value(const JsonObject* object, const char* key)
 {
     for (u32 i = 0; i < object->count; ++i)
     {
-        JsonKeyValuePair *key_value = &object->key_value_pairs[i];
+        JsonKeyValuePair* key_value = &object->key_value_pairs[i];
         if (strcmp(key_value->key, key) == 0)
         {
             return &key_value->value;
@@ -348,7 +348,7 @@ const JsonValue *json_object_get_value(const JsonObject *object, const char *key
     return NULL;
 }
 
-const JsonValue *json_array_get_value(const JsonArray *array, u32 index)
+const JsonValue* json_array_get_value(const JsonArray* array, u32 index)
 {
     if (index < array->count)
     {
@@ -362,37 +362,37 @@ const JsonValue *json_array_get_value(const JsonArray *array, u32 index)
 //  TODO: the other value getters return true on success and set the output via
 //  an argument
 
-const JsonObject *json_object_get_object(const JsonObject *object, const char *key)
+const JsonObject* json_object_get_object(const JsonObject* object, const char* key)
 {
-    const JsonObject *out_object = NULL;
+    const JsonObject* out_object = NULL;
     json_value_as_object(json_object_get_value(object, key), &out_object);
     return out_object;
 }
 
-const JsonArray *json_object_get_array(const JsonObject *object, const char *key)
+const JsonArray* json_object_get_array(const JsonObject* object, const char* key)
 {
-    const JsonArray *out_array = NULL;
+    const JsonArray* out_array = NULL;
     json_value_as_array(json_object_get_value(object, key), &out_array);
     return out_array;
 }
 
-const JsonObject *json_array_get_object(const JsonArray *array, u32 index)
+const JsonObject* json_array_get_object(const JsonArray* array, u32 index)
 {
-    const JsonObject *out_object = NULL;
+    const JsonObject* out_object = NULL;
     json_value_as_object(json_array_get_value(array, index), &out_object);
     return out_object;
 }
 
-const JsonArray *json_array_get_array(const JsonArray *array, u32 index)
+const JsonArray* json_array_get_array(const JsonArray* array, u32 index)
 {
-    const JsonArray *out_array = NULL;
+    const JsonArray* out_array = NULL;
     json_value_as_array(json_array_get_value(array, index), &out_array);
     return out_array;
 }
 
-void free_json_object(JsonObject *in_object);
+void free_json_object(JsonObject* in_object);
 
-void free_json_value(JsonValue *in_value)
+void free_json_value(JsonValue* in_value)
 {
     switch (in_value->type)
     {
@@ -414,17 +414,17 @@ void free_json_value(JsonValue *in_value)
     }
 }
 
-void free_json_object(JsonObject *in_object)
+void free_json_object(JsonObject* in_object)
 {
     for (u32 i = 0; i < in_object->count; ++i)
     {
-        JsonKeyValuePair *key_value = &in_object->key_value_pairs[i];
+        JsonKeyValuePair* key_value = &in_object->key_value_pairs[i];
         free_json_value(&key_value->value);
     }
     free(in_object->key_value_pairs);
 }
 
-static inline void indent(FILE *out_file, int n)
+static inline void indent(FILE* out_file, int n)
 {
     for (int i = 0; i < n; i++)
     {
@@ -432,7 +432,7 @@ static inline void indent(FILE *out_file, int n)
     }
 }
 
-static inline void indent_printf(FILE *out_file, int n, const char *format, ...)
+static inline void indent_printf(FILE* out_file, int n, const char* format, ...)
 {
     indent(out_file, n);
     va_list args;
@@ -441,9 +441,9 @@ static inline void indent_printf(FILE *out_file, int n, const char *format, ...)
     va_end(args);
 }
 
-void print_json_object(JsonObject *in_object, int depth, FILE *out_file);
+void print_json_object(JsonObject* in_object, int depth, FILE* out_file);
 
-void print_json_value(JsonValue *in_value, int depth, bool leading_indent, FILE *out_file)
+void print_json_value(JsonValue* in_value, int depth, bool leading_indent, FILE* out_file)
 {
 
     if (leading_indent)
@@ -484,14 +484,14 @@ void print_json_value(JsonValue *in_value, int depth, bool leading_indent, FILE 
     }
 }
 
-void print_json_object(JsonObject *in_object, int depth, FILE *out_file)
+void print_json_object(JsonObject* in_object, int depth, FILE* out_file)
 {
 
     fprintf(out_file, "{\n");
 
     for (u32 i = 0; i < in_object->count; ++i)
     {
-        JsonKeyValuePair *key_value = &in_object->key_value_pairs[i];
+        JsonKeyValuePair* key_value = &in_object->key_value_pairs[i];
         indent_printf(out_file, depth + 1, "\"%s\" : ", key_value->key);
 
         print_json_value(&key_value->value, depth + 1, false, out_file);
@@ -512,14 +512,14 @@ void print_json_object(JsonObject *in_object, int depth, FILE *out_file)
 typedef struct GltfBuffer
 {
     u32 byte_length;
-    u8 *data;
+    u8* data;
 } GltfBuffer;
 
 typedef struct GltfBufferView
 {
     u32 byte_length;
     u32 byte_offset;
-    GltfBuffer *buffer;
+    GltfBuffer* buffer;
 } GltfBufferView;
 
 typedef enum GltfComponentType
@@ -589,7 +589,7 @@ u32 gltf_accessor_type_size(GltfAccessorType type)
         return GLTF_ACCESSOR_TYPE_##suffix;                                                                            \
     }
 
-GltfAccessorType str_to_gltf_accessor_type(const char *str)
+GltfAccessorType str_to_gltf_accessor_type(const char* str)
 {
     CHECK_ACCESSOR_TYPE(str, SCALAR);
     CHECK_ACCESSOR_TYPE(str, VEC2);
@@ -608,59 +608,59 @@ typedef struct GltfAccessor
     GltfAccessorType accessor_type;
     u32 count;
     u32 byte_offset;
-    GltfBufferView *buffer_view;
+    GltfBufferView* buffer_view;
 } GltfAccessor;
 
-u32 gltf_accessor_get_initial_offset(GltfAccessor *accessor)
+u32 gltf_accessor_get_initial_offset(GltfAccessor* accessor)
 {
     return accessor->byte_offset + accessor->buffer_view->byte_offset;
 }
 
-u32 gltf_accessor_get_stride(GltfAccessor *accessor)
+u32 gltf_accessor_get_stride(GltfAccessor* accessor)
 {
     return gltf_accessor_type_size(accessor->accessor_type) * gltf_component_type_size(accessor->component_type);
 }
 
 typedef struct GltfPrimitive
 {
-    GltfAccessor *positions;
-    GltfAccessor *normals;
+    GltfAccessor* positions;
+    GltfAccessor* normals;
     // TODO: TangentAccessor
-    GltfAccessor *texcoord0;
+    GltfAccessor* texcoord0;
     // TODO: TexCoords Accessors (0,1)
     // TODO: Color Accessor
     // TODO: Joints, Weights Acessors
-    GltfAccessor *indices;
+    GltfAccessor* indices;
     u32 material;
 } GltfPrimitive;
 
 typedef struct GltfMesh
 {
-    const char *name;
+    const char* name;
     u32 num_primitives;
-    GltfPrimitive *primitives;
+    GltfPrimitive* primitives;
 } GltfMesh;
 
 typedef struct GltfAsset
 {
     JsonObject json;
     u32 num_buffers;
-    GltfBuffer *buffers;
+    GltfBuffer* buffers;
     u32 num_buffer_views;
-    GltfBufferView *buffer_views;
+    GltfBufferView* buffer_views;
     u32 num_accessors;
-    GltfAccessor *accessors;
+    GltfAccessor* accessors;
     u32 num_meshes;
-    GltfMesh *meshes;
+    GltfMesh* meshes;
 } GltfAsset;
 
-bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
+bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 {
 
     // TODO: check extension, add functions for GLB and GLTF (only GLB is
     // currently supported)
 
-    FILE *file = fopen(filename, "rb");
+    FILE* file = fopen(filename, "rb");
 
     if (file && out_asset)
     {
@@ -691,13 +691,13 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
             printf("Found Json Chunk\n");
         }
 
-        char *json_string = (char *)malloc(json_length + 1);
+        char* json_string = (char*)malloc(json_length + 1);
         json_string[json_length] = 0; // Null-terminate string
 
         if (fread(json_string, json_length, 1, file) != 0)
         {
             printf("json data: %s\n", json_string);
-            char *modified_json_string = json_string;
+            char* modified_json_string = json_string;
             parse_json_object(&modified_json_string, &out_asset->json);
             // TODO: Error checking, make sure to free json string if we early-exit
         }
@@ -713,7 +713,7 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
         {
             // Increment num_buffers and realloc
             out_asset->num_buffers++;
-            out_asset->buffers = (GltfBuffer *)realloc(out_asset->buffers, sizeof(GltfBuffer) * out_asset->num_buffers);
+            out_asset->buffers = (GltfBuffer*)realloc(out_asset->buffers, sizeof(GltfBuffer) * out_asset->num_buffers);
 
             printf("Buffer Length: %i\n", buffer_length);
 
@@ -723,7 +723,7 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
                 return false;
             }
 
-            u8 *buffer_data = (u8 *)malloc(buffer_length);
+            u8* buffer_data = (u8*)malloc(buffer_length);
             if (fread(buffer_data, buffer_length, 1, file) == 1)
             {
                 out_asset->buffers[out_asset->num_buffers - 1].byte_length = buffer_length;
@@ -736,19 +736,19 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
         }
 
         // BUFFER VIEWS
-        const JsonArray *json_buffer_views = json_object_get_array(&out_asset->json, "bufferViews");
+        const JsonArray* json_buffer_views = json_object_get_array(&out_asset->json, "bufferViews");
         if (!json_buffer_views)
         {
             return false;
         }
 
         out_asset->num_buffer_views = json_buffer_views->count;
-        out_asset->buffer_views = (GltfBufferView *)calloc(sizeof(GltfBufferView), out_asset->num_buffer_views);
+        out_asset->buffer_views = (GltfBufferView*)calloc(sizeof(GltfBufferView), out_asset->num_buffer_views);
 
         for (u32 i = 0; i < out_asset->num_buffer_views; ++i)
         {
-            GltfBufferView *buffer_view = &out_asset->buffer_views[i];
-            const JsonObject *json_buffer_view = json_array_get_object(json_buffer_views, i);
+            GltfBufferView* buffer_view = &out_asset->buffer_views[i];
+            const JsonObject* json_buffer_view = json_array_get_object(json_buffer_views, i);
 
             u32 buffer_index = 0;
             if (json_value_as_uint32(json_object_get_value(json_buffer_view, "buffer"), &buffer_index) &&
@@ -770,19 +770,19 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
         }
 
         // ACCESSORS
-        const JsonArray *json_accessors = json_object_get_array(&out_asset->json, "accessors");
+        const JsonArray* json_accessors = json_object_get_array(&out_asset->json, "accessors");
         if (!json_accessors)
         {
             return false;
         }
 
         out_asset->num_accessors = json_accessors->count;
-        out_asset->accessors = (GltfAccessor *)calloc(sizeof(GltfAccessor), out_asset->num_accessors);
+        out_asset->accessors = (GltfAccessor*)calloc(sizeof(GltfAccessor), out_asset->num_accessors);
 
         for (u32 i = 0; i < out_asset->num_accessors; ++i)
         {
-            GltfAccessor *accessor = &out_asset->accessors[i];
-            const JsonObject *json_accessor = json_array_get_object(json_accessors, i);
+            GltfAccessor* accessor = &out_asset->accessors[i];
+            const JsonObject* json_accessor = json_array_get_object(json_accessors, i);
 
             u32 buffer_view_index = 0;
             if (json_value_as_uint32(json_object_get_value(json_accessor, "bufferView"), &buffer_view_index) &&
@@ -796,7 +796,7 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
             }
 
             if (!json_value_as_uint32(json_object_get_value(json_accessor, "componentType"),
-                                      (u32 *)&accessor->component_type))
+                                      (u32*)&accessor->component_type))
             {
                 return false;
             }
@@ -804,7 +804,7 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
             {
                 return false;
             }
-            const char *type_string = NULL;
+            const char* type_string = NULL;
             if (json_value_as_string(json_object_get_value(json_accessor, "type"), &type_string))
             {
                 accessor->accessor_type = str_to_gltf_accessor_type(type_string);
@@ -814,20 +814,20 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
         }
 
         // MESHES
-        const JsonArray *json_meshes = json_object_get_array(&out_asset->json, "meshes");
+        const JsonArray* json_meshes = json_object_get_array(&out_asset->json, "meshes");
         if (!json_meshes)
         {
             return false;
         }
 
         out_asset->num_meshes = json_meshes->count;
-        out_asset->meshes = (GltfMesh *)calloc(sizeof(GltfMesh), out_asset->num_meshes);
+        out_asset->meshes = (GltfMesh*)calloc(sizeof(GltfMesh), out_asset->num_meshes);
 
         for (u32 i = 0; i < out_asset->num_meshes; ++i)
         {
-            GltfMesh *mesh = &out_asset->meshes[i];
-            const JsonObject *json_mesh = json_array_get_object(json_meshes, i);
-            const JsonArray *json_primitives = json_object_get_array(json_mesh, "primitives");
+            GltfMesh* mesh = &out_asset->meshes[i];
+            const JsonObject* json_mesh = json_array_get_object(json_meshes, i);
+            const JsonArray* json_primitives = json_object_get_array(json_mesh, "primitives");
 
             if (!json_primitives)
             {
@@ -835,13 +835,13 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
             }
 
             mesh->num_primitives = json_primitives->count;
-            mesh->primitives = (GltfPrimitive *)calloc(sizeof(GltfPrimitive), mesh->num_primitives);
+            mesh->primitives = (GltfPrimitive*)calloc(sizeof(GltfPrimitive), mesh->num_primitives);
 
             for (u32 j = 0; j < mesh->num_primitives; ++j)
             {
-                GltfPrimitive *primitive = &mesh->primitives[j];
-                const JsonObject *json_primitive = json_array_get_object(json_primitives, j);
-                const JsonObject *json_attributes = json_object_get_object(json_primitive, "attributes");
+                GltfPrimitive* primitive = &mesh->primitives[j];
+                const JsonObject* json_primitive = json_array_get_object(json_primitives, j);
+                const JsonObject* json_attributes = json_object_get_object(json_primitive, "attributes");
 
                 // TODO: Primitive Topology (Triangle (4) is default, but check for
                 // others)
@@ -900,7 +900,7 @@ bool gltf_load_asset(const char *filename, GltfAsset *out_asset)
 // FIXME: Outline guarantees (i.e. For a successfully loaded asset, an accessors
 // buffer view is non-null, a buffer_views bufer is non-null, etc.)
 
-void gltf_free_asset(GltfAsset *asset)
+void gltf_free_asset(GltfAsset* asset)
 {
 
     for (u32 i = 0; i < asset->num_meshes; ++i)
