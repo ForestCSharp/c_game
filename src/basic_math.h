@@ -14,7 +14,7 @@
 #define CLAMP(value, min, max) (MAX(min, MIN(max, value)))
 #endif
 
-float lerp(float t, float a, float b) 
+float lerp(float t, float a, float b)
 {
     return (a * (1.0 - t)) + (b * t);
 }
@@ -22,11 +22,11 @@ float lerp(float t, float a, float b)
 float unlerp(float t, float a, float b)
 {
     if (a != b)
-	{
+    {
         return (t - a) / (b - a);
     }
-	else
-	{
+    else
+    {
         return 0.f;
     }
 }

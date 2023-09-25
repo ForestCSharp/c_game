@@ -1,77 +1,81 @@
 #include "gpu.h"
-#include "stretchy_buffer.h"
 #include "basic_math.h"
+#include "stretchy_buffer.h"
 
+#include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h>
-#include <limits.h>
 
-//FCS TODO: Move these to somewhere generic
+// FCS TODO: Move these to somewhere generic
 #ifndef MIN
-#define MIN(a,b) ((a) < (b) ? (a) : (b)) 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
 #ifndef MAX
-#define MAX(a,b) ((a) > (b) ? (a) : (b)) 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
-//FCS TODO: MoltenVK testing
+// FCS TODO: MoltenVK testing
 PFN_vkCmdBeginRenderingKHR pfn_begin_rendering = NULL;
 PFN_vkCmdEndRenderingKHR pfn_end_rendering = NULL;
 
-#define VK_CHECK(f)                                        \
-{                                                          \
-    VkResult res = (f);                                    \
-    if (res != VK_SUCCESS) {                               \
-        printf("VULKAN ERROR: %s RETURNED: %i LINE: %i\n", \
-                 #f, res, __LINE__);                       \
-        exit(1);                                           \
-    }                                                      \
-}                                                          \
+#define VK_CHECK(f)                                                                 \
+{                                                                                   \
+	VkResult res = (f);                                                             \
+	if (res != VK_SUCCESS)                                                          \
+	{                                                                               \
+		printf("VULKAN ERROR: %s RETURNED: %i LINE: %i\n", #f, res, __LINE__);      \
+		exit(1);                                                                    \
+	}                                                                               \
+}
 
-VkBool32 vulkan_debug_callback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData) {
-    if (! (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT)) {
+VkBool32 vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                               VkDebugUtilsMessageTypeFlagsEXT messageType,
+                               const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)
+{
+    if (!(messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT))
+    {
         printf("Validation Layer: %s\n", pCallbackData->pMessage);
     }
     return VK_FALSE;
 }
 
-u32 gpu_format_stride(GpuFormat format) {
-    switch(format) {
-		case GPU_FORMAT_R32_SINT:
-        case GPU_FORMAT_RGBA8_UNORM:
-        case GPU_FORMAT_BGRA8_UNORM:
-        case GPU_FORMAT_RGBA8_SRGB:
-        case GPU_FORMAT_BGRA8_SRGB:
-            return 4;
-        case GPU_FORMAT_RG32_SFLOAT:
-            return sizeof(float) * 2;
-        case GPU_FORMAT_RGB32_SFLOAT:
-            return sizeof(float) * 3;
-        case GPU_FORMAT_RGBA32_SFLOAT:
-            return sizeof(float) * 4;
-        default:
-            printf("Error: Unhandled Format in gpu_format_stride\n");
-			exit(0);
-            return 0;
+u32 gpu_format_stride(GpuFormat format)
+{
+    switch (format)
+    {
+    case GPU_FORMAT_R32_SINT:
+    case GPU_FORMAT_RGBA8_UNORM:
+    case GPU_FORMAT_BGRA8_UNORM:
+    case GPU_FORMAT_RGBA8_SRGB:
+    case GPU_FORMAT_BGRA8_SRGB:
+        return 4;
+    case GPU_FORMAT_RG32_SFLOAT:
+        return sizeof(float) * 2;
+    case GPU_FORMAT_RGB32_SFLOAT:
+        return sizeof(float) * 3;
+    case GPU_FORMAT_RGBA32_SFLOAT:
+        return sizeof(float) * 4;
+    default:
+        printf("Error: Unhandled Format in gpu_format_stride\n");
+        exit(0);
+        return 0;
     }
 }
 
-typedef struct {
+typedef struct
+{
     VkPhysicalDevice physical_device;
     int graphics_family_index;
     VkSurfaceFormatKHR surface_format;
     VkPresentModeKHR present_mode;
 } VulkanPhysicalDeviceData;
 
-VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSurfaceKHR surface) {
-    
+VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSurfaceKHR surface)
+{
+
     VkPhysicalDevice physical_device = VK_NULL_HANDLE;
     int graphics_family_index = -1;
     VkSurfaceFormatKHR surface_format = {};
@@ -88,13 +92,17 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
             u32 format_count;
             VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, NULL));
             bool found_format = false;
-            if (format_count > 0) {
+            if (format_count > 0)
+            {
                 VkSurfaceFormatKHR surface_formats[format_count];
-				
-                VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, surface_formats));
-                for (int i = 0; i < format_count; ++i) {
-					printf("format: %i\n", surface_formats[i].format);
-                    if (surface_formats[i].format == GPU_FORMAT_BGRA8_UNORM) { //FIXME: more robust format choosing
+
+                VK_CHECK(
+                    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, surface_formats));
+                for (int i = 0; i < format_count; ++i)
+                {
+                    printf("format: %i\n", surface_formats[i].format);
+                    if (surface_formats[i].format == GPU_FORMAT_BGRA8_UNORM)
+                    { // FIXME: more robust format choosing
                         surface_format = surface_formats[i];
                         found_format = true;
                         break;
@@ -105,38 +113,46 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
             assert(found_format);
 
             u32 present_mode_count;
-            VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface, &present_mode_count, NULL));
-            if (present_mode_count > 0) {
+            VK_CHECK(
+                vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface, &present_mode_count, NULL));
+            if (present_mode_count > 0)
+            {
                 VkPresentModeKHR present_modes[present_mode_count];
-                VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface, &present_mode_count, present_modes));
+                VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface, &present_mode_count,
+                                                                   present_modes));
 
-                for (int i = 0; i < present_mode_count; ++i) {
-                    if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+                for (int i = 0; i < present_mode_count; ++i)
+                {
+                    if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
+                    {
                         present_mode = present_modes[i];
                         break;
                     }
-                    
-                    if (present_modes[i] == VK_PRESENT_MODE_FIFO_KHR) {
+
+                    if (present_modes[i] == VK_PRESENT_MODE_FIFO_KHR)
+                    {
                         present_mode = present_modes[i];
                         break;
-                    } 
+                    }
                 }
-            } 
+            }
 
-            //Check for correct queue families
+            // Check for correct queue families
             u32 queue_family_count = 0;
             vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[i], &queue_family_count, NULL);
             if (queue_family_count > 0)
             {
                 VkQueueFamilyProperties queue_families[queue_family_count];
                 vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[i], &queue_family_count, queue_families);
-                
+
                 for (int i = 0; i < queue_family_count; ++i)
                 {
                     VkBool32 surface_supported = VK_FALSE;
                     vkGetPhysicalDeviceSurfaceSupportKHR(physical_devices[i], i, surface, &surface_supported);
 
-                    if (surface_supported == VK_TRUE && queue_families[i].queueCount > 0 && queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                    if (surface_supported == VK_TRUE && queue_families[i].queueCount > 0 &&
+                        queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+                    {
                         physical_device = physical_devices[i];
                         graphics_family_index = i;
                         break;
@@ -150,7 +166,7 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
     vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
     printf("Device Name: %s\n", physical_device_properties.deviceName);
 
-    return (VulkanPhysicalDeviceData) {
+    return (VulkanPhysicalDeviceData){
         .physical_device = physical_device,
         .graphics_family_index = graphics_family_index,
         .surface_format = surface_format,
@@ -158,56 +174,59 @@ VulkanPhysicalDeviceData vulkan_choose_physical_device(VkInstance instance, VkSu
     };
 }
 
-GpuContext gpu_create_context(const Window* const window) {
+GpuContext gpu_create_context(const Window *const window)
+{
     VkApplicationInfo app_info = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName = "C Game",
-        .applicationVersion = VK_MAKE_VERSION(1,0,0),
+        .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
         .pEngineName = "C Game",
-        .engineVersion = VK_MAKE_VERSION(1,0,0),
-        .apiVersion = VK_API_VERSION_1_3, 
+        .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+        .apiVersion = VK_API_VERSION_1_3,
     };
 
     u32 enumerated_layer_count;
     VK_CHECK(vkEnumerateInstanceLayerProperties(&enumerated_layer_count, NULL));
-    if (enumerated_layer_count > 0) {
+    if (enumerated_layer_count > 0)
+    {
         VkLayerProperties enumerated_layer_properties[enumerated_layer_count];
         VK_CHECK(vkEnumerateInstanceLayerProperties(&enumerated_layer_count, enumerated_layer_properties));
 
-        for (u32 i = 0; i < enumerated_layer_count; ++i) {
+        for (u32 i = 0; i < enumerated_layer_count; ++i)
+        {
             printf("Instance Layer: %s\n", enumerated_layer_properties[i].layerName);
         }
     }
 
-    const char* validation_layers[] = {
+    const char *validation_layers[] = {
         "VK_LAYER_KHRONOS_validation",
         // "VK_LAYER_LUNARG_api_dump"
     };
     u32 validation_layer_count = sizeof(validation_layers) / sizeof(validation_layers[0]);
 
-	//FCS TODO: Clean up defines. query surface extension string from window system?
-    const char* extensions[] = {
+    // FCS TODO: Clean up defines. query surface extension string from window system?
+    const char *extensions[] = {
         "VK_KHR_surface",
 #if defined(_WIN32)
         "VK_KHR_win32_surface",
 #elif defined(__APPLE__)
-		VK_EXT_METAL_SURFACE_EXTENSION_NAME,
-		VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+        VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+        VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 #endif
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
     u32 extension_count = sizeof(extensions) / sizeof(extensions[0]);
-	printf("Extensions (%u)\n", extension_count);
-	for (i32 i = 0; i < extension_count; ++i)
-	{
-		printf("\t%s\n", extensions[i]);
-	}
+    printf("Extensions (%u)\n", extension_count);
+    for (i32 i = 0; i < extension_count; ++i)
+    {
+        printf("\t%s\n", extensions[i]);
+    }
 
     VkInstanceCreateInfo instance_create_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-		.pNext = NULL,
-		.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR, //FCS TODO: Mac Only
+        .pNext = NULL,
+        .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR, // FCS TODO: Mac Only
         .pApplicationInfo = &app_info,
         .enabledLayerCount = validation_layer_count,
         .ppEnabledLayerNames = validation_layers,
@@ -222,71 +241,68 @@ GpuContext gpu_create_context(const Window* const window) {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .pNext = NULL,
         .flags = 0,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT 
-                         | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT 
-                         | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT 
-                     | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT 
-                     | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
         .pfnUserCallback = vulkan_debug_callback,
-        .pUserData = NULL
-    };
+        .pUserData = NULL};
 
-    PFN_vkCreateDebugUtilsMessengerEXT CreateDebugUtilsMessenger = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-    if (CreateDebugUtilsMessenger == NULL) printf("ERROR: PFN_vkCreateDebugUtilsMessengerEXT\n");
-    
+    PFN_vkCreateDebugUtilsMessengerEXT CreateDebugUtilsMessenger =
+        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    if (CreateDebugUtilsMessenger == NULL)
+        printf("ERROR: PFN_vkCreateDebugUtilsMessengerEXT\n");
+
     VkDebugUtilsMessengerEXT debug_messenger;
     VK_CHECK(CreateDebugUtilsMessenger(instance, &debug_utils_create_info, NULL, &debug_messenger));
 
-	VkSurfaceKHR surface;
+    VkSurfaceKHR surface;
 
-	
-	//FCS TODO: Clean up defines. request surface creation from Window system? 
-	#if defined(_WIN32)
+// FCS TODO: Clean up defines. request surface creation from Window system?
+#if defined(_WIN32)
     VkWin32SurfaceCreateInfoKHR surface_create_info = {
         .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-        .pNext= NULL,
+        .pNext = NULL,
         .flags = 0,
         .hinstance = window->hinstance,
         .hwnd = window->hwnd,
     };
     VK_CHECK(vkCreateWin32SurfaceKHR(instance, &surface_create_info, NULL, &surface));
-	#elif defined(__APPLE__)
-	VkMetalSurfaceCreateInfoEXT surface_create_info = {
-		.sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
-		.pNext = NULL,
-		.flags = 0,
-		.pLayer = window->metal_layer,
-	};
-	VK_CHECK(vkCreateMetalSurfaceEXT(instance, &surface_create_info, NULL, &surface));
-	#endif
-
-    VulkanPhysicalDeviceData physical_device_data = vulkan_choose_physical_device(instance, surface);
-    
-    float graphics_queue_priority = 1.0f;
-    VkDeviceQueueCreateInfo graphics_queue_create_info = {
-        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+#elif defined(__APPLE__)
+    VkMetalSurfaceCreateInfoEXT surface_create_info = {
+        .sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
         .pNext = NULL,
         .flags = 0,
-        .queueFamilyIndex = physical_device_data.graphics_family_index,
-        .queueCount = 1,
-        .pQueuePriorities = &graphics_queue_priority
+        .pLayer = window->metal_layer,
     };
+    VK_CHECK(vkCreateMetalSurfaceEXT(instance, &surface_create_info, NULL, &surface));
+#endif
+
+    VulkanPhysicalDeviceData physical_device_data = vulkan_choose_physical_device(instance, surface);
+
+    float graphics_queue_priority = 1.0f;
+    VkDeviceQueueCreateInfo graphics_queue_create_info = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                                                          .pNext = NULL,
+                                                          .flags = 0,
+                                                          .queueFamilyIndex =
+                                                              physical_device_data.graphics_family_index,
+                                                          .queueCount = 1,
+                                                          .pQueuePriorities = &graphics_queue_priority};
 
     VkPhysicalDeviceFeatures physical_device_features = {
         .samplerAnisotropy = VK_TRUE,
     };
 
-    const char* device_extensions[] = {
+    const char *device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-		VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, //FCS TODO: MOLTEN_VK is on Vulkan 1.2, so request extension
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, // FCS TODO: MOLTEN_VK is on Vulkan 1.2, so request extension
 #if defined(__APPLE__)
-		"VK_KHR_portability_subset",
+        "VK_KHR_portability_subset",
 #endif
     };
     u32 device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
-
 
     VkPhysicalDeviceSynchronization2Features sync_2_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
@@ -297,7 +313,7 @@ GpuContext gpu_create_context(const Window* const window) {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
         .pNext = &sync_2_features,
     };
-	
+
     VkPhysicalDeviceFeatures2 features_2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &dynamic_rendering_features,
@@ -306,13 +322,15 @@ GpuContext gpu_create_context(const Window* const window) {
     vkGetPhysicalDeviceFeatures2(physical_device_data.physical_device, &features_2);
 
 #if defined(ENABLE_VULKAN_SYNC2)
-    if (!sync_2_features.synchronization2) {
+    if (!sync_2_features.synchronization2)
+    {
         printf("Error: Synchronization2 Is Required\n");
         exit(0);
     }
 #endif
 
-    if (!dynamic_rendering_features.dynamicRendering) {
+    if (!dynamic_rendering_features.dynamicRendering)
+    {
         printf("Error: Dynamic Rendering Is Required\n");
         exit(0);
     }
@@ -333,10 +351,10 @@ GpuContext gpu_create_context(const Window* const window) {
     VkDevice device = VK_NULL_HANDLE;
     VK_CHECK(vkCreateDevice(physical_device_data.physical_device, &device_create_info, NULL, &device));
 
-	//FCS TODO: Testing MoltenVK
-	pfn_begin_rendering = (PFN_vkCmdBeginRenderingKHR) vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR");
-	pfn_end_rendering = (PFN_vkCmdEndRenderingKHR) vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR");
-	assert(pfn_begin_rendering && pfn_end_rendering);
+    // FCS TODO: Testing MoltenVK
+    pfn_begin_rendering = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR");
+    pfn_end_rendering = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR");
+    assert(pfn_begin_rendering && pfn_end_rendering);
 
     VkQueue graphics_queue;
     vkGetDeviceQueue(device, physical_device_data.graphics_family_index, 0, &graphics_queue);
@@ -350,14 +368,15 @@ GpuContext gpu_create_context(const Window* const window) {
     VkCommandPool graphics_command_pool;
     vkCreateCommandPool(device, &graphics_command_pool_create_info, NULL, &graphics_command_pool);
 
-    //Set up Memory Types in Context
+    // Set up Memory Types in Context
     VkPhysicalDeviceMemoryProperties2 vk_memory_properties = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
     };
     vkGetPhysicalDeviceMemoryProperties2(physical_device_data.physical_device, &vk_memory_properties);
 
-    //FIXME: get VkPhysicalDeviceMemoryBudgetPropertiesEXT above and store it so we have heap budgets
-    //FIXME: get every second (other applications are also consuming GPU memory)? that seems to be what VK_EXT_memory_budget suggests?
+    // FIXME: get VkPhysicalDeviceMemoryBudgetPropertiesEXT above and store it so we have heap budgets
+    // FIXME: get every second (other applications are also consuming GPU memory)? that seems to be what
+    // VK_EXT_memory_budget suggests?
 
     GpuContext context = {
         .instance = instance,
@@ -370,21 +389,24 @@ GpuContext gpu_create_context(const Window* const window) {
         .surface_format = physical_device_data.surface_format,
         .swapchain = VK_NULL_HANDLE,
         .debug_messenger = debug_messenger,
-        .pfn_set_object_name = (PFN_vkSetDebugUtilsObjectNameEXT) vkGetInstanceProcAddr(instance, "vkSetDebugUtilsObjectNameEXT"),
+        .pfn_set_object_name =
+            (PFN_vkSetDebugUtilsObjectNameEXT)vkGetInstanceProcAddr(instance, "vkSetDebugUtilsObjectNameEXT"),
         .num_memory_types = vk_memory_properties.memoryProperties.memoryTypeCount,
         .memory_types = calloc(vk_memory_properties.memoryProperties.memoryTypeCount, sizeof(GpuMemoryType)),
         .vk_memory_properties = vk_memory_properties.memoryProperties,
     };
 
-    //initial swapchain setup
+    // initial swapchain setup
     gpu_resize_swapchain(&context, window);
-    
+
     return context;
 }
 
-void gpu_destroy_context(GpuContext* context) {
-    
-    for (int i=0; i < context->swapchain_image_count; ++i) {
+void gpu_destroy_context(GpuContext *context)
+{
+
+    for (int i = 0; i < context->swapchain_image_count; ++i)
+    {
         gpu_destroy_image_view(context, &context->swapchain_image_views[i]);
     }
     vkDestroySwapchainKHR(context->device, context->swapchain, NULL);
@@ -395,21 +417,27 @@ void gpu_destroy_context(GpuContext* context) {
 
     vkDestroyDevice(context->device, NULL);
 
-    PFN_vkDestroyDebugUtilsMessengerEXT DestroyDebugUtilsMessenger = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(context->instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (DestroyDebugUtilsMessenger != NULL) DestroyDebugUtilsMessenger(context->instance, context->debug_messenger, NULL);
-    
+    PFN_vkDestroyDebugUtilsMessengerEXT DestroyDebugUtilsMessenger =
+        (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(context->instance,
+                                                                   "vkDestroyDebugUtilsMessengerEXT");
+    if (DestroyDebugUtilsMessenger != NULL)
+        DestroyDebugUtilsMessenger(context->instance, context->debug_messenger, NULL);
+
     vkDestroyInstance(context->instance, NULL);
 
     free(context->memory_types);
 }
-void gpu_wait_idle(GpuContext* context) {
+void gpu_wait_idle(GpuContext *context)
+{
     VK_CHECK(vkDeviceWaitIdle(context->device));
 }
 
-void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
+void gpu_resize_swapchain(GpuContext *context, const Window *const window)
+{
     gpu_wait_idle(context);
 
-    if (context->swapchain != VK_NULL_HANDLE) {
+    if (context->swapchain != VK_NULL_HANDLE)
+    {
         vkDestroySwapchainKHR(context->device, context->swapchain, NULL);
     }
 
@@ -418,14 +446,18 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
     window_get_dimensions(window, &swapchain_width, &swapchain_height);
 
     VkSurfaceCapabilitiesKHR surface_capabilities;
-    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->surface, &surface_capabilities));
+    VK_CHECK(
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->surface, &surface_capabilities));
     VkExtent2D swapchain_extent = {
-        .width  = CLAMP(swapchain_width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width),
-        .height = CLAMP(swapchain_height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height),
+        .width = CLAMP(swapchain_width, surface_capabilities.minImageExtent.width,
+                       surface_capabilities.maxImageExtent.width),
+        .height = CLAMP(swapchain_height, surface_capabilities.minImageExtent.height,
+                        surface_capabilities.maxImageExtent.height),
     };
 
     u32 swapchain_image_count = surface_capabilities.minImageCount + 1;
-    if (swapchain_image_count > surface_capabilities.maxImageCount) {
+    if (swapchain_image_count > surface_capabilities.maxImageCount)
+    {
         swapchain_image_count = surface_capabilities.maxImageCount;
     }
 
@@ -443,7 +475,7 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = context->present_mode,
         .clipped = VK_TRUE,
-        .oldSwapchain = VK_NULL_HANDLE, //Could be used for dyanmic res?
+        .oldSwapchain = VK_NULL_HANDLE, // Could be used for dyanmic res?
     };
 
     VK_CHECK(vkCreateSwapchainKHR(context->device, &swapchain_create_info, NULL, &context->swapchain));
@@ -453,7 +485,8 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
     VK_CHECK(vkGetSwapchainImagesKHR(context->device, context->swapchain, &swapchain_image_count, swapchain_images));
 
     VkImageView swapchain_image_views[swapchain_image_count];
-    for (int i = 0; i < swapchain_image_count; ++i) {
+    for (int i = 0; i < swapchain_image_count; ++i)
+    {
         VkImageViewCreateInfo image_view_create_info = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .flags = 0,
@@ -474,21 +507,25 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
         VK_CHECK(vkCreateImageView(context->device, &image_view_create_info, NULL, &swapchain_image_views[i]));
     }
 
-    if (context->swapchain_images != NULL) {
+    if (context->swapchain_images != NULL)
+    {
         free(context->swapchain_images);
     }
     context->swapchain_images = malloc(swapchain_image_count * sizeof(GpuImage));
-    for (i32 i = 0; i < swapchain_image_count; ++i) {
-        context->swapchain_images[i] = (GpuImage) {
+    for (i32 i = 0; i < swapchain_image_count; ++i)
+    {
+        context->swapchain_images[i] = (GpuImage){
             .vk_image = swapchain_images[i],
-            .memory = NULL, //Memory managed externally
-            .format = (GpuFormat) context->surface_format.format,
+            .memory = NULL, // Memory managed externally
+            .format = (GpuFormat)context->surface_format.format,
         };
     }
 
-    if (context->swapchain_image_views != NULL) {
-        //use context->swapchain_image_count as thats the previous image count (likely the same)
-        for (int i=0; i < context->swapchain_image_count; ++i) {
+    if (context->swapchain_image_views != NULL)
+    {
+        // use context->swapchain_image_count as thats the previous image count (likely the same)
+        for (int i = 0; i < context->swapchain_image_count; ++i)
+        {
             gpu_destroy_image_view(context, &context->swapchain_image_views[i]);
         }
         free(context->swapchain_image_views);
@@ -499,23 +536,27 @@ void gpu_resize_swapchain(GpuContext* context, const Window* const window) {
     context->swapchain_image_count = swapchain_image_count;
 }
 
-// FIXME: From VulkanTutorial: We'll add error handling for both vkAcquireNextImageKHR and 
-// vkQueuePresentKHR in the next chapter, because their failure does not necessarily mean 
+// FIXME: From VulkanTutorial: We'll add error handling for both vkAcquireNextImageKHR and
+// vkQueuePresentKHR in the next chapter, because their failure does not necessarily mean
 // that the program should terminate, unlike the functions we've seen so far.
 
-u32 gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore) {
+u32 gpu_acquire_next_image(GpuContext *context, GpuSemaphore *semaphore)
+{
     u32 image_index;
-    vkAcquireNextImageKHR(context->device, context->swapchain, UINT64_MAX, semaphore->vk_semaphore, VK_NULL_HANDLE, &image_index);
+    vkAcquireNextImageKHR(context->device, context->swapchain, UINT64_MAX, semaphore->vk_semaphore, VK_NULL_HANDLE,
+                          &image_index);
     return image_index;
 }
 
-u32 vulkan_find_memory_type(VkPhysicalDevice* physical_device, u32 type_filter, VkMemoryPropertyFlags properties) {
+u32 vulkan_find_memory_type(VkPhysicalDevice *physical_device, u32 type_filter, VkMemoryPropertyFlags properties)
+{
     VkPhysicalDeviceMemoryProperties memory_properties;
     vkGetPhysicalDeviceMemoryProperties(*physical_device, &memory_properties);
 
     for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i)
     {
-        if ((type_filter & (1 << i)) && ((memory_properties.memoryTypes[i].propertyFlags & properties) == properties)) {
+        if ((type_filter & (1 << i)) && ((memory_properties.memoryTypes[i].propertyFlags & properties) == properties))
+        {
             return i;
         }
     }
@@ -523,37 +564,43 @@ u32 vulkan_find_memory_type(VkPhysicalDevice* physical_device, u32 type_filter, 
     return UINT_MAX;
 }
 
-//TODO: memory allocator
-// - need way to track frees amongst memory blocks of a given memory type
-// - basically a "free list", but where each element of the list provides info on which memory_block, offset, size
-// - also need to free up VkDeviceMemory blocks when a free makes them unused (see if sum of free list elements for that block is its size?)
+// TODO: memory allocator
+//  - need way to track frees amongst memory blocks of a given memory type
+//  - basically a "free list", but where each element of the list provides info on which memory_block, offset, size
+//  - also need to free up VkDeviceMemory blocks when a free makes them unused (see if sum of free list elements for
+//  that block is its size?)
 
-#define MB * 1024 * 1024ULL
+#define MB *1024 * 1024ULL
 #define GPU_BLOCK_SIZE 256 MB
 
-/*TODO: bufferImageGranularity: If the previous block contains a non-linear resource while the current one is linear or vice versa then the alignment 
-                                 requirement is the max of the VkMemoryRequirements.alignment and the device's bufferImageGranularity. */
+/*TODO: bufferImageGranularity: If the previous block contains a non-linear resource while the current one is linear or
+   vice versa then the alignment requirement is the max of the VkMemoryRequirements.alignment and the device's
+   bufferImageGranularity. */
 
 VkDeviceSize gpu_memory_used = 0;
 
-GpuMemory* gpu_allocate_memory(GpuContext* context, u32 type_filter, GpuMemoryPropertyFlags memory_properties, u64 alloc_size, u64 alignment) {
+GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPropertyFlags memory_properties,
+                               u64 alloc_size, u64 alignment)
+{
 
     u32 memory_type_index = vulkan_find_memory_type(&context->physical_device, type_filter, memory_properties);
     assert(memory_type_index < context->num_memory_types);
 
-    GpuMemoryType* memory_type = &context->memory_types[memory_type_index];
+    GpuMemoryType *memory_type = &context->memory_types[memory_type_index];
     assert(memory_type);
     printf("memory type index: %i\n", memory_type_index);
 
-    //Search Blocks of Memory Type for free list entry of sufficient size
-    for (u32 block_index = 0; block_index < sb_count(memory_type->memory_blocks); ++block_index) {
+    // Search Blocks of Memory Type for free list entry of sufficient size
+    for (u32 block_index = 0; block_index < sb_count(memory_type->memory_blocks); ++block_index)
+    {
         printf("\tblock index: %i \n", block_index);
-        GpuMemoryBlock* block = &memory_type->memory_blocks[block_index];
+        GpuMemoryBlock *block = &memory_type->memory_blocks[block_index];
         assert(block);
 
-        for (u32 free_list_index = 0; free_list_index < sb_count(block->free_list); ++free_list_index) {
+        for (u32 free_list_index = 0; free_list_index < sb_count(block->free_list); ++free_list_index)
+        {
             printf("\t\tfree_list_index: %i\n", free_list_index);
-            GpuMemoryRegion* free_list_region = &block->free_list[free_list_index];
+            GpuMemoryRegion *free_list_region = &block->free_list[free_list_index];
             assert(free_list_region);
 
             u64 padding = alignment - free_list_region->offset % alignment;
@@ -561,52 +608,60 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, u32 type_filter, GpuMemoryPr
 
             printf("Alignment: %llu Offset: %llu Padding: %llu\n", alignment, free_list_region->offset, padding);
 
-            if (free_list_region->size >= new_region_size) {
+            if (free_list_region->size >= new_region_size)
+            {
 
                 sb_push(block->used_list, ((GpuMemoryRegion){
-                    .padding = padding,
-                    .offset = free_list_region->offset + padding,
-                    .size = alloc_size,
-                    .owning_block = block,
-                    .alloc_ref = calloc(1, sizeof(GpuMemory)),
-                }));
+                                              .padding = padding,
+                                              .offset = free_list_region->offset + padding,
+                                              .size = alloc_size,
+                                              .owning_block = block,
+                                              .alloc_ref = calloc(1, sizeof(GpuMemory)),
+                                          }));
 
-                GpuMemoryRegion* out_region = &block->used_list[sb_count(block->used_list) - 1];
+                GpuMemoryRegion *out_region = &block->used_list[sb_count(block->used_list) - 1];
                 out_region->alloc_ref->memory_properties = memory_properties;
 
-                //Fix backwards reference in used_list elements
-                for (u32 i = 0; i < sb_count(block->used_list); ++i) {
+                // Fix backwards reference in used_list elements
+                for (u32 i = 0; i < sb_count(block->used_list); ++i)
+                {
                     block->used_list[i].alloc_ref->memory_region = &block->used_list[i];
                 }
 
-                if (free_list_region->size == alloc_size) {
+                if (free_list_region->size == alloc_size)
+                {
                     sb_del(block->free_list, free_list_index);
-                } else {
-                    //Modify Region In Place
+                }
+                else
+                {
+                    // Modify Region In Place
                     free_list_region->size = free_list_region->size - new_region_size;
-                    free_list_region->offset += new_region_size;     
+                    free_list_region->offset += new_region_size;
                 }
 
-                //return memory region we allocated
+                // return memory region we allocated
                 printf("\t\t\tSUB ALLOCATION\n");
                 return out_region->alloc_ref;
             }
         }
     }
 
-    //If we've reached here, we need a new allocation
+    // If we've reached here, we need a new allocation
 
     u32 heap_index = context->vk_memory_properties.memoryTypes[memory_type_index].heapIndex;
     VkDeviceSize heap_size = context->vk_memory_properties.memoryHeaps[heap_index].size;
-    VkDeviceSize allocation_size = MIN(heap_size / 2, GPU_BLOCK_SIZE); //Don't try to allocate entire heap if below the size of GPU_BLOCK_SIZE
+    VkDeviceSize allocation_size =
+        MIN(heap_size / 2, GPU_BLOCK_SIZE); // Don't try to allocate entire heap if below the size of GPU_BLOCK_SIZE
 
-    //FIXME: Need to get heap budget information, which is what we should use for heap_size above
-    //          this is why our GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT allocation was failing
+    // FIXME: Need to get heap budget information, which is what we should use for heap_size above
+    //           this is why our GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
+    //           GPU_MEMORY_PROPERTY_HOST_COHERENT allocation was failing
 
     printf("\nMEM USED %llu", gpu_memory_used);
-    printf("\nNEW ALLOCATION: MEMORY TYPE INDEX: %i HEAP INDEX: %i GPU BLOCK SIZE: %llu HEAP SIZE: %llu ALLOC SIZE %llu \n\n", 
-                memory_type_index, heap_index, GPU_BLOCK_SIZE, heap_size, allocation_size);
-    
+    printf("\nNEW ALLOCATION: MEMORY TYPE INDEX: %i HEAP INDEX: %i GPU BLOCK SIZE: %llu HEAP SIZE: %llu ALLOC SIZE "
+           "%llu \n\n",
+           memory_type_index, heap_index, GPU_BLOCK_SIZE, heap_size, allocation_size);
+
     VkMemoryAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .pNext = NULL,
@@ -616,51 +671,54 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, u32 type_filter, GpuMemoryPr
 
     VkDeviceMemory vk_memory = VK_NULL_HANDLE;
     VK_CHECK(vkAllocateMemory(context->device, &alloc_info, NULL, &vk_memory));
- 
+
     gpu_memory_used += allocation_size;
 
     // Create a new block
-    
-    sb_push(memory_type->memory_blocks, ((GpuMemoryBlock) {
-        .size = alloc_info.allocationSize,
-        .free_list = NULL,
-        .used_list = NULL,
-        .owning_type = memory_type,
-        .vk_memory = vk_memory,
-    }));
+
+    sb_push(memory_type->memory_blocks, ((GpuMemoryBlock){
+                                            .size = alloc_info.allocationSize,
+                                            .free_list = NULL,
+                                            .used_list = NULL,
+                                            .owning_type = memory_type,
+                                            .vk_memory = vk_memory,
+                                        }));
 
     printf("ALLOC: NUM BLOCKS: %i\n", sb_count(memory_type->memory_blocks));
 
     // fix backwards-references in free/used lists of old blocks
-    for (u32 block_idx = 0; block_idx < sb_count(memory_type->memory_blocks) - 1; ++block_idx) {
-        GpuMemoryBlock* block = &memory_type->memory_blocks[block_idx];
-        for (u32 free_idx = 0; free_idx < sb_count(block->free_list); ++free_idx) {
+    for (u32 block_idx = 0; block_idx < sb_count(memory_type->memory_blocks) - 1; ++block_idx)
+    {
+        GpuMemoryBlock *block = &memory_type->memory_blocks[block_idx];
+        for (u32 free_idx = 0; free_idx < sb_count(block->free_list); ++free_idx)
+        {
             block->free_list[free_idx].owning_block = block;
         }
-        for (u32 used_idx = 0; used_idx < sb_count(block->used_list); ++used_idx) {
+        for (u32 used_idx = 0; used_idx < sb_count(block->used_list); ++used_idx)
+        {
             block->used_list[used_idx].owning_block = block;
         }
     }
 
-    GpuMemoryBlock* new_block = &memory_type->memory_blocks[sb_count(memory_type->memory_blocks) - 1];
+    GpuMemoryBlock *new_block = &memory_type->memory_blocks[sb_count(memory_type->memory_blocks) - 1];
 
-    //FIXME: need to check if remaining size is zero (free_list region)
-    sb_push(new_block->free_list, ((GpuMemoryRegion) {
-        .padding = 0,
-        .offset = alloc_size,
-        .size = alloc_info.allocationSize - alloc_size,
-        .owning_block = new_block,
-    }));
+    // FIXME: need to check if remaining size is zero (free_list region)
+    sb_push(new_block->free_list, ((GpuMemoryRegion){
+                                      .padding = 0,
+                                      .offset = alloc_size,
+                                      .size = alloc_info.allocationSize - alloc_size,
+                                      .owning_block = new_block,
+                                  }));
 
-    sb_push(new_block->used_list, ((GpuMemoryRegion) {
-        .padding = 0,
-        .offset = 0,
-        .size = alloc_size,
-        .owning_block = new_block,
-        .alloc_ref = calloc(1, sizeof(GpuMemory)),
-    }));
+    sb_push(new_block->used_list, ((GpuMemoryRegion){
+                                      .padding = 0,
+                                      .offset = 0,
+                                      .size = alloc_size,
+                                      .owning_block = new_block,
+                                      .alloc_ref = calloc(1, sizeof(GpuMemory)),
+                                  }));
 
-    *new_block->used_list[0].alloc_ref = (GpuMemory) {
+    *new_block->used_list[0].alloc_ref = (GpuMemory){
         .memory_region = &new_block->used_list[0],
         .memory_properties = memory_properties,
     };
@@ -670,69 +728,81 @@ GpuMemory* gpu_allocate_memory(GpuContext* context, u32 type_filter, GpuMemoryPr
     return new_block->used_list[0].alloc_ref;
 }
 
-void gpu_free_memory(GpuContext* context, GpuMemory* gpu_memory) {
+void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
+{
 
-    //Add this memory's region as a new free list entry
+    // Add this memory's region as a new free list entry
     assert(gpu_memory);
-    GpuMemoryRegion* memory_region = gpu_memory->memory_region;
+    GpuMemoryRegion *memory_region = gpu_memory->memory_region;
     assert(memory_region);
-    GpuMemoryBlock* owning_block = memory_region->owning_block;
+    GpuMemoryBlock *owning_block = memory_region->owning_block;
     assert(owning_block);
 
-    //1. Find where our element lies in used_list
+    // 1. Find where our element lies in used_list
     u32 used_list_index = memory_region - owning_block->used_list;
     printf("used_list_index: %u count: %u \n", used_list_index, sb_count(owning_block->used_list));
     assert(used_list_index < sb_count(owning_block->used_list));
 
-    //FIXME: if free_list count is 0, just add a new entry, otherwise do the search below
+    // FIXME: if free_list count is 0, just add a new entry, otherwise do the search below
 
-    //2. Find insertion point in free list (used_region->offset > current_free_region->offset)
-    for (u32 free_list_index = 0; free_list_index < sb_count(owning_block->free_list); ++free_list_index) {
-        GpuMemoryRegion* free_entry = &owning_block->free_list[free_list_index];
-        if (memory_region->offset < free_entry->offset) {
+    // 2. Find insertion point in free list (used_region->offset > current_free_region->offset)
+    for (u32 free_list_index = 0; free_list_index < sb_count(owning_block->free_list); ++free_list_index)
+    {
+        GpuMemoryRegion *free_entry = &owning_block->free_list[free_list_index];
+        if (memory_region->offset < free_entry->offset)
+        {
             printf("free_list_index: %u \n", free_list_index);
 
-            //Padding info isn't used once freed
+            // Padding info isn't used once freed
             memory_region->offset -= memory_region->padding;
             memory_region->size += memory_region->padding;
             memory_region->padding = 0;
-            //TODO: Check this padding logic
+            // TODO: Check this padding logic
 
             const i32 previous_index = free_list_index - 1;
-            GpuMemoryRegion* preceding_entry = previous_index >= 0 ? &owning_block->free_list[previous_index] : NULL;
+            GpuMemoryRegion *preceding_entry = previous_index >= 0 ? &owning_block->free_list[previous_index] : NULL;
 
             const bool merge_with_current = memory_region->offset + memory_region->size == free_entry->offset;
-            const bool merge_with_preceding = preceding_entry && memory_region->offset == preceding_entry->offset + preceding_entry->size;
+            const bool merge_with_preceding =
+                preceding_entry && memory_region->offset == preceding_entry->offset + preceding_entry->size;
             const bool merge_with_both = merge_with_current && merge_with_preceding;
 
-            //FIXME: TEST THESE CASES
+            // FIXME: TEST THESE CASES
 
-            if (merge_with_both) {
-                //Our newly freed region fits perfectly between two existing regions
-                //Resize preceding entry's size and remove next free entry
+            if (merge_with_both)
+            {
+                // Our newly freed region fits perfectly between two existing regions
+                // Resize preceding entry's size and remove next free entry
                 printf("\nMERGE WITH BOTH\n");
                 preceding_entry->size += memory_region->size + free_entry->size;
                 sb_del(owning_block->free_list, free_list_index);
-            } else if (merge_with_preceding) {
-                //We can merge with the preceding entry, just add to size
+            }
+            else if (merge_with_preceding)
+            {
+                // We can merge with the preceding entry, just add to size
                 printf("\nMERGE WITH PRECEDING\n");
                 preceding_entry->size += memory_region->size;
-            } else if (merge_with_current) {
-                //We can merge with the next entry, change next region's offset and size
+            }
+            else if (merge_with_current)
+            {
+                // We can merge with the next entry, change next region's offset and size
                 printf("\nMERGE WITH CURRENT\n");
                 free_entry->offset = memory_region->offset;
                 free_entry->size += memory_region->size;
-            } else {
-                //We aren't directly adjacent to any existing free entries, create a new one
+            }
+            else
+            {
+                // We aren't directly adjacent to any existing free entries, create a new one
                 printf("\nNEW FREE LIST ENTRY\n");
                 sb_ins(owning_block->free_list, free_list_index, *memory_region);
             }
 
-            //Finally, remove from used_list
+            // Finally, remove from used_list
             sb_del(owning_block->used_list, used_list_index);
 
-            //Fix backwards reference in used_list elements
-            for (u32 i = 0; i < sb_count(owning_block->used_list); ++i) {
+            // Fix backwards reference in used_list elements
+            for (u32 i = 0; i < sb_count(owning_block->used_list); ++i)
+            {
                 owning_block->used_list[i].alloc_ref->memory_region = &owning_block->used_list[i];
             }
 
@@ -742,31 +812,34 @@ void gpu_free_memory(GpuContext* context, GpuMemory* gpu_memory) {
         }
     }
 
-    //If we freed the whole block, actually free the memory and remove the block
-    if (sb_count(owning_block->used_list) == 0) {
+    // If we freed the whole block, actually free the memory and remove the block
+    if (sb_count(owning_block->used_list) == 0)
+    {
 
         gpu_memory_used -= owning_block->size;
 
         vkFreeMemory(context->device, owning_block->vk_memory, NULL);
-        GpuMemoryType* owning_type = owning_block->owning_type;
+        GpuMemoryType *owning_type = owning_block->owning_type;
         assert(owning_type);
         u32 owning_block_index = owning_block - owning_type->memory_blocks;
         printf("BLOCK INDEX TO REMOVE: %u \n", owning_block_index);
         sb_del(owning_type->memory_blocks, owning_block_index);
 
         printf("FREE: NUM BLOCKS: %i\n", sb_count(owning_type->memory_blocks));
-
     }
 }
 
 // TODO: GPU ALLOC TESTS
 // 1. Test all 4 free-list merge cases
-// 2. Ensure that the loop in gpu_free_memory is always able to succeed (should be true as memory is allocated from the front of the block)
+// 2. Ensure that the loop in gpu_free_memory is always able to succeed (should be true as memory is allocated from the
+// front of the block)
 
-GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage, GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char* debug_name) {
+GpuBuffer gpu_create_buffer(GpuContext *context, GpuBufferUsageFlags buffer_usage,
+                            GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char *debug_name)
+{
     VkBufferCreateInfo buffer_create_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size  = buffer_size,
+        .size = buffer_size,
         .usage = buffer_usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -776,12 +849,15 @@ GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usag
 
     VkMemoryRequirements memory_reqs;
     vkGetBufferMemoryRequirements(context->device, vk_buffer, &memory_reqs);
-    GpuMemory* memory = gpu_allocate_memory(context, memory_reqs.memoryTypeBits, memory_properties, memory_reqs.size, memory_reqs.alignment);
+    GpuMemory *memory = gpu_allocate_memory(context, memory_reqs.memoryTypeBits, memory_properties, memory_reqs.size,
+                                            memory_reqs.alignment);
 
-    VK_CHECK(vkBindBufferMemory(context->device, vk_buffer, memory->memory_region->owning_block->vk_memory, memory->memory_region->offset));
+    VK_CHECK(vkBindBufferMemory(context->device, vk_buffer, memory->memory_region->owning_block->vk_memory,
+                                memory->memory_region->offset));
 
     // set the name
-    if (context->pfn_set_object_name != NULL) {
+    if (context->pfn_set_object_name != NULL)
+    {
         VkDebugUtilsObjectNameInfoEXT vk_name_info = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             .objectType = VK_OBJECT_TYPE_BUFFER,
@@ -791,71 +867,84 @@ GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usag
         context->pfn_set_object_name(context->device, &vk_name_info);
     }
 
-    return (GpuBuffer) {
+    return (GpuBuffer){
         .vk_buffer = vk_buffer,
         .memory = memory,
     };
 }
 
-void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer) {
-    if (buffer->vk_buffer != VK_NULL_HANDLE) {
+void gpu_destroy_buffer(GpuContext *context, GpuBuffer *buffer)
+{
+    if (buffer->vk_buffer != VK_NULL_HANDLE)
+    {
         vkDestroyBuffer(context->device, buffer->vk_buffer, NULL);
         gpu_free_memory(context, buffer->memory);
     }
 }
 
-void gpu_memcpy(GpuContext* context, GpuMemory* memory, u64 upload_size, void* upload_data) {
-    void* pData;
+void gpu_memcpy(GpuContext *context, GpuMemory *memory, u64 upload_size, void *upload_data)
+{
+    void *pData;
     gpu_map_memory(context, memory, 0, upload_size, &pData);
     memcpy(pData, upload_data, upload_size);
     gpu_unmap_memory(context, memory);
 }
 
-void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, u64 upload_size, void* upload_data) {
+void gpu_upload_buffer(GpuContext *context, GpuBuffer *buffer, u64 upload_size, void *upload_data)
+{
     assert(upload_size <= buffer->memory->memory_region->size);
-    if (buffer->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE) {
+    if (buffer->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE)
+    {
         gpu_memcpy(context, buffer->memory, upload_size, upload_data);
-    } else {
-        //Need staging buffer //TODO: reuse staging buffer, command buffer
-        GpuBuffer staging_buffer = gpu_create_buffer(context, GPU_BUFFER_USAGE_TRANSFER_SRC, GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, upload_size, "staging buffer: gpu_upload_buffer");
+    }
+    else
+    {
+        // Need staging buffer //TODO: reuse staging buffer, command buffer
+        GpuBuffer staging_buffer =
+            gpu_create_buffer(context, GPU_BUFFER_USAGE_TRANSFER_SRC,
+                              GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, upload_size,
+                              "staging buffer: gpu_upload_buffer");
         gpu_memcpy(context, staging_buffer.memory, upload_size, upload_data);
         GpuCommandBuffer command_buffer = gpu_create_command_buffer(context);
         gpu_begin_command_buffer(&command_buffer);
         gpu_cmd_copy_buffer(&command_buffer, &staging_buffer, buffer, upload_size);
         gpu_end_command_buffer(&command_buffer);
         gpu_queue_submit(context, &command_buffer, NULL, NULL, NULL);
-        gpu_wait_idle(context); //TODO: pass back complete semaphore
+        gpu_wait_idle(context); // TODO: pass back complete semaphore
         gpu_destroy_buffer(context, &staging_buffer);
     }
 }
 
-void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer,  GpuImageBarrier* image_barrier) {
+void gpu_cmd_image_barrier(GpuCommandBuffer *command_buffer, GpuImageBarrier *image_barrier)
+{
 #if defined(ENABLE_VULKAN_SYNC2)
     VkImageMemoryBarrier2 vk_image_memory_barrier_2 = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .pNext = NULL,
         .srcStageMask = image_barrier->src_stage,
-        .srcAccessMask = 0, //FCS TODO:
+        .srcAccessMask = 0, // FCS TODO:
         .dstStageMask = image_barrier->dst_stage,
-        .dstAccessMask = 0, //FCS TODO:
-        .oldLayout = (VkImageLayout) image_barrier->old_layout,
-        .newLayout = (VkImageLayout) image_barrier->new_layout,
+        .dstAccessMask = 0, // FCS TODO:
+        .oldLayout = (VkImageLayout)image_barrier->old_layout,
+        .newLayout = (VkImageLayout)image_barrier->new_layout,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = image_barrier->image->vk_image,
-        .subresourceRange = { //FCS TODO:
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
+        .subresourceRange =
+            {
+                // FCS TODO:
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
     };
 
     VkDependencyInfo vk_dependency_info = {
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
         .pNext = NULL,
-        .dependencyFlags = 0, //TODO:
+        .dependencyFlags = 0, // TODO:
         .memoryBarrierCount = 0,
         .pMemoryBarriers = NULL,
         .bufferMemoryBarrierCount = 0,
@@ -866,47 +955,49 @@ void gpu_cmd_image_barrier(GpuCommandBuffer* command_buffer,  GpuImageBarrier* i
 
     vkCmdPipelineBarrier2(command_buffer->vk_command_buffer, &vk_dependency_info);
 #else
-	//FCS TODO: vanilla vkCmdPipelineBarrier
-	VkImageMemoryBarrier vk_image_memory_barrier = {
-		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		.pNext = NULL,
-		.srcAccessMask = 0, //FCS TODO: 	
-		.dstAccessMask = 0, //FCS TODO:
-		.oldLayout = (VkImageLayout) image_barrier->old_layout,
-        .newLayout = (VkImageLayout) image_barrier->new_layout,
- 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+    // FCS TODO: vanilla vkCmdPipelineBarrier
+    VkImageMemoryBarrier vk_image_memory_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .srcAccessMask = 0, // FCS TODO:
+        .dstAccessMask = 0, // FCS TODO:
+        .oldLayout = (VkImageLayout)image_barrier->old_layout,
+        .newLayout = (VkImageLayout)image_barrier->new_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		.image = image_barrier->image->vk_image,
-        .subresourceRange = { //FCS TODO:
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-	};	
-	
-	vkCmdPipelineBarrier(
-		command_buffer->vk_command_buffer,
-		image_barrier->src_stage,
-		image_barrier->dst_stage,
-		0, 		// dependencyFlags
-		0, 		// memoryBarrierCount
-		NULL, 	// pMemoryBarriers
-		0, 		// bufferMemoryBarrierCount
-		NULL, 	// pBufferMemoryBarriers
-		1, 		// imageMemoryBarrierCount
-		&vk_image_memory_barrier
-	);
+        .image = image_barrier->image->vk_image,
+        .subresourceRange =
+            {
+                // FCS TODO:
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+    };
+
+    vkCmdPipelineBarrier(command_buffer->vk_command_buffer, image_barrier->src_stage, image_barrier->dst_stage,
+                         0,    // dependencyFlags
+                         0,    // memoryBarrierCount
+                         NULL, // pMemoryBarriers
+                         0,    // bufferMemoryBarrierCount
+                         NULL, // pBufferMemoryBarriers
+                         1,    // imageMemoryBarrierCount
+                         &vk_image_memory_barrier);
 #endif
 }
 
-GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, const char* debug_name) {
+GpuImage gpu_create_image(GpuContext *context, GpuImageCreateInfo *create_info, const char *debug_name)
+{
 
     VkImageType vk_image_type = VK_IMAGE_TYPE_1D;
-    if (create_info->dimensions[2] > 1) {
+    if (create_info->dimensions[2] > 1)
+    {
         vk_image_type = VK_IMAGE_TYPE_3D;
-    } else if (create_info->dimensions[1] > 1) {
+    }
+    else if (create_info->dimensions[1] > 1)
+    {
         vk_image_type = VK_IMAGE_TYPE_2D;
     }
 
@@ -915,12 +1006,13 @@ GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, 
         .pNext = NULL,
         .flags = 0,
         .imageType = vk_image_type,
-        .format = (VkFormat) create_info->format,
-        .extent = {
-            .width = create_info->dimensions[0],
-            .height = create_info->dimensions[1],
-            .depth = create_info->dimensions[2],
-        },
+        .format = (VkFormat)create_info->format,
+        .extent =
+            {
+                .width = create_info->dimensions[0],
+                .height = create_info->dimensions[1],
+                .depth = create_info->dimensions[2],
+            },
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -937,12 +1029,15 @@ GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, 
 
     VkMemoryRequirements memory_reqs;
     vkGetImageMemoryRequirements(context->device, vk_image, &memory_reqs);
-    GpuMemory* memory = gpu_allocate_memory(context, memory_reqs.memoryTypeBits, create_info->memory_properties, memory_reqs.size, memory_reqs.alignment);
+    GpuMemory *memory = gpu_allocate_memory(context, memory_reqs.memoryTypeBits, create_info->memory_properties,
+                                            memory_reqs.size, memory_reqs.alignment);
 
-    VK_CHECK(vkBindImageMemory(context->device, vk_image, memory->memory_region->owning_block->vk_memory, memory->memory_region->offset));
+    VK_CHECK(vkBindImageMemory(context->device, vk_image, memory->memory_region->owning_block->vk_memory,
+                               memory->memory_region->offset));
 
     // set the name
-    if (context->pfn_set_object_name != NULL) {
+    if (context->pfn_set_object_name != NULL)
+    {
         VkDebugUtilsObjectNameInfoEXT vk_name_info = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             .objectType = VK_OBJECT_TYPE_IMAGE,
@@ -952,60 +1047,71 @@ GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, 
         context->pfn_set_object_name(context->device, &vk_name_info);
     }
 
-    return (GpuImage) {
+    return (GpuImage){
         .vk_image = vk_image,
         .memory = memory,
         .format = create_info->format,
     };
 }
 
-void gpu_destroy_image(GpuContext* context, GpuImage* image) {
-    if (image->vk_image != VK_NULL_HANDLE) {
+void gpu_destroy_image(GpuContext *context, GpuImage *image)
+{
+    if (image->vk_image != VK_NULL_HANDLE)
+    {
         vkDestroyImage(context->device, image->vk_image, NULL);
         gpu_free_memory(context, image->memory);
     }
 }
 
-void gpu_upload_image(GpuContext* context, GpuImage* image, u64 upload_width, u64 upload_height, void* upload_data) {
+void gpu_upload_image(GpuContext *context, GpuImage *image, u64 upload_width, u64 upload_height, void *upload_data)
+{
     u64 upload_size = upload_width * upload_height * gpu_format_stride(image->format);
-    if (image->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE) {
+    if (image->memory->memory_properties & GPU_MEMORY_PROPERTY_HOST_VISIBLE)
+    {
         gpu_memcpy(context, image->memory, upload_size, upload_data);
-    } else {
-        //Need staging buffer
-        GpuBuffer staging_buffer = gpu_create_buffer(context, GPU_BUFFER_USAGE_TRANSFER_SRC, GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, upload_size, "staging buffer: gpu_upload_image");
+    }
+    else
+    {
+        // Need staging buffer
+        GpuBuffer staging_buffer =
+            gpu_create_buffer(context, GPU_BUFFER_USAGE_TRANSFER_SRC,
+                              GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, upload_size,
+                              "staging buffer: gpu_upload_image");
         gpu_memcpy(context, staging_buffer.memory, upload_size, upload_data);
         GpuCommandBuffer command_buffer = gpu_create_command_buffer(context);
         gpu_begin_command_buffer(&command_buffer);
         gpu_cmd_image_barrier(&command_buffer, &(GpuImageBarrier){
-			.image = image, 
-			.src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
-			.dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
-			.old_layout = GPU_IMAGE_LAYOUT_UNDEFINED, 
-			.new_layout = GPU_IMAGE_LAYOUT_TRANSFER_DST,
-		});	
-        gpu_cmd_copy_buffer_to_image(&command_buffer, &staging_buffer, image, GPU_IMAGE_LAYOUT_TRANSFER_DST /*FCS TODO: */, upload_width, upload_height);
+                                                   .image = image,
+                                                   .src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE,
+                                                   .dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE,
+                                                   .old_layout = GPU_IMAGE_LAYOUT_UNDEFINED,
+                                                   .new_layout = GPU_IMAGE_LAYOUT_TRANSFER_DST,
+                                               });
+        gpu_cmd_copy_buffer_to_image(&command_buffer, &staging_buffer, image,
+                                     GPU_IMAGE_LAYOUT_TRANSFER_DST /*FCS TODO: */, upload_width, upload_height);
         gpu_cmd_image_barrier(&command_buffer, &(GpuImageBarrier){
-			.image = image, 
-			.src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE, 
-			.dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE, 
-			.old_layout = GPU_IMAGE_LAYOUT_TRANSFER_DST, 
-			.new_layout = GPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
-		});
+                                                   .image = image,
+                                                   .src_stage = GPU_PIPELINE_STAGE_TOP_OF_PIPE,
+                                                   .dst_stage = GPU_PIPELINE_STAGE_BOTTOM_OF_PIPE,
+                                                   .old_layout = GPU_IMAGE_LAYOUT_TRANSFER_DST,
+                                                   .new_layout = GPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
+                                               });
         gpu_end_command_buffer(&command_buffer);
         gpu_queue_submit(context, &command_buffer, NULL, NULL, NULL);
-        gpu_wait_idle(context); //TODO: pass back complete semaphore
+        gpu_wait_idle(context); // TODO: pass back complete semaphore
         gpu_destroy_buffer(context, &staging_buffer);
     }
 }
 
-GpuImageView gpu_create_image_view(GpuContext* context, GpuImageViewCreateInfo* create_info) {
+GpuImageView gpu_create_image_view(GpuContext *context, GpuImageViewCreateInfo *create_info)
+{
     VkImageViewCreateInfo vk_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .flags = 0,
         .pNext = NULL,
         .image = create_info->image->vk_image,
-        .viewType = (VkImageViewType) create_info->type,
-        .format = (VkFormat) create_info->format,
+        .viewType = (VkImageViewType)create_info->type,
+        .format = (VkFormat)create_info->format,
         .components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
         .components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
         .components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -1020,29 +1126,31 @@ GpuImageView gpu_create_image_view(GpuContext* context, GpuImageViewCreateInfo* 
     VkImageView vk_image_view = VK_NULL_HANDLE;
     VK_CHECK(vkCreateImageView(context->device, &vk_create_info, NULL, &vk_image_view));
 
-    return (GpuImageView) {
+    return (GpuImageView){
         .vk_image_view = vk_image_view,
     };
 }
 
-void gpu_destroy_image_view(GpuContext* context, GpuImageView* image_view) {
+void gpu_destroy_image_view(GpuContext *context, GpuImageView *image_view)
+{
     vkDestroyImageView(context->device, image_view->vk_image_view, NULL);
 }
 
-GpuSampler gpu_create_sampler(GpuContext* context, GpuSamplerCreateInfo* create_info) {
+GpuSampler gpu_create_sampler(GpuContext *context, GpuSamplerCreateInfo *create_info)
+{
     VkSamplerCreateInfo vk_create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
-        .magFilter = (VkFilter) create_info->mag_filter,
-        .minFilter = (VkFilter) create_info->min_filter,
+        .magFilter = (VkFilter)create_info->mag_filter,
+        .minFilter = (VkFilter)create_info->min_filter,
         .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
         .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
         .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
         .mipLodBias = 0.0f,
         .anisotropyEnable = create_info->max_anisotropy != 0,
-        .maxAnisotropy = (float) create_info->max_anisotropy,
+        .maxAnisotropy = (float)create_info->max_anisotropy,
         .compareEnable = VK_FALSE,
         .compareOp = VK_COMPARE_OP_NEVER,
         .minLod = 0.0f,
@@ -1054,24 +1162,26 @@ GpuSampler gpu_create_sampler(GpuContext* context, GpuSamplerCreateInfo* create_
     VkSampler vk_sampler = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSampler(context->device, &vk_create_info, NULL, &vk_sampler));
 
-    return (GpuSampler) {
+    return (GpuSampler){
         .vk_sampler = vk_sampler,
     };
 }
 
-void gpu_destroy_sampler(GpuContext* context, GpuSampler* sampler) {
+void gpu_destroy_sampler(GpuContext *context, GpuSampler *sampler)
+{
     vkDestroySampler(context->device, sampler->vk_sampler, NULL);
 }
 
-GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, GpuPipelineLayout* pipeline_layout) {
+GpuDescriptorSet gpu_create_descriptor_set(GpuContext *context, GpuPipelineLayout *pipeline_layout)
+{
 
     VkDescriptorPoolSize vk_pool_sizes[pipeline_layout->descriptor_layout.binding_count];
     for (u32 i = 0; i < pipeline_layout->descriptor_layout.binding_count; ++i)
     {
-        vk_pool_sizes[i].type = (VkDescriptorType) pipeline_layout->descriptor_layout.bindings[i].type;
+        vk_pool_sizes[i].type = (VkDescriptorType)pipeline_layout->descriptor_layout.bindings[i].type;
         vk_pool_sizes[i].descriptorCount = 1;
     }
-    
+
     VkDescriptorPoolCreateInfo vk_descriptor_pool_create_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .pNext = NULL,
@@ -1094,21 +1204,25 @@ GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, GpuPipelineLayou
     VkDescriptorSet vk_descriptor_set = VK_NULL_HANDLE;
     VK_CHECK(vkAllocateDescriptorSets(context->device, &vk_descriptor_set_alloc_info, &vk_descriptor_set));
 
-    return (GpuDescriptorSet) {
+    return (GpuDescriptorSet){
         .vk_descriptor_pool = vk_descriptor_pool,
         .vk_descriptor_set = vk_descriptor_set,
     };
 }
 
-void gpu_destroy_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set) {
+void gpu_destroy_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set)
+{
     VK_CHECK(vkResetDescriptorPool(context->device, descriptor_set->vk_descriptor_pool, 0));
     vkDestroyDescriptorPool(context->device, descriptor_set->vk_descriptor_pool, NULL);
 }
 
-void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, u32 write_count, GpuDescriptorWrite* descriptor_writes) {
+void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set, u32 write_count,
+                              GpuDescriptorWrite *descriptor_writes)
+{
     VkWriteDescriptorSet vk_descriptor_writes[write_count];
-    for (u32 i = 0; i < write_count; ++i) {
-        
+    for (u32 i = 0; i < write_count; ++i)
+    {
+
         VkDescriptorImageInfo* vk_desc_image_info = descriptor_writes[i].image_write ? 
             &(VkDescriptorImageInfo) {
                 .sampler = descriptor_writes[i].image_write->sampler->vk_sampler,
@@ -1123,32 +1237,36 @@ void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_
                 .range  = descriptor_writes[i].buffer_write->range,
             } : NULL;
 
-        vk_descriptor_writes[i] = (VkWriteDescriptorSet) {
+        vk_descriptor_writes[i] = (VkWriteDescriptorSet){
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .pNext = NULL,
             .dstSet = descriptor_set->vk_descriptor_set,
             .dstBinding = descriptor_writes[i].binding_desc->binding,
             .dstArrayElement = 0,
             .descriptorCount = 1,
-            .descriptorType = (VkDescriptorType) descriptor_writes[i].binding_desc->type,
+            .descriptorType = (VkDescriptorType)descriptor_writes[i].binding_desc->type,
             .pImageInfo = vk_desc_image_info,
             .pBufferInfo = vk_desc_buffer_info,
             .pTexelBufferView = NULL,
-        };   
+        };
     }
 
     vkUpdateDescriptorSets(context->device, write_count, vk_descriptor_writes, 0, NULL);
 }
 
-void gpu_map_memory(GpuContext* context, GpuMemory* memory, u64 offset, u64 size, void** ppData) {
-    VK_CHECK(vkMapMemory(context->device, memory->memory_region->owning_block->vk_memory, memory->memory_region->offset + offset, size, 0, ppData));
+void gpu_map_memory(GpuContext *context, GpuMemory *memory, u64 offset, u64 size, void **ppData)
+{
+    VK_CHECK(vkMapMemory(context->device, memory->memory_region->owning_block->vk_memory,
+                         memory->memory_region->offset + offset, size, 0, ppData));
 }
 
-void gpu_unmap_memory(GpuContext* context, GpuMemory* memory) {
+void gpu_unmap_memory(GpuContext *context, GpuMemory *memory)
+{
     vkUnmapMemory(context->device, memory->memory_region->owning_block->vk_memory);
 }
 
-GpuShaderModule gpu_create_shader_module(GpuContext* context, u64 code_size, const u32* code) {
+GpuShaderModule gpu_create_shader_module(GpuContext *context, u64 code_size, const u32 *code)
+{
     VkShaderModuleCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .pNext = NULL,
@@ -1159,45 +1277,50 @@ GpuShaderModule gpu_create_shader_module(GpuContext* context, u64 code_size, con
 
     VkShaderModule vk_shader_module;
     VK_CHECK(vkCreateShaderModule(context->device, &create_info, NULL, &vk_shader_module));
-    return (GpuShaderModule) {
+    return (GpuShaderModule){
         .vk_shader_module = vk_shader_module,
     };
 }
 
-void gpu_destroy_shader_module(GpuContext* context, GpuShaderModule* shader_module) {
+void gpu_destroy_shader_module(GpuContext *context, GpuShaderModule *shader_module)
+{
     vkDestroyShaderModule(context->device, shader_module->vk_shader_module, NULL);
 }
 
-GpuRenderPass gpu_create_render_pass(GpuContext* context, u32 color_attachment_count, GpuAttachmentDesc* color_attachments, GpuAttachmentDesc* depth_stencil_attachment) {
-    
+GpuRenderPass gpu_create_render_pass(GpuContext *context, u32 color_attachment_count,
+                                     GpuAttachmentDesc *color_attachments, GpuAttachmentDesc *depth_stencil_attachment)
+{
+
     u32 depth_attachment_count = depth_stencil_attachment != NULL ? 1 : 0;
 
     VkAttachmentDescription vk_attachments[color_attachment_count + depth_attachment_count];
     VkAttachmentReference vk_attachment_refs[color_attachment_count + depth_attachment_count];
 
-    //Order of attachments/refs: Color Attachments, then Depth Attachment
+    // Order of attachments/refs: Color Attachments, then Depth Attachment
 
-    for (u32 i = 0; i < color_attachment_count + depth_attachment_count; ++i) {
+    for (u32 i = 0; i < color_attachment_count + depth_attachment_count; ++i)
+    {
 
-        //Whether we are currently building a color attachment or the depth-stencil attachment
+        // Whether we are currently building a color attachment or the depth-stencil attachment
         bool is_color_attachment = i < color_attachment_count;
-        GpuAttachmentDesc* attachment = is_color_attachment ? &color_attachments[i] : depth_stencil_attachment;
+        GpuAttachmentDesc *attachment = is_color_attachment ? &color_attachments[i] : depth_stencil_attachment;
 
-        vk_attachments[i] = (VkAttachmentDescription) {
+        vk_attachments[i] = (VkAttachmentDescription){
             .flags = 0,
-            .format = (VkFormat) attachment->format,
+            .format = (VkFormat)attachment->format,
             .samples = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp = (VkAttachmentLoadOp) attachment->load_op,
-            .storeOp = (VkAttachmentStoreOp) attachment->store_op,
-            .stencilLoadOp = (VkAttachmentLoadOp) GPU_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = (VkAttachmentStoreOp) GPU_STORE_OP_DONT_CARE,
-            .initialLayout = (VkImageLayout) attachment->initial_layout,
-            .finalLayout = (VkImageLayout) attachment->final_layout,
+            .loadOp = (VkAttachmentLoadOp)attachment->load_op,
+            .storeOp = (VkAttachmentStoreOp)attachment->store_op,
+            .stencilLoadOp = (VkAttachmentLoadOp)GPU_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = (VkAttachmentStoreOp)GPU_STORE_OP_DONT_CARE,
+            .initialLayout = (VkImageLayout)attachment->initial_layout,
+            .finalLayout = (VkImageLayout)attachment->final_layout,
         };
 
-        vk_attachment_refs[i] = (VkAttachmentReference) {
+        vk_attachment_refs[i] = (VkAttachmentReference){
             .attachment = i,
-            .layout = (VkImageLayout) (is_color_attachment ?  GPU_IMAGE_LAYOUT_COLOR_ATACHMENT : GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT),
+            .layout = (VkImageLayout)(is_color_attachment ? GPU_IMAGE_LAYOUT_COLOR_ATACHMENT
+                                                          : GPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT),
         };
     }
 
@@ -1213,7 +1336,7 @@ GpuRenderPass gpu_create_render_pass(GpuContext* context, u32 color_attachment_c
         .preserveAttachmentCount = 0,
         .pPreserveAttachments = NULL,
     };
-    
+
     VkRenderPassCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .pNext = NULL,
@@ -1229,26 +1352,30 @@ GpuRenderPass gpu_create_render_pass(GpuContext* context, u32 color_attachment_c
     VkRenderPass vk_render_pass;
     VK_CHECK(vkCreateRenderPass(context->device, &create_info, NULL, &vk_render_pass));
 
-    return (GpuRenderPass) {
+    return (GpuRenderPass){
         .vk_render_pass = vk_render_pass,
     };
 }
 
-void gpu_destroy_render_pass(GpuContext* context, GpuRenderPass* render_pass) {
+void gpu_destroy_render_pass(GpuContext *context, GpuRenderPass *render_pass)
+{
     vkDestroyRenderPass(context->device, render_pass->vk_render_pass, NULL);
 }
 
-GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorLayout* descriptor_layout) {
+GpuPipelineLayout gpu_create_pipeline_layout(GpuContext *context, GpuDescriptorLayout *descriptor_layout)
+{
 
     u32 set_layout_count = 0;
     VkDescriptorSetLayout vk_descriptor_set_layout = VK_NULL_HANDLE;
-    if (descriptor_layout != NULL) {
+    if (descriptor_layout != NULL)
+    {
         set_layout_count = 1;
 
         VkDescriptorSetLayoutBinding vk_bindings[descriptor_layout->binding_count];
-        for (int i = 0; i < descriptor_layout->binding_count; ++i) {
+        for (int i = 0; i < descriptor_layout->binding_count; ++i)
+        {
             vk_bindings[i].binding = descriptor_layout->bindings[i].binding;
-            vk_bindings[i].descriptorType = (VkDescriptorType) descriptor_layout->bindings[i].type;
+            vk_bindings[i].descriptorType = (VkDescriptorType)descriptor_layout->bindings[i].type;
             vk_bindings[i].descriptorCount = 1;
             vk_bindings[i].stageFlags = descriptor_layout->bindings[i].stage_flags;
             vk_bindings[i].pImmutableSamplers = NULL;
@@ -1262,7 +1389,8 @@ GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorL
             .pBindings = vk_bindings,
         };
 
-        VK_CHECK(vkCreateDescriptorSetLayout(context->device, &vk_desc_layout_create_info, NULL, &vk_descriptor_set_layout));
+        VK_CHECK(
+            vkCreateDescriptorSetLayout(context->device, &vk_desc_layout_create_info, NULL, &vk_descriptor_set_layout));
     }
 
     VkPipelineLayoutCreateInfo create_info = {
@@ -1279,28 +1407,29 @@ GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorL
     VK_CHECK(vkCreatePipelineLayout(context->device, &create_info, NULL, &vk_pipeline_layout));
 
     u32 binding_size = descriptor_layout->binding_count * sizeof(GpuDescriptorBinding);
-    GpuDescriptorBinding* descriptor_bindings = binding_size > 0 ? malloc(binding_size) : NULL;
-    if (descriptor_bindings != NULL) {
+    GpuDescriptorBinding *descriptor_bindings = binding_size > 0 ? malloc(binding_size) : NULL;
+    if (descriptor_bindings != NULL)
+    {
         memcpy(descriptor_bindings, descriptor_layout->bindings, binding_size);
     }
-    
-    return (GpuPipelineLayout) {
-        .vk_pipeline_layout = vk_pipeline_layout,
-        .vk_descriptor_set_layout = vk_descriptor_set_layout,
-        .descriptor_layout = {
-            .binding_count = descriptor_layout->binding_count,
-            .bindings = descriptor_bindings,
-        }
-    };
+
+    return (GpuPipelineLayout){.vk_pipeline_layout = vk_pipeline_layout,
+                               .vk_descriptor_set_layout = vk_descriptor_set_layout,
+                               .descriptor_layout = {
+                                   .binding_count = descriptor_layout->binding_count,
+                                   .bindings = descriptor_bindings,
+                               }};
 }
 
-void gpu_destroy_pipeline_layout(GpuContext* context, GpuPipelineLayout* layout) {
+void gpu_destroy_pipeline_layout(GpuContext *context, GpuPipelineLayout *layout)
+{
     vkDestroyPipelineLayout(context->device, layout->vk_pipeline_layout, NULL);
     vkDestroyDescriptorSetLayout(context->device, layout->vk_descriptor_set_layout, NULL);
     free(layout->descriptor_layout.bindings);
 }
 
-GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelineCreateInfo* create_info) {
+GpuPipeline gpu_create_graphics_pipeline(GpuContext *context, GpuGraphicsPipelineCreateInfo *create_info)
+{
     VkPipelineShaderStageCreateInfo shader_stages[2] = {
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -1319,18 +1448,18 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
             .module = create_info->fragment_module->vk_shader_module,
             .pName = "main",
             .pSpecializationInfo = NULL,
-        }
-    };
+        }};
 
-    const u32 binding = 0; //Only using binding 0 for now
-    u32 location = 0; //Locations are provided in-order from attributes
+    const u32 binding = 0; // Only using binding 0 for now
+    u32 location = 0;      // Locations are provided in-order from attributes
     u32 total_stride = 0;
 
     VkVertexInputAttributeDescription attribute_descriptions[create_info->num_attributes];
-    for (int i = 0; i < create_info->num_attributes; ++i) {
+    for (int i = 0; i < create_info->num_attributes; ++i)
+    {
         attribute_descriptions[i].binding = binding;
         attribute_descriptions[i].location = location++;
-        attribute_descriptions[i].format = (VkFormat) create_info->attribute_formats[i];
+        attribute_descriptions[i].format = (VkFormat)create_info->attribute_formats[i];
         attribute_descriptions[i].offset = total_stride;
 
         total_stride += gpu_format_stride(create_info->attribute_formats[i]);
@@ -1351,7 +1480,7 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         .vertexBindingDescriptionCount = 1,
         .pVertexBindingDescriptions = binding_descriptions,
         .vertexAttributeDescriptionCount = create_info->num_attributes,
-        .pVertexAttributeDescriptions= attribute_descriptions,
+        .pVertexAttributeDescriptions = attribute_descriptions,
     };
 
     VkPipelineInputAssemblyStateCreateInfo input_assembler = {
@@ -1367,9 +1496,9 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         .pNext = NULL,
         .flags = 0,
         .viewportCount = 1,
-        .pViewports = NULL, //Viewport is dynamic (gpu_cmd_set_viewport)
+        .pViewports = NULL, // Viewport is dynamic (gpu_cmd_set_viewport)
         .scissorCount = 1,
-        .pScissors = NULL, //Scissor is dynamic (gpu_cmd_set_viewport)
+        .pScissors = NULL, // Scissor is dynamic (gpu_cmd_set_viewport)
     };
 
     VkPipelineRasterizationStateCreateInfo rasterization = {
@@ -1406,7 +1535,7 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         .flags = 0,
         .depthTestEnable = create_info->depth_stencil.depth_test,
         .depthWriteEnable = create_info->depth_stencil.depth_write,
-        .depthCompareOp = VK_COMPARE_OP_LESS, //TODO: add to create info
+        .depthCompareOp = VK_COMPARE_OP_LESS, // TODO: add to create info
         .depthBoundsTestEnable = VK_FALSE,
         .minDepthBounds = 0.0f,
         .maxDepthBounds = 1.0f,
@@ -1415,34 +1544,29 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
         .back = {},
     };
 
-    //FIXME: build up based on renderpass attachments
-    VkPipelineColorBlendAttachmentState color_blending_attachments[] = {
-        {
-            .blendEnable = create_info->enable_color_blending ? VK_TRUE : VK_FALSE,
-            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-            .colorBlendOp = VK_BLEND_OP_ADD,
-            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-            .alphaBlendOp = VK_BLEND_OP_ADD,
-            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT 
-                            | VK_COLOR_COMPONENT_G_BIT 
-                            | VK_COLOR_COMPONENT_B_BIT 
-                            | VK_COLOR_COMPONENT_A_BIT,
-        }
-    };
+    // FIXME: build up based on renderpass attachments
+    VkPipelineColorBlendAttachmentState color_blending_attachments[] = {{
+        .blendEnable = create_info->enable_color_blending ? VK_TRUE : VK_FALSE,
+        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+        .colorWriteMask =
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+    }};
 
-    VkPipelineColorBlendStateCreateInfo color_blending = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .logicOpEnable = VK_FALSE,
-        .logicOp = VK_LOGIC_OP_COPY,
-        .attachmentCount = 1, //TODO: based on num color attachments
-        .pAttachments = color_blending_attachments,
-        .blendConstants = { 0.0f, 0.0f, 0.0f, 0.0f}
-    };  
-    
+    VkPipelineColorBlendStateCreateInfo color_blending = {.sType =
+                                                              VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+                                                          .pNext = NULL,
+                                                          .flags = 0,
+                                                          .logicOpEnable = VK_FALSE,
+                                                          .logicOp = VK_LOGIC_OP_COPY,
+                                                          .attachmentCount = 1, // TODO: based on num color attachments
+                                                          .pAttachments = color_blending_attachments,
+                                                          .blendConstants = {0.0f, 0.0f, 0.0f, 0.0f}};
+
     VkDynamicState dynamic_states[] = {
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR,
@@ -1457,15 +1581,16 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
     };
 
     VkPipelineRenderingCreateInfo vk_rendering_create_info = {};
-    if (create_info->rendering_info) {
-        vk_rendering_create_info = (VkPipelineRenderingCreateInfo) {
+    if (create_info->rendering_info)
+    {
+        vk_rendering_create_info = (VkPipelineRenderingCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
             .pNext = NULL,
             .viewMask = 0,
             .colorAttachmentCount = create_info->rendering_info->color_attachment_count,
-            .pColorAttachmentFormats = (VkFormat*) create_info->rendering_info->color_formats,
-            .depthAttachmentFormat = (VkFormat) create_info->rendering_info->depth_format,
-            .stencilAttachmentFormat = (VkFormat) create_info->rendering_info->stencil_format,
+            .pColorAttachmentFormats = (VkFormat *)create_info->rendering_info->color_formats,
+            .depthAttachmentFormat = (VkFormat)create_info->rendering_info->depth_format,
+            .stencilAttachmentFormat = (VkFormat)create_info->rendering_info->stencil_format,
         };
     }
 
@@ -1494,16 +1619,18 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelin
     VkPipeline vk_pipeline = VK_NULL_HANDLE;
     VK_CHECK(vkCreateGraphicsPipelines(context->device, VK_NULL_HANDLE, 1, &vk_create_info, NULL, &vk_pipeline));
 
-    return (GpuPipeline) {
+    return (GpuPipeline){
         .vk_pipeline = vk_pipeline,
     };
 }
 
-void gpu_destroy_pipeline(GpuContext* context, GpuPipeline* pipeline) {
+void gpu_destroy_pipeline(GpuContext *context, GpuPipeline *pipeline)
+{
     vkDestroyPipeline(context->device, pipeline->vk_pipeline, NULL);
 }
 
-GpuFramebuffer gpu_create_framebuffer(GpuContext* context, GpuFramebufferCreateInfo* create_info) {
+GpuFramebuffer gpu_create_framebuffer(GpuContext *context, GpuFramebufferCreateInfo *create_info)
+{
 
     VkFramebufferCreateInfo vk_create_info = {
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -1511,7 +1638,7 @@ GpuFramebuffer gpu_create_framebuffer(GpuContext* context, GpuFramebufferCreateI
         .flags = 0,
         .renderPass = create_info->render_pass->vk_render_pass,
         .attachmentCount = create_info->attachment_count,
-        .pAttachments = (VkImageView*) create_info->attachments,
+        .pAttachments = (VkImageView *)create_info->attachments,
         .width = create_info->width,
         .height = create_info->height,
         .layers = 1,
@@ -1520,18 +1647,20 @@ GpuFramebuffer gpu_create_framebuffer(GpuContext* context, GpuFramebufferCreateI
     VkFramebuffer vk_framebuffer = VK_NULL_HANDLE;
     VK_CHECK(vkCreateFramebuffer(context->device, &vk_create_info, NULL, &vk_framebuffer));
 
-    return (GpuFramebuffer) {
+    return (GpuFramebuffer){
         .vk_framebuffer = vk_framebuffer,
         .width = create_info->width,
         .height = create_info->height,
     };
 }
 
-void gpu_destroy_framebuffer(GpuContext* context, GpuFramebuffer* framebuffer) {
+void gpu_destroy_framebuffer(GpuContext *context, GpuFramebuffer *framebuffer)
+{
     vkDestroyFramebuffer(context->device, framebuffer->vk_framebuffer, NULL);
 }
 
-GpuCommandBuffer gpu_create_command_buffer(GpuContext* context) {
+GpuCommandBuffer gpu_create_command_buffer(GpuContext *context)
+{
     VkCommandBufferAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = NULL,
@@ -1542,43 +1671,48 @@ GpuCommandBuffer gpu_create_command_buffer(GpuContext* context) {
     VkCommandBuffer vk_command_buffer;
     VK_CHECK(vkAllocateCommandBuffers(context->device, &alloc_info, &vk_command_buffer));
 
-    return (GpuCommandBuffer) {
+    return (GpuCommandBuffer){
         .vk_command_buffer = vk_command_buffer,
     };
 }
 
-void gpu_free_command_buffer(GpuContext* context, GpuCommandBuffer* command_buffer) {
+void gpu_free_command_buffer(GpuContext *context, GpuCommandBuffer *command_buffer)
+{
     vkFreeCommandBuffers(context->device, context->graphics_command_pool, 1, &command_buffer->vk_command_buffer);
 }
 
-void gpu_begin_command_buffer(GpuCommandBuffer* command_buffer) {
-    VK_CHECK(vkBeginCommandBuffer(command_buffer->vk_command_buffer, &(VkCommandBufferBeginInfo) {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .pInheritanceInfo = NULL,
-    }));
+void gpu_begin_command_buffer(GpuCommandBuffer *command_buffer)
+{
+    VK_CHECK(vkBeginCommandBuffer(command_buffer->vk_command_buffer,
+                                  &(VkCommandBufferBeginInfo){
+                                      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                                      .pNext = NULL,
+                                      .flags = 0,
+                                      .pInheritanceInfo = NULL,
+                                  }));
 }
 
-void gpu_end_command_buffer(GpuCommandBuffer* command_buffer) {
+void gpu_end_command_buffer(GpuCommandBuffer *command_buffer)
+{
     VK_CHECK(vkEndCommandBuffer(command_buffer->vk_command_buffer));
 }
 
-//helper to convert to VkRenderingAttachmentInfo
-VkRenderingAttachmentInfo to_vk_attachment_info(GpuRenderingAttachmentInfo* attachment_info) {
+// helper to convert to VkRenderingAttachmentInfo
+VkRenderingAttachmentInfo to_vk_attachment_info(GpuRenderingAttachmentInfo *attachment_info)
+{
     assert(attachment_info);
-    //TODO: Can we infer image_layout from just if its color/depth/stencil (remove from info struct?)
+    // TODO: Can we infer image_layout from just if its color/depth/stencil (remove from info struct?)
 
     VkRenderingAttachmentInfo vk_rendering_attachment_info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = NULL,
         .imageView = attachment_info->image_view->vk_image_view,
-        .imageLayout = (VkImageLayout) attachment_info->image_layout,
+        .imageLayout = (VkImageLayout)attachment_info->image_layout,
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = 0,
-        .loadOp = (VkAttachmentLoadOp) attachment_info->load_op,
-        .storeOp = (VkAttachmentStoreOp) attachment_info->store_op,
+        .loadOp = (VkAttachmentLoadOp)attachment_info->load_op,
+        .storeOp = (VkAttachmentStoreOp)attachment_info->store_op,
         // .clearValue = (VkClearValue) attachment_info->clear_value, //Below
     };
 
@@ -1587,20 +1721,24 @@ VkRenderingAttachmentInfo to_vk_attachment_info(GpuRenderingAttachmentInfo* atta
     return vk_rendering_attachment_info;
 }
 
-void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo* rendering_info) {
+void gpu_cmd_begin_rendering(GpuCommandBuffer *command_buffer, GpuRenderingInfo *rendering_info)
+{
 
     VkRenderingAttachmentInfo vk_color_attachments[rendering_info->color_attachment_count];
-    for (u32 i = 0; i < rendering_info->color_attachment_count; ++i) {
+    for (u32 i = 0; i < rendering_info->color_attachment_count; ++i)
+    {
         vk_color_attachments[i] = to_vk_attachment_info(&rendering_info->color_attachments[i]);
     }
 
     VkRenderingAttachmentInfo vk_depth_attachment;
-    if (rendering_info->depth_attachment) {
+    if (rendering_info->depth_attachment)
+    {
         vk_depth_attachment = to_vk_attachment_info(rendering_info->depth_attachment);
     }
 
     VkRenderingAttachmentInfo vk_stencil_attachment;
-    if (rendering_info->stencil_attachment) {
+    if (rendering_info->stencil_attachment)
+    {
         vk_stencil_attachment = to_vk_attachment_info(rendering_info->stencil_attachment);
     }
 
@@ -1608,16 +1746,19 @@ void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo*
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .pNext = NULL,
         .flags = 0,
-        .renderArea = {
-            .offset = {
-                .x = 0,
-                .y = 0,
+        .renderArea =
+            {
+                .offset =
+                    {
+                        .x = 0,
+                        .y = 0,
+                    },
+                .extent =
+                    {
+                        .width = rendering_info->render_width,
+                        .height = rendering_info->render_height,
+                    },
             },
-            .extent = {
-                .width = rendering_info->render_width,
-                .height = rendering_info->render_height,
-            },
-        },
         .layerCount = 1,
         .viewMask = 0,
         .colorAttachmentCount = rendering_info->color_attachment_count,
@@ -1626,126 +1767,143 @@ void gpu_cmd_begin_rendering(GpuCommandBuffer* command_buffer, GpuRenderingInfo*
         .pStencilAttachment = rendering_info->stencil_attachment ? &vk_stencil_attachment : NULL,
     };
 
-    //vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
-	pfn_begin_rendering(command_buffer->vk_command_buffer, &vk_rendering_info);
-
+    // vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
+    pfn_begin_rendering(command_buffer->vk_command_buffer, &vk_rendering_info);
 }
 
-void gpu_cmd_end_rendering(GpuCommandBuffer* command_buffer) {
-    //vkCmdEndRendering(command_buffer->vk_command_buffer);
-	pfn_end_rendering(command_buffer->vk_command_buffer);
+void gpu_cmd_end_rendering(GpuCommandBuffer *command_buffer)
+{
+    // vkCmdEndRendering(command_buffer->vk_command_buffer);
+    pfn_end_rendering(command_buffer->vk_command_buffer);
 }
 
-void gpu_cmd_begin_render_pass(GpuCommandBuffer* command_buffer, GpuRenderPassBeginInfo* begin_info) {
+void gpu_cmd_begin_render_pass(GpuCommandBuffer *command_buffer, GpuRenderPassBeginInfo *begin_info)
+{
     VkRenderPassBeginInfo vk_begin_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .pNext = NULL,
         .renderPass = begin_info->render_pass->vk_render_pass,
         .framebuffer = begin_info->framebuffer->vk_framebuffer,
-        .renderArea = {
-            .offset = {
-                .x = 0,
-                .y = 0,
+        .renderArea =
+            {
+                .offset =
+                    {
+                        .x = 0,
+                        .y = 0,
+                    },
+                .extent =
+                    {
+                        .width = begin_info->framebuffer->width,
+                        .height = begin_info->framebuffer->height,
+                    },
             },
-            .extent = {
-                .width = begin_info->framebuffer->width,
-                .height = begin_info->framebuffer->height,
-            },
-        },
         .clearValueCount = begin_info->num_clear_values,
-        .pClearValues = (VkClearValue*)begin_info->clear_values,
+        .pClearValues = (VkClearValue *)begin_info->clear_values,
     };
-    
+
     vkCmdBeginRenderPass(command_buffer->vk_command_buffer, &vk_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void gpu_cmd_end_render_pass(GpuCommandBuffer* command_buffer) {
+void gpu_cmd_end_render_pass(GpuCommandBuffer *command_buffer)
+{
     vkCmdEndRenderPass(command_buffer->vk_command_buffer);
 }
 
-void gpu_cmd_bind_pipeline(GpuCommandBuffer* command_buffer, GpuPipeline* pipeline) {
-    //TODO: Also Allow binding of compute pipelines
+void gpu_cmd_bind_pipeline(GpuCommandBuffer *command_buffer, GpuPipeline *pipeline)
+{
+    // TODO: Also Allow binding of compute pipelines
     vkCmdBindPipeline(command_buffer->vk_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->vk_pipeline);
 }
 
-void gpu_cmd_bind_index_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* index_buffer) {
+void gpu_cmd_bind_index_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *index_buffer)
+{
     vkCmdBindIndexBuffer(command_buffer->vk_command_buffer, index_buffer->vk_buffer, 0, VK_INDEX_TYPE_UINT32);
 }
 
-void gpu_cmd_bind_descriptor_set(GpuCommandBuffer* command_buffer, GpuPipelineLayout* layout, GpuDescriptorSet* descriptor_set) {
-    vkCmdBindDescriptorSets(
-        command_buffer->vk_command_buffer, 
-        VK_PIPELINE_BIND_POINT_GRAPHICS, 
-        layout->vk_pipeline_layout, 
-        0, 
-        1, &descriptor_set->vk_descriptor_set, 
-        0, NULL
-    );
+void gpu_cmd_bind_descriptor_set(GpuCommandBuffer *command_buffer, GpuPipelineLayout *layout,
+                                 GpuDescriptorSet *descriptor_set)
+{
+    vkCmdBindDescriptorSets(command_buffer->vk_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            layout->vk_pipeline_layout, 0, 1, &descriptor_set->vk_descriptor_set, 0, NULL);
 }
 
-void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* vertex_buffer) {
+void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *vertex_buffer)
+{
     VkDeviceSize offsets[1] = {0};
     vkCmdBindVertexBuffers(command_buffer->vk_command_buffer, 0, 1, &vertex_buffer->vk_buffer, offsets);
 }
 
-void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, u32 index_count) {
+void gpu_cmd_draw_indexed(GpuCommandBuffer *command_buffer, u32 index_count)
+{
     vkCmdDrawIndexed(command_buffer->vk_command_buffer, index_count, 1, 0, 0, 0);
 }
 
-void gpu_cmd_draw(GpuCommandBuffer* command_buffer, u32 vertex_count) {
+void gpu_cmd_draw(GpuCommandBuffer *command_buffer, u32 vertex_count)
+{
     vkCmdDraw(command_buffer->vk_command_buffer, vertex_count, 1, 0, 0);
 }
 
-void gpu_cmd_set_viewport(GpuCommandBuffer* command_buffer, GpuViewport* viewport) {
-    vkCmdSetViewport(command_buffer->vk_command_buffer, 0, 1, (VkViewport*) viewport);
-    vkCmdSetScissor(command_buffer->vk_command_buffer, 0, 1, &(VkRect2D) {
-        .offset = {
-            .x = viewport->x,
-            .y = viewport->y,
-        },
-        .extent = {
-            .width = (u32) viewport->width,
-            .height = (u32) viewport->height,
-        },
-    });
+void gpu_cmd_set_viewport(GpuCommandBuffer *command_buffer, GpuViewport *viewport)
+{
+    vkCmdSetViewport(command_buffer->vk_command_buffer, 0, 1, (VkViewport *)viewport);
+    vkCmdSetScissor(command_buffer->vk_command_buffer, 0, 1,
+                    &(VkRect2D){
+                        .offset =
+                            {
+                                .x = viewport->x,
+                                .y = viewport->y,
+                            },
+                        .extent =
+                            {
+                                .width = (u32)viewport->width,
+                                .height = (u32)viewport->height,
+                            },
+                    });
 }
 
-void gpu_cmd_copy_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuBuffer* dst_buffer, u64 size) {
+void gpu_cmd_copy_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *src_buffer, GpuBuffer *dst_buffer, u64 size)
+{
     VkBufferCopy vk_buffer_copy = {
         .srcOffset = 0,
         .dstOffset = 0,
         .size = size,
     };
-    vkCmdCopyBuffer(command_buffer->vk_command_buffer, src_buffer->vk_buffer, dst_buffer->vk_buffer, 1, &vk_buffer_copy);
+    vkCmdCopyBuffer(command_buffer->vk_command_buffer, src_buffer->vk_buffer, dst_buffer->vk_buffer, 1,
+                    &vk_buffer_copy);
 }
 
-void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer* command_buffer, GpuBuffer* src_buffer, GpuImage* dst_image, GpuImageLayout image_layout, u64 width, u64 height) {
-    VkBufferImageCopy vk_buffer_image_copy = {
-        .bufferOffset = 0,
-        .bufferRowLength = 0,
-        .bufferImageHeight = 0,
-        .imageSubresource = (VkImageSubresourceLayers) {
-            .aspectMask = GPU_IMAGE_ASPECT_COLOR, //TODO:
-            .mipLevel = 0, //TODO:
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-        .imageOffset = {.x=0, .y=0,.z=0},
-        .imageExtent = {
-            .width = width,
-            .height = height,
-            .depth = 1,
-        }
-    };
+void gpu_cmd_copy_buffer_to_image(GpuCommandBuffer *command_buffer, GpuBuffer *src_buffer, GpuImage *dst_image,
+                                  GpuImageLayout image_layout, u64 width, u64 height)
+{
+    VkBufferImageCopy vk_buffer_image_copy = {.bufferOffset = 0,
+                                              .bufferRowLength = 0,
+                                              .bufferImageHeight = 0,
+                                              .imageSubresource =
+                                                  (VkImageSubresourceLayers){
+                                                      .aspectMask = GPU_IMAGE_ASPECT_COLOR, // TODO:
+                                                      .mipLevel = 0,                        // TODO:
+                                                      .baseArrayLayer = 0,
+                                                      .layerCount = 1,
+                                                  },
+                                              .imageOffset = {.x = 0, .y = 0, .z = 0},
+                                              .imageExtent = {
+                                                  .width = width,
+                                                  .height = height,
+                                                  .depth = 1,
+                                              }};
 
-    //FCS TODO: dstImageLayout must specify the layout of the image subresources of dstImage specified in pRegions at the time this command is executed on a VkDevice
-    vkCmdCopyBufferToImage(command_buffer->vk_command_buffer, src_buffer->vk_buffer, dst_image->vk_image, (VkImageLayout)image_layout, 1, &vk_buffer_image_copy);
+    // FCS TODO: dstImageLayout must specify the layout of the image subresources of dstImage specified in pRegions at
+    // the time this command is executed on a VkDevice
+    vkCmdCopyBufferToImage(command_buffer->vk_command_buffer, src_buffer->vk_buffer, dst_image->vk_image,
+                           (VkImageLayout)image_layout, 1, &vk_buffer_image_copy);
 }
 
-void gpu_queue_submit(GpuContext* context, GpuCommandBuffer* command_buffer, GpuSemaphore* wait_semaphore, GpuSemaphore* signal_semaphore, GpuFence* signal_fence) {
-    
+void gpu_queue_submit(GpuContext *context, GpuCommandBuffer *command_buffer, GpuSemaphore *wait_semaphore,
+                      GpuSemaphore *signal_semaphore, GpuFence *signal_fence)
+{
+
     VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    
+
     VkSubmitInfo vk_submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .pNext = NULL,
@@ -1758,10 +1916,12 @@ void gpu_queue_submit(GpuContext* context, GpuCommandBuffer* command_buffer, Gpu
         .pSignalSemaphores = signal_semaphore ? &signal_semaphore->vk_semaphore : NULL,
     };
 
-    VK_CHECK(vkQueueSubmit(context->graphics_queue, 1, &vk_submit_info, signal_fence ? signal_fence->vk_fence : VK_NULL_HANDLE));
+    VK_CHECK(vkQueueSubmit(context->graphics_queue, 1, &vk_submit_info,
+                           signal_fence ? signal_fence->vk_fence : VK_NULL_HANDLE));
 }
 
-void gpu_queue_present(GpuContext* context, u32 image_index, GpuSemaphore* wait_semaphore) {
+void gpu_queue_present(GpuContext *context, u32 image_index, GpuSemaphore *wait_semaphore)
+{
     VkPresentInfoKHR vk_present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = NULL,
@@ -1773,11 +1933,13 @@ void gpu_queue_present(GpuContext* context, u32 image_index, GpuSemaphore* wait_
         .pResults = NULL,
     };
 
-	//FCS TODO: MoltenVk returning VK_SUBOPTIMAL_KHR, likely due to invalid swapchain size (need to implement window functions)
-    /*VK_CHECK*/(vkQueuePresentKHR(context->graphics_queue, &vk_present_info));
+    // FCS TODO: MoltenVk returning VK_SUBOPTIMAL_KHR, likely due to invalid swapchain size (need to implement window
+    // functions)
+    /*VK_CHECK*/ (vkQueuePresentKHR(context->graphics_queue, &vk_present_info));
 }
 
-GpuFence gpu_create_fence(GpuContext* context, bool signaled) {
+GpuFence gpu_create_fence(GpuContext *context, bool signaled)
+{
     VkFenceCreateInfo vk_create_info = {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         .pNext = NULL,
@@ -1787,38 +1949,40 @@ GpuFence gpu_create_fence(GpuContext* context, bool signaled) {
     VkFence vk_fence = VK_NULL_HANDLE;
     VK_CHECK(vkCreateFence(context->device, &vk_create_info, NULL, &vk_fence));
 
-    return (GpuFence) {
+    return (GpuFence){
         .vk_fence = vk_fence,
     };
 }
 
-void gpu_destroy_fence(GpuContext* context, GpuFence* fence) {
+void gpu_destroy_fence(GpuContext *context, GpuFence *fence)
+{
     vkDestroyFence(context->device, fence->vk_fence, NULL);
 }
 
-void gpu_wait_for_fence(GpuContext* context, GpuFence* fence) {
+void gpu_wait_for_fence(GpuContext *context, GpuFence *fence)
+{
     VK_CHECK(vkWaitForFences(context->device, 1, &fence->vk_fence, VK_TRUE, UINT64_MAX));
 }
 
-void gpu_reset_fence(GpuContext* context, GpuFence* fence) {
+void gpu_reset_fence(GpuContext *context, GpuFence *fence)
+{
     VK_CHECK(vkResetFences(context->device, 1, &fence->vk_fence));
 }
 
-GpuSemaphore gpu_create_semaphore(GpuContext* context) {
+GpuSemaphore gpu_create_semaphore(GpuContext *context)
+{
     VkSemaphoreCreateInfo vk_create_info = {
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0
-    };
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = NULL, .flags = 0};
 
     VkSemaphore vk_semaphore;
     VK_CHECK(vkCreateSemaphore(context->device, &vk_create_info, NULL, &vk_semaphore));
 
-    return (GpuSemaphore) {
+    return (GpuSemaphore){
         .vk_semaphore = vk_semaphore,
     };
 }
 
-void gpu_destroy_semaphore(GpuContext* context, GpuSemaphore* semaphore) {
+void gpu_destroy_semaphore(GpuContext *context, GpuSemaphore *semaphore)
+{
     vkDestroySemaphore(context->device, semaphore->vk_semaphore, NULL);
 }
