@@ -18,4 +18,9 @@ TODO: Still some leaked memory reported by "leaks game" (before our rendering lo
 		- Create header with custom alloc functions and only use those
 
 
-TODO: better delta_time calculation (seemingly busted on MAC)
+TODO: time code for windows (QueryPerformanceCounter)
+
+TODO: Move away from null-terminated strings...
+TODO: gltf.h (likely others as well): array sizes should be i32 instead of u32
+TODO: window keeps handling messages on MAC after closing (escape properly shuts down)
+TODO: Dedicated logging and memory files

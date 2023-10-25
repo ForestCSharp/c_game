@@ -86,7 +86,7 @@ void physics_resolve_collision(Collider* in_collider, const Vec3 hit_loc, const 
 {
     if (in_collider->is_kinematic)
     {
-        const float position_correction_scalar = 0.025f; // TODO: store in global physics data
+        const float position_correction_scalar = 0.035f; // TODO: store in global physics data
         in_collider->position =
             vec3_add(in_collider->position, vec3_scale(vec3_normalize(hit_dir), position_correction_scalar));
 

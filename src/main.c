@@ -30,7 +30,6 @@
 
 bool read_file(const char *filename, size_t *out_file_size, u32 **out_data)
 {
-
     FILE *file = fopen(filename, "rb");
     if (!file)
 	{
@@ -181,14 +180,16 @@ int main()
 
                 const float spacing = 2.05f;
                 const float y_offset = 2.0f;
-                collider.position = vec3_scale(vec3_new(x, y + y_offset, z), spacing);
+                collider.position = vec3_scale(vec3_new(x + 5, y + y_offset, z), spacing);
                 sb_push(colliders, collider);
             }
         }
     }
 
     GltfAsset gltf_asset = {};
-    if (!gltf_load_asset("data/meshes/monkey.glb", &gltf_asset))
+    //if (!gltf_load_asset("data/meshes/pica_pica_pallet.glb", &gltf_asset))
+    if (!gltf_load_asset("data/meshes/cesium_man.glb", &gltf_asset))
+    //if (!gltf_load_asset("data/meshes/monkey.glb", &gltf_asset))
     {
         printf("Failed to Load GLTF Asset\n");
         return 1;
@@ -904,15 +905,23 @@ int main()
 
         {
             // float rotation_rate = 1.0f;
-            Quat q1 = quat_new(vec3_new(0, 1, 0), delta_time * rotation_rate);
-            Quat q2 = quat_new(vec3_new(1, 0, 0), delta_time * rotation_rate);
+            //Quat q1 = quat_new(vec3_new(0, 1, 0), delta_time * rotation_rate);
+            //Quat q2 = quat_new(vec3_new(1, 0, 0), delta_time * rotation_rate);
 
-            Quat q = quat_normalize(quat_mult(q1, q2));
+            Quat q1 = quat_new(vec3_new(0, 1, 0), 90 * DEGREES_TO_RADIANS);
+            Quat q2 = quat_new(vec3_new(1, 0, 0), 180 * DEGREES_TO_RADIANS);
+			Quat q3 = quat_new(vec3_new(0, 0, 1), 90 * DEGREES_TO_RADIANS);
 
-            orientation = quat_mult(orientation, q);
+            Quat q = quat_normalize(quat_mult(quat_mult(q1, q2), q3));
+
+            orientation = q; //quat_mult(orientation, q);
             orientation = quat_normalize(orientation);
 
-            Mat4 model = quat_to_mat4(orientation);
+			Vec3 scale = vec3_new(5,5,5);
+			Mat4 scale_matrix = mat4_scale(scale);
+			Mat4 orientation_matrix = quat_to_mat4(orientation);
+
+            Mat4 model = mat4_mult_mat4(scale_matrix, orientation_matrix); 
             Mat4 view = mat4_look_at(position, target, up);
             Mat4 proj = mat4_perspective(60.0f, (float)width / (float)height, 0.01f, 1000.0f);
 
@@ -1012,6 +1021,8 @@ int main()
     gpu_destroy_context(&gpu_context);
 
     gui_shutdown(&gui_context);
+
+	gltf_free_asset(&gltf_asset);
 
     return 0;
 }
