@@ -14,11 +14,11 @@
 #include "stretchy_buffer.h"
 #include "vec.h"
 
-// TODO: rename platform/platform.h
 #include "gpu.c"
 #include "window/window.h"
 
 #include "gltf.h"
+#include "animated_model.h"
 #include "gui.h"
 #include "physics.h"
 
@@ -186,79 +186,35 @@ int main()
         }
     }
 
-    GltfAsset gltf_asset = {};
-    //if (!gltf_load_asset("data/meshes/pica_pica_pallet.glb", &gltf_asset))
-    if (!gltf_load_asset("data/meshes/cesium_man.glb", &gltf_asset))
-    //if (!gltf_load_asset("data/meshes/monkey.glb", &gltf_asset))
-    {
-        printf("Failed to Load GLTF Asset\n");
-        return 1;
-    }
+	AnimatedModel animated_model;
+	if (!animated_model_load("data/meshes/cesium_man.glb", &animated_model))
+	{
+		printf("Failed to Load Animated Model\n");
+		return 1;
+	}
 
-    if (gltf_asset.num_meshes <= 0 || gltf_asset.meshes[0].num_primitives <= 0)
-    {
-        exit(0);
-    }
-
-    GltfPrimitive *primitive = &gltf_asset.meshes[0].primitives[0];
-
-    u8 *positions_buffer = primitive->positions->buffer_view->buffer->data;
-    positions_buffer += gltf_accessor_get_initial_offset(primitive->positions);
-    u32 positions_byte_stride = gltf_accessor_get_stride(primitive->positions);
-
-    u8 *normals_buffer = primitive->normals->buffer_view->buffer->data;
-    normals_buffer += gltf_accessor_get_initial_offset(primitive->normals);
-    u32 normals_byte_stride = gltf_accessor_get_stride(primitive->normals);
-
-    u8 *uvs_buffer = primitive->texcoord0->buffer_view->buffer->data;
-    uvs_buffer += gltf_accessor_get_initial_offset(primitive->texcoord0);
-    u32 uvs_byte_stride = gltf_accessor_get_stride(primitive->texcoord0);
-
-    u32 vertices_count = primitive->positions->count;
-    Vertex *vertices = calloc(vertices_count, sizeof(Vertex));
-
-    for (int i = 0; i < vertices_count; ++i)
-    {
-        memcpy(&vertices[i].position, positions_buffer, positions_byte_stride);
-        memcpy(&vertices[i].normal, normals_buffer, normals_byte_stride);
-        memcpy(&vertices[i].color, (float[4]){0.8f, 0.2f, 0.2f, 1.0f}, sizeof(float) * 4);
-        memcpy(&vertices[i].uv, uvs_buffer, uvs_byte_stride);
-
-        positions_buffer += positions_byte_stride;
-        normals_buffer += normals_byte_stride;
-        uvs_buffer += uvs_byte_stride;
-    }
-
-    u8 *indices_buffer = primitive->indices->buffer_view->buffer->data;
-    indices_buffer += gltf_accessor_get_initial_offset(primitive->indices);
-    u32 indices_byte_stride = gltf_accessor_get_stride(primitive->indices);
-
-    u32 indices_count = primitive->indices->count;
-    u32 *indices = calloc(indices_count, sizeof(u32));
-
-    for (int i = 0; i < indices_count; ++i)
-    {
-        memcpy(&indices[i], indices_buffer, indices_byte_stride);
-        indices_buffer += indices_byte_stride;
-    }
+	printf("Successfully loaded Animated Model\n");
+	//exit(0);
+	//FCS TODO: !!!
+	//1. [DONE] set up new pipeline and get cesium man rendering properly as a static model
+	//2. bake out animation in animated_model.h
+	//3. Test primitive collapsing code on skinned and non-skinned meshes with multiple primitives
 
     Window window = window_create("C Game", 1920, 1080);
 
     GpuContext gpu_context = gpu_create_context(&window);
 
-    size_t vertices_size = sizeof(Vertex) * vertices_count;
+    size_t vertices_size = sizeof(AnimatedVertex) * animated_model.num_vertices;
     GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
     GpuBuffer vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
                                                 vertices_size, "mesh vertex buffer");
-    gpu_upload_buffer(&gpu_context, &vertex_buffer, vertices_size, vertices);
-    free(vertices);
+    gpu_upload_buffer(&gpu_context, &vertex_buffer, vertices_size, animated_model.vertices);
 
-    size_t indices_size = sizeof(u32) * indices_count;
+    size_t indices_size = sizeof(u32) * animated_model.num_indices;
     GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
     GpuBuffer index_buffer = gpu_create_buffer(&gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
                                                indices_size, "mesh index buffer");
-    gpu_upload_buffer(&gpu_context, &index_buffer, indices_size, indices);
-    free(indices);
+    gpu_upload_buffer(&gpu_context, &index_buffer, indices_size, animated_model.indices);
 
     // BEGIN GUI SETUP
 
@@ -399,6 +355,7 @@ int main()
     }
 
     GpuShaderModule vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.vert.spv");
+	GpuShaderModule skinned_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/skinned.vert.spv");
     GpuShaderModule fragment_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.frag.spv");
 
     GpuDescriptorLayout descriptor_layout = {
@@ -493,25 +450,46 @@ int main()
     }
     // END COLLIDERS GPU DATA SETUP
 
-    GpuFormat attribute_formats[] = {
+    GpuFormat static_attribute_formats[] = {
         GPU_FORMAT_RGB32_SFLOAT,
         GPU_FORMAT_RGB32_SFLOAT,
         GPU_FORMAT_RGBA32_SFLOAT,
         GPU_FORMAT_RG32_SFLOAT,
     };
 
-    GpuGraphicsPipelineCreateInfo graphics_pipeline_create_info = {.vertex_module = &vertex_module,
+    GpuGraphicsPipelineCreateInfo static_pipeline_create_info = {.vertex_module = &vertex_module,
                                                                    .fragment_module = &fragment_module,
                                                                    .rendering_info = &dynamic_rendering_info,
                                                                    .layout = &pipeline_layout,
                                                                    .num_attributes = 4,
-                                                                   .attribute_formats = attribute_formats,
+                                                                   .attribute_formats = static_attribute_formats,
                                                                    .depth_stencil = {
                                                                        .depth_test = true,
                                                                        .depth_write = true,
                                                                    }};
 
-    GpuPipeline pipeline = gpu_create_graphics_pipeline(&gpu_context, &graphics_pipeline_create_info);
+    GpuPipeline static_pipeline = gpu_create_graphics_pipeline(&gpu_context, &static_pipeline_create_info);
+
+	GpuFormat skinned_attribute_formats[] = {
+		        GPU_FORMAT_RGB32_SFLOAT,
+		        GPU_FORMAT_RGB32_SFLOAT,
+		        GPU_FORMAT_RGBA32_SFLOAT,
+		        GPU_FORMAT_RG32_SFLOAT,
+				GPU_FORMAT_RGBA32_SFLOAT, //should be int?
+				GPU_FORMAT_RGBA32_SFLOAT  //should be int?
+		    };
+
+    GpuGraphicsPipelineCreateInfo skinned_pipeline_create_info = {.vertex_module = &skinned_vertex_module,
+                                                                   .fragment_module = &fragment_module,
+                                                                   .rendering_info = &dynamic_rendering_info,
+                                                                   .layout = &pipeline_layout,
+                                                                   .num_attributes = 6,
+                                                                   .attribute_formats = skinned_attribute_formats,
+                                                                   .depth_stencil = {
+                                                                       .depth_test = true,
+                                                                       .depth_write = true,
+                                                                   }};
+	GpuPipeline skinned_pipeline = gpu_create_graphics_pipeline(&gpu_context, &skinned_pipeline_create_info);
 
     // destroy shader modules after creating pipeline
     gpu_destroy_shader_module(&gpu_context, &vertex_module);
@@ -805,28 +783,33 @@ int main()
                 .stencil_attachment = NULL, // TODO:
             });
 
-        gpu_cmd_bind_pipeline(&command_buffers[current_frame], &pipeline);
-        gpu_cmd_set_viewport(&command_buffers[current_frame], &(GpuViewport){
-                                                                  .x = 0,
-                                                                  .y = 0,
-                                                                  .width = width,
-                                                                  .height = height,
-                                                                  .min_depth = 0.0,
-                                                                  .max_depth = 1.0,
-                                                              });
-        gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &index_buffer);
-        gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &vertex_buffer);
-        gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &descriptor_sets[current_frame]);
-        gpu_cmd_draw_indexed(&command_buffers[current_frame], indices_count);
+		{	// Draw Our Animated Model
+			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &skinned_pipeline);
+			gpu_cmd_set_viewport(&command_buffers[current_frame], &(GpuViewport){
+				.x = 0,
+				.y = 0,
+				.width = width,
+				.height = height,
+				.min_depth = 0.0,
+				.max_depth = 1.0,
+			});
+			gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &index_buffer);
+			gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &vertex_buffer);
+			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &descriptor_sets[current_frame]);
+			gpu_cmd_draw_indexed(&command_buffers[current_frame], animated_model.num_indices);
+		}
 
-        for (u32 i = 0; i < sb_count(colliders); ++i)
-        {
-            // FIXME: one vertex buffer per collider (we're assuming all same-data (cubes) currently)
-            gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
-            gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout,
-                                        &collider_descriptor_sets[i]);
-            gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count);
-        }
+		{	// Draw Our Static Geometry
+			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
+			for (u32 i = 0; i < sb_count(colliders); ++i)
+			{
+				// FIXME: one vertex buffer per collider (we're assuming all same-data (cubes) currently)
+				gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
+				gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout,
+								&collider_descriptor_sets[i]);
+				gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count);
+			}
+		}
 
         // BEGIN gui rendering
         gpu_cmd_bind_pipeline(&command_buffers[current_frame], &gui_pipeline);
@@ -1005,7 +988,8 @@ int main()
     gpu_destroy_image(&gpu_context, &font_image);
     // END Gui Cleanup
 
-    gpu_destroy_pipeline(&gpu_context, &pipeline);
+    gpu_destroy_pipeline(&gpu_context, &static_pipeline);
+	gpu_destroy_pipeline(&gpu_context, &skinned_pipeline);
 
     gpu_destroy_pipeline_layout(&gpu_context, &pipeline_layout);
     gpu_destroy_image_view(&gpu_context, &depth_view);
@@ -1022,7 +1006,8 @@ int main()
 
     gui_shutdown(&gui_context);
 
-	gltf_free_asset(&gltf_asset);
+	//gltf_free_asset(&gltf_asset);
+	animated_model_free(&animated_model);
 
     return 0;
 }

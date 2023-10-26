@@ -551,6 +551,8 @@ i32 gltf_component_type_size(GltfComponentType type)
     case GLTF_COMPONENT_TYPE_FLOAT:
         return 4;
     default:
+		printf("GLTF ERROR: INVALID COMPONENT TYPE SIZE\n");
+		exit(0);
         return 0;
     }
 }
@@ -584,6 +586,8 @@ i32 gltf_accessor_type_size(GltfAccessorType type)
     case GLTF_ACCESSOR_TYPE_MAT4:
         return 16;
     default:
+		printf("GLTF ERROR: INVALID ACCESSOR TYPE\n");
+		exit(0);
         return 0;
     }
 }
@@ -632,10 +636,9 @@ typedef struct GltfPrimitive
     GltfAccessor* normals;
     // TODO: TangentAccessor
     GltfAccessor* texcoord0;
-    // TODO: TexCoords Accessors (0,1)
     // TODO: Color Accessor
-	GltfAccessor* joints;
-	GltfAccessor* weights;
+	GltfAccessor* joint_indices;
+	GltfAccessor* joint_weights;
     GltfAccessor* indices;
 } GltfPrimitive;
 
@@ -972,14 +975,14 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 						if (json_value_as_i32(json_object_get_value(json_attributes, "JOINTS_0"), &joints_index) &&
 							joints_index < out_asset->num_accessors)
 						{
-							primitive->joints = &out_asset->accessors[joints_index];
+							primitive->joint_indices = &out_asset->accessors[joints_index];
 						}
 
 						i32 weights_index = 0;
 						if (json_value_as_i32(json_object_get_value(json_attributes, "WEIGHTS_0"), &weights_index) &&
 							weights_index < out_asset->num_accessors)
 						{
-							primitive->weights = &out_asset->accessors[weights_index];
+							primitive->joint_weights = &out_asset->accessors[weights_index];
 						}
 
 						i32 indices_index = 0;
@@ -1246,8 +1249,6 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 							}
 						}
 					}
-
-					//exit(0);
 				}
 			}
 		}
