@@ -14,11 +14,11 @@ bool test_stretchy_buffer()
     } TestStruct;
 
     TestStruct* struct_array = NULL;
-    TestStruct t = {
-        .a = 1,
-        .b = 2,
-        .f = 3.0,
-        .d = 2.0,
+    TestStruct t             = {
+                    .a = 1,
+                    .b = 2,
+                    .f = 3.0,
+                    .d = 2.0,
     };
 
     sb_push(struct_array, t);
@@ -54,8 +54,8 @@ bool test_stretchy_buffer()
 
 bool test_math()
 {
-    Vec4 a = vec4_new(2.0, 1.0, 1.0, 0.0);
-    Vec4 b = vec4_new(-2.0, -1.0, 1.0, 0.0);
+    Vec4 a   = vec4_new(2.0, 1.0, 1.0, 0.0);
+    Vec4 b   = vec4_new(-2.0, -1.0, 1.0, 0.0);
     Vec4 add = vec4_add(&a, &b);
     Vec4 sub = vec4_sub(&a, &b);
 
@@ -65,8 +65,8 @@ bool test_math()
     vec4_print(&sub);
     printf("dot: %f \n", vec4_dot(&a, &a));
 
-    Vec3 a3 = vec3_new(1, 0, 0);
-    Vec3 b3 = vec3_new(0, 1, 0);
+    Vec3 a3          = vec3_new(1, 0, 0);
+    Vec3 b3          = vec3_new(0, 1, 0);
     Vec3 a3_cross_b3 = vec3_cross(&a3, &b3);
     Vec3 b3_cross_a3 = vec3_cross(&b3, &a3);
 
@@ -123,7 +123,7 @@ bool test_math()
     printf("mb:\n"), mat4_print(&mb);
     printf("ma times mb:\n"), mat4_print(&ma_times_mb);
 
-    Vec4 v = vec4_new(1, 1, 1, 1);
+    Vec4 v          = vec4_new(1, 1, 1, 1);
     Vec4 mb_times_v = mat4_mult_vec4(&mb, &v);
     printf("mb_times_v: "), vec4_print(&mb_times_v);
 

@@ -2,9 +2,8 @@
 
 #include "types.h"
 #define _USE_MATH_DEFINES
-#include <math.h>
-
 #include "vec.h"
+#include <math.h>
 
 typedef struct Mat4
 {
@@ -70,7 +69,7 @@ Vec4 mat4_mult_vec4(const Mat4 m, const Vec4 v)
 
 Mat4 mat4_translation(const Vec3 position)
 {
-    Mat4 result = mat4_identity;
+    Mat4 result    = mat4_identity;
     result.d[3][0] = position.x;
     result.d[3][1] = position.y;
     result.d[3][2] = position.z;
@@ -79,7 +78,7 @@ Mat4 mat4_translation(const Vec3 position)
 
 Mat4 mat4_scale(const Vec3 scale)
 {
-    Mat4 result = mat4_identity;
+    Mat4 result    = mat4_identity;
     result.d[0][0] = scale.x;
     result.d[1][1] = scale.y;
     result.d[2][2] = scale.z;
@@ -89,10 +88,10 @@ Mat4 mat4_scale(const Vec3 scale)
 Mat4 mat4_look_at(const Vec3 from, const Vec3 to, const Vec3 in_up)
 {
     Vec3 forward = vec3_sub(to, from);
-    forward = vec3_normalize(forward);
+    forward      = vec3_normalize(forward);
 
     Vec3 right = vec3_cross(forward, in_up);
-    right = vec3_normalize(right);
+    right      = vec3_normalize(right);
 
     Vec3 up = vec3_cross(right, forward);
 
@@ -122,14 +121,13 @@ Mat4 mat4_look_at(const Vec3 from, const Vec3 to, const Vec3 in_up)
 
 Mat4 mat4_perspective(const float fov, const float aspect_ratio, const float near, const float far)
 {
-    float D2R = M_PI / 180.0f;
-    float y_scale = 1.0 / tan(D2R * fov / 2);
-    float x_scale = y_scale / aspect_ratio;
+    float D2R            = M_PI / 180.0f;
+    float y_scale        = 1.0 / tan(D2R * fov / 2);
+    float x_scale        = y_scale / aspect_ratio;
     float near_minus_far = near - far;
 
     return (Mat4){
-        .d = {x_scale, 0, 0, 0, 0, y_scale * -1.0, 0, 0, 0, 0, (far + near) / near_minus_far, -1, 0, 0,
-              2 * far * near / near_minus_far, 0},
+        .d = {x_scale, 0, 0, 0, 0, y_scale * -1.0, 0, 0, 0, 0, (far + near) / near_minus_far, -1, 0, 0, 2 * far * near / near_minus_far, 0},
     };
 }
 

@@ -41,7 +41,7 @@ float remap_clamped(float x, float in_range_min, float in_range_max, float out_r
     return remap(CLAMP(x, in_range_min, in_range_max), in_range_min, in_range_max, out_range_min, out_range_max);
 }
 
-static const float PI = 3.14159265358979323846;
+static const float PI                 = 3.14159265358979323846;
 static const float DEGREES_TO_RADIANS = PI / 180.0f;
 static const float RADIANS_TO_DEGREES = 1.0f / DEGREES_TO_RADIANS;
 

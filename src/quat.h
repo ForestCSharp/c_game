@@ -27,7 +27,7 @@ void quat_print(const Quat q)
 // Construct quaternion from axis angle representation
 Quat quat_new(Vec3 axis, float angle)
 {
-    axis = vec3_normalize(axis);
+    axis    = vec3_normalize(axis);
     float s = sinf(angle / 2.0f);
     return (Quat){
         .x = axis.x * s,
@@ -81,15 +81,15 @@ Quat quat_mult(const Quat q1, const Quat q2)
 
 Quat quat_slerp(const Quat a, const Quat b, const float t)
 {
-    float theta = acosf(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
+    float theta     = acosf(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
     float sin_theta = sinf(theta);
-    float wa = sinf((1 - t) * theta) / sin_theta;
-    float wb = sinf(t * theta) / sin_theta;
-    Quat r = {
-        .x = wa * a.x + wb * b.x,
-        .y = wa * a.y + wb * b.y,
-        .z = wa * a.z + wb * b.z,
-        .w = wa * a.w + wb * b.w,
+    float wa        = sinf((1 - t) * theta) / sin_theta;
+    float wb        = sinf(t * theta) / sin_theta;
+    Quat r          = {
+                 .x = wa * a.x + wb * b.x,
+                 .y = wa * a.y + wb * b.y,
+                 .z = wa * a.z + wb * b.z,
+                 .w = wa * a.w + wb * b.w,
     };
     r = quat_normalize(r);
     return r;
@@ -108,13 +108,13 @@ Mat4 quat_to_mat4(const Quat in_q)
         q = quat_normalize(q);
     }
 
-    float x = q.x;
+    float x  = q.x;
     float x2 = x * x;
-    float y = q.y;
+    float y  = q.y;
     float y2 = y * y;
-    float z = q.z;
+    float z  = q.z;
     float z2 = z * z;
-    float w = q.w;
+    float w  = q.w;
     float w2 = w * w;
 
     float xy = x * y;

@@ -77,9 +77,9 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 @interface WindowView : NSView
 {
     NSTrackingArea* trackingArea;
-  @public
+@public
     i32 cached_mouse_x;
-  @public
+@public
     i32 cached_mouse_y;
 }
 @end
@@ -90,11 +90,8 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 {
     if ((self = [super init])) // 'super' used to access methods from parent class
     {
-        const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved |
-                                              NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged |
-                                              NSEventMaskOtherMouseDragged | NSTrackingActiveInKeyWindow |
-                                              NSTrackingEnabledDuringMouseDrag | NSTrackingCursorUpdate |
-                                              NSTrackingInVisibleRect | NSTrackingAssumeInside;
+        const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged | NSEventMaskOtherMouseDragged
+                                            | NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag | NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside;
 
         trackingArea = [[NSTrackingArea alloc] initWithRect:[self bounds] options:options owner:self userInfo:nil];
 
@@ -173,10 +170,10 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 - (void)mouseMoved:(NSEvent*)event
 {
     NSPoint mouse_pos = event.locationInWindow;
-    NSSize view_size = self.frame.size;
-    cached_mouse_x = (i32)mouse_pos.x;
+    NSSize view_size  = self.frame.size;
+    cached_mouse_x    = (i32) mouse_pos.x;
     // Note: In Cocoa, (0,0) is bottom left instead of top left like in Win32
-    cached_mouse_y = view_size.height - (i32)mouse_pos.y - 1;
+    cached_mouse_y = view_size.height - (i32) mouse_pos.y - 1;
 }
 
 - (void)mouseDragged:(NSEvent*)event
@@ -210,13 +207,9 @@ Window window_create(const char* name, int width, int height)
         NSApplication* app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-        NSRect frame = NSMakeRect(0, 0, width, height);
-        const NSUInteger window_style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                        NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
-        NSWindow* window = [[[NSWindow alloc] initWithContentRect:frame
-                                                        styleMask:window_style
-                                                          backing:NSBackingStoreBuffered
-                                                            defer:NO] autorelease];
+        NSRect frame                  = NSMakeRect(0, 0, width, height);
+        const NSUInteger window_style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+        NSWindow* window              = [[[NSWindow alloc] initWithContentRect:frame styleMask:window_style backing:NSBackingStoreBuffered defer:NO] autorelease];
         [window setBackgroundColor:[NSColor blueColor]];
         [window makeKeyAndOrderFront:window];
 
@@ -232,15 +225,12 @@ Window window_create(const char* name, int width, int height)
 
         [NSApp activateIgnoringOtherApps:YES];
 
-        NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                                            untilDate:[NSDate distantFuture]
-                                               inMode:NSDefaultRunLoopMode
-                                              dequeue:YES];
+        NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantFuture] inMode:NSDefaultRunLoopMode dequeue:YES];
         [NSApp sendEvent:event];
 
         return (Window){
-            .ns_window = window,
-            .ns_view = view,
+            .ns_window   = window,
+            .ns_view     = view,
             .metal_layer = layer,
         };
     }
@@ -269,8 +259,8 @@ void window_get_dimensions(const Window* const window, int* out_width, int* out_
     @autoreleasepool
     {
         NSSize ns_size = [[window->ns_window contentView] frame].size;
-        *out_width = ns_size.width;
-        *out_height = ns_size.height;
+        *out_width     = ns_size.width;
+        *out_height    = ns_size.height;
     }
 }
 

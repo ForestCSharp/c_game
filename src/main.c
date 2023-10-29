@@ -18,7 +18,8 @@
 #include "window/window.h"
 
 #include "gltf.h"
-#include "animated_model.h"
+#include "model/static_model.h"
+#include "model/animated_model.h"
 #include "gui.h"
 #include "physics.h"
 
@@ -72,18 +73,10 @@ GpuShaderModule create_shader_module_from_file(GpuContext *gpu_context, const ch
     return module;
 }
 
-typedef struct Vertex
-{
-    Vec3 position;
-    Vec3 normal;
-    Vec4 color;
-    Vec2 uv;
-} Vertex;
-
 // Computes all possible triangles (as vertices) for a convex solid, returned in a stretchy buffer
-Vertex *compute_all_triangles(Vec3 *in_vertices, Vec4 in_color)
+StaticVertex *compute_all_triangles(Vec3 *in_vertices, Vec4 in_color)
 {
-    sbuffer(Vertex) out_verts = NULL;
+    sbuffer(StaticVertex) out_verts = NULL;
     u32 num_verts = sb_count(in_vertices);
 
     Vec3 center = vec3_new(0, 0, 0);
@@ -121,7 +114,7 @@ Vertex *compute_all_triangles(Vec3 *in_vertices, Vec4 in_color)
                     normal = vec3_negate(normal);
                 }
 
-                Vertex v = {
+                StaticVertex v = {
                     .position = pos_i,
                     .normal = normal,
                     .color = in_color,
@@ -186,14 +179,6 @@ int main()
         }
     }
 
-	AnimatedModel animated_model;
-	if (!animated_model_load("data/meshes/cesium_man.glb", &animated_model))
-	{
-		printf("Failed to Load Animated Model\n");
-		return 1;
-	}
-
-	printf("Successfully loaded Animated Model\n");
 	//exit(0);
 	//FCS TODO: !!!
 	//1. [DONE] set up new pipeline and get cesium man rendering properly as a static model
@@ -204,17 +189,23 @@ int main()
 
     GpuContext gpu_context = gpu_create_context(&window);
 
-    size_t vertices_size = sizeof(AnimatedVertex) * animated_model.num_vertices;
-    GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-    GpuBuffer vertex_buffer = gpu_create_buffer(&gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-                                                vertices_size, "mesh vertex buffer");
-    gpu_upload_buffer(&gpu_context, &vertex_buffer, vertices_size, animated_model.vertices);
+	//FCS TODO: Have models manage GPU resources...
+	StaticModel static_model;
+	if (!static_model_load("data/meshes/monkey.glb", &gpu_context, &static_model))
+	{
+		printf("Failed to Load Static Model\n");
+		return 1;
+	}
 
-    size_t indices_size = sizeof(u32) * animated_model.num_indices;
-    GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-    GpuBuffer index_buffer = gpu_create_buffer(&gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-                                               indices_size, "mesh index buffer");
-    gpu_upload_buffer(&gpu_context, &index_buffer, indices_size, animated_model.indices);
+	AnimatedModel animated_model;
+	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu_context, &animated_model))
+	{
+		printf("Failed to Load Animated Model\n");
+		return 1;
+	}
+
+	printf("Successfully loaded Animated Model\n");
+
 
     // BEGIN GUI SETUP
 
@@ -354,7 +345,7 @@ int main()
                                                sizeof(UniformStruct), "uniform_buffer");
     }
 
-    GpuShaderModule vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.vert.spv");
+    GpuShaderModule static_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.vert.spv");
 	GpuShaderModule skinned_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/skinned.vert.spv");
     GpuShaderModule fragment_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.frag.spv");
 
@@ -403,10 +394,11 @@ int main()
     }
 
     // BEGIN COLLIDERS GPU DATA SETUP
-    sbuffer(Vertex) cube_render_vertices =
+    sbuffer(StaticVertex) cube_render_vertices =
         compute_all_triangles(ground_collider.convex_points, vec4_new(0, 0.5, 0.0, 1.0));
     u32 cube_vertices_count = sb_count(cube_render_vertices);
-    size_t cube_vertices_size = sizeof(Vertex) * cube_vertices_count;
+    size_t cube_vertices_size = sizeof(StaticVertex) * cube_vertices_count;
+	GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
     GpuBuffer cube_vertex_buffer = gpu_create_buffer(
         &gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, cube_vertices_size, "cube vertex buffer");
     gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertices_size, cube_render_vertices);
@@ -457,7 +449,7 @@ int main()
         GPU_FORMAT_RG32_SFLOAT,
     };
 
-    GpuGraphicsPipelineCreateInfo static_pipeline_create_info = {.vertex_module = &vertex_module,
+    GpuGraphicsPipelineCreateInfo static_pipeline_create_info = {.vertex_module = &static_vertex_module,
                                                                    .fragment_module = &fragment_module,
                                                                    .rendering_info = &dynamic_rendering_info,
                                                                    .layout = &pipeline_layout,
@@ -492,7 +484,8 @@ int main()
 	GpuPipeline skinned_pipeline = gpu_create_graphics_pipeline(&gpu_context, &skinned_pipeline_create_info);
 
     // destroy shader modules after creating pipeline
-    gpu_destroy_shader_module(&gpu_context, &vertex_module);
+    gpu_destroy_shader_module(&gpu_context, &static_vertex_module);
+    gpu_destroy_shader_module(&gpu_context, &skinned_vertex_module);
     gpu_destroy_shader_module(&gpu_context, &fragment_module);
 
     u64 time = time_now();
@@ -793,14 +786,22 @@ int main()
 				.min_depth = 0.0,
 				.max_depth = 1.0,
 			});
-			gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &index_buffer);
-			gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &vertex_buffer);
+			gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &animated_model.index_buffer);
+			gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &animated_model.vertex_buffer);
 			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &descriptor_sets[current_frame]);
 			gpu_cmd_draw_indexed(&command_buffers[current_frame], animated_model.num_indices);
 		}
 
 		{	// Draw Our Static Geometry
 			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
+
+			// Static Model	
+			//gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &static_model.index_buffer);
+			//gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &static_model.vertex_buffer);
+			//gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &descriptor_sets[current_frame]);
+			//gpu_cmd_draw_indexed(&command_buffers[current_frame], static_model.num_indices);
+
+			// Physics Objects
 			for (u32 i = 0; i < sb_count(colliders); ++i)
 			{
 				// FIXME: one vertex buffer per collider (we're assuming all same-data (cubes) currently)
@@ -887,12 +888,8 @@ int main()
         }
 
         {
-            // float rotation_rate = 1.0f;
-            //Quat q1 = quat_new(vec3_new(0, 1, 0), delta_time * rotation_rate);
-            //Quat q2 = quat_new(vec3_new(1, 0, 0), delta_time * rotation_rate);
-
             Quat q1 = quat_new(vec3_new(0, 1, 0), 90 * DEGREES_TO_RADIANS);
-            Quat q2 = quat_new(vec3_new(1, 0, 0), 180 * DEGREES_TO_RADIANS);
+            Quat q2 = quat_new(vec3_new(1, 0, 0), 135 * DEGREES_TO_RADIANS);
 			Quat q3 = quat_new(vec3_new(0, 0, 1), 90 * DEGREES_TO_RADIANS);
 
             Quat q = quat_normalize(quat_mult(quat_mult(q1, q2), q3));
@@ -994,20 +991,19 @@ int main()
     gpu_destroy_pipeline_layout(&gpu_context, &pipeline_layout);
     gpu_destroy_image_view(&gpu_context, &depth_view);
     gpu_destroy_image(&gpu_context, &depth_image);
-    gpu_destroy_buffer(&gpu_context, &vertex_buffer);
-    gpu_destroy_buffer(&gpu_context, &index_buffer);
     for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
     {
         gpu_destroy_buffer(&gpu_context, &uniform_buffers[i]);
         gpu_destroy_descriptor_set(&gpu_context, &descriptor_sets[i]);
     }
     gpu_destroy_buffer(&gpu_context, &cube_vertex_buffer);
+
+	static_model_free(&gpu_context, &static_model);
+	animated_model_free(&gpu_context, &animated_model);
+
     gpu_destroy_context(&gpu_context);
 
     gui_shutdown(&gui_context);
-
-	//gltf_free_asset(&gltf_asset);
-	animated_model_free(&animated_model);
 
     return 0;
 }

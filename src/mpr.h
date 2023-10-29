@@ -78,8 +78,8 @@ bool mpr_vec3_is_zero(MprVec3 v)
 void mpr_vec3_swap(MprVec3* a, MprVec3* b)
 {
     MprVec3 tmp = *a;
-    *a = *b;
-    *b = tmp;
+    *a          = *b;
+    *b          = tmp;
 }
 
 // [ column-major
@@ -94,8 +94,8 @@ MprVec3 mpr_mat4_mult_vec3(const float m[/*static*/ 16], MprVec3 v)
     result.x = m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12] * 1.0;
     result.y = m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13] * 1.0;
     result.z = m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14] * 1.0;
-    float w = m[3] * v.x + m[7] * v.y + m[11] * v.z + m[15] * 1.0;
-    result = mpr_vec3_scale(result, 1 / w);
+    float w  = m[3] * v.x + m[7] * v.y + m[11] * v.z + m[15] * 1.0;
+    result   = mpr_vec3_scale(result, 1 / w);
     return result;
 }
 
@@ -120,14 +120,14 @@ size_t index_of_furthest_point(const MprVec3* vertices, size_t count, const floa
 {
 
     float maxProduct = mpr_vec3_dot(d, mpr_mat4_mult_vec3(transform, vertices[0]));
-    size_t index = 0;
+    size_t index     = 0;
     for (size_t i = 1; i < count; i++)
     {
         float product = mpr_vec3_dot(d, mpr_mat4_mult_vec3(transform, vertices[i]));
         if (product > maxProduct)
         {
             maxProduct = product;
-            index = i;
+            index      = i;
         }
     }
     return index;
@@ -187,7 +187,7 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
     // v0 - center of Minkowski sum
     MprVec3 v01 = mpr_mat4_mult_vec3(convex_a->transform, mpr_average_point(convex_a->points, convex_a->num_points));
     MprVec3 v02 = mpr_mat4_mult_vec3(convex_b->transform, mpr_average_point(convex_b->points, convex_b->num_points));
-    MprVec3 v0 = mpr_vec3_sub(v02, v01);
+    MprVec3 v0  = mpr_vec3_sub(v02, v01);
 
     // Avoid case where centers overlap -- any direction is fine in this case
     if (mpr_vec3_is_zero(v0))
@@ -200,7 +200,7 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
     // v1 - support in direction of origin
     MprVec3 v11 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
     MprVec3 v12 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
-    MprVec3 v1 = mpr_vec3_sub(v12, v11);
+    MprVec3 v1  = mpr_vec3_sub(v12, v11);
 
     if (mpr_vec3_dot(dir, v1) <= 0.0)
     {
@@ -211,8 +211,8 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
     dir = mpr_vec3_cross(v1, v0);
     if (mpr_vec3_is_zero(dir))
     {
-        dir = mpr_vec3_normalize(mpr_vec3_sub(v1, v0));
-        hit_data->normal = dir;
+        dir                 = mpr_vec3_normalize(mpr_vec3_sub(v1, v0));
+        hit_data->normal    = dir;
         hit_data->contact_a = v11;
         hit_data->contact_b = v12;
         return true;
@@ -221,14 +221,14 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
     // v2 - support perpendicular to v1,v0
     MprVec3 v21 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
     MprVec3 v22 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
-    MprVec3 v2 = mpr_vec3_sub(v22, v21);
+    MprVec3 v2  = mpr_vec3_sub(v22, v21);
     if (mpr_vec3_dot(v2, dir) <= 0.0)
     {
         hit_data->normal = dir;
         return false;
     }
 
-    dir = mpr_vec3_cross(mpr_vec3_sub(v1, v0), mpr_vec3_sub(v2, v0));
+    dir        = mpr_vec3_cross(mpr_vec3_sub(v1, v0), mpr_vec3_sub(v2, v0));
     float dist = mpr_vec3_dot(dir, v0);
 
     if (dist > 0.0)
@@ -245,7 +245,7 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
         // v3 - support point perpendicular to current plane
         MprVec3 v31 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
         MprVec3 v32 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
-        MprVec3 v3 = mpr_vec3_sub(v32, v31);
+        MprVec3 v3  = mpr_vec3_sub(v32, v31);
 
         if (mpr_vec3_dot(v3, dir) <= 0.0)
         {
@@ -256,7 +256,7 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
         // If origin is outside (v1,v0,v3), then eliminate v2 and loop
         if (mpr_vec3_dot(mpr_vec3_cross(v1, v3), v0) < 0.0)
         {
-            v2 = v3;
+            v2  = v3;
             v21 = v31;
             v22 = v32;
             dir = mpr_vec3_cross(mpr_vec3_sub(v1, v0), mpr_vec3_sub(v3, v0));
@@ -266,7 +266,7 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
         // If origin is outside (v3,v0,v2), then eliminate v1 and loop
         if (mpr_vec3_dot(mpr_vec3_cross(v3, v2), v0) < 0.0)
         {
-            v1 = v3;
+            v1  = v3;
             v11 = v31;
             v12 = v32;
             dir = mpr_vec3_cross(mpr_vec3_sub(v3, v0), mpr_vec3_sub(v2, v0));
@@ -296,43 +296,36 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
             {
                 hit_data->normal = dir;
 
-                float b0 = mpr_vec3_dot(mpr_vec3_cross(v1, v2), v3);
-                float b1 = mpr_vec3_dot(mpr_vec3_cross(v3, v2), v0);
-                float b2 = mpr_vec3_dot(mpr_vec3_cross(v0, v1), v3);
-                float b3 = mpr_vec3_dot(mpr_vec3_cross(v2, v1), v0);
+                float b0  = mpr_vec3_dot(mpr_vec3_cross(v1, v2), v3);
+                float b1  = mpr_vec3_dot(mpr_vec3_cross(v3, v2), v0);
+                float b2  = mpr_vec3_dot(mpr_vec3_cross(v0, v1), v3);
+                float b3  = mpr_vec3_dot(mpr_vec3_cross(v2, v1), v0);
                 float sum = b0 + b1 + b2 + b3;
 
                 if (sum <= 0.0)
                 {
-                    b0 = 0;
-                    b1 = mpr_vec3_dot(mpr_vec3_cross(v2, v3), dir);
-                    b2 = mpr_vec3_dot(mpr_vec3_cross(v3, v1), dir);
-                    b3 = mpr_vec3_dot(mpr_vec3_cross(v1, v2), dir);
+                    b0  = 0;
+                    b1  = mpr_vec3_dot(mpr_vec3_cross(v2, v3), dir);
+                    b2  = mpr_vec3_dot(mpr_vec3_cross(v3, v1), dir);
+                    b3  = mpr_vec3_dot(mpr_vec3_cross(v1, v2), dir);
                     sum = b1 + b2 + b3;
                 }
 
                 float inv = 1.0f / sum;
 
-                hit_data->contact_a =
-                    mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v01, b0), mpr_vec3_scale(v11, b1)),
-                                                mpr_vec3_add(mpr_vec3_scale(v21, b2), mpr_vec3_scale(v31, b3))),
-                                   inv);
+                hit_data->contact_a = mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v01, b0), mpr_vec3_scale(v11, b1)), mpr_vec3_add(mpr_vec3_scale(v21, b2), mpr_vec3_scale(v31, b3))), inv);
 
-                hit_data->contact_b =
-                    mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v02, b0), mpr_vec3_scale(v12, b1)),
-                                                mpr_vec3_add(mpr_vec3_scale(v22, b2), mpr_vec3_scale(v32, b3))),
-                                   inv);
+                hit_data->contact_b = mpr_vec3_scale(mpr_vec3_add(mpr_vec3_add(mpr_vec3_scale(v02, b0), mpr_vec3_scale(v12, b1)), mpr_vec3_add(mpr_vec3_scale(v22, b2), mpr_vec3_scale(v32, b3))), inv);
 
                 hit = true;
             }
 
             // v4 - support point in the direction of the wedge face
-            MprVec3 v41 =
-                convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
+            MprVec3 v41 = convex_support(convex_a->points, convex_a->num_points, convex_a->transform, mpr_vec3_negate(dir));
             MprVec3 v42 = convex_support(convex_b->points, convex_b->num_points, convex_b->transform, dir);
-            MprVec3 v4 = mpr_vec3_sub(v42, v41);
+            MprVec3 v4  = mpr_vec3_sub(v42, v41);
 
-            float delta = mpr_vec3_dot(mpr_vec3_sub(v4, v3), dir);
+            float delta      = mpr_vec3_dot(mpr_vec3_sub(v4, v3), dir);
             float separation = -mpr_vec3_dot(v4, dir);
 
             // If the boundary is thin enough or the origin is outside the support plane for the newly discovered
@@ -353,14 +346,14 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
                 if (d2 < 0.0)
                 {
                     // Inside d1 & inside d2 ==> eliminate v1
-                    v1 = v4;
+                    v1  = v4;
                     v11 = v41;
                     v12 = v42;
                 }
                 else
                 {
                     // Inside d1 & outside d2 ==> eliminate v3
-                    v3 = v4;
+                    v3  = v4;
                     v31 = v41;
                     v32 = v42;
                 }
@@ -370,14 +363,14 @@ bool mpr_check_collision(const MprInputData* input_data, MprOutputData* hit_data
                 if (d3 < 0.0)
                 {
                     // Outside d1 & inside d3 ==> eliminate v2
-                    v2 = v4;
+                    v2  = v4;
                     v21 = v41;
                     v22 = v42;
                 }
                 else
                 {
                     // Outside d1 & outside d3 ==> eliminate v1
-                    v1 = v4;
+                    v1  = v4;
                     v11 = v41;
                     v12 = v42;
                 }
