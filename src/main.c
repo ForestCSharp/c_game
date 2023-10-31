@@ -36,7 +36,7 @@ bool read_file(const char *filename, size_t *out_file_size, u32 **out_data)
 	{
         return false;
 	}
-
+	
     fseek(file, 0L, SEEK_END);
     const size_t file_size = *out_file_size = ftell(file);
     rewind(file);
@@ -918,11 +918,11 @@ int main()
             {
                 for (i32 i = 1; i < sb_count(colliders); ++i)
                 {
-                    Vec3 collider_position = colliders[i].position;
-                    // Vec3 force = vec3_scale(vec3_negate(vec3_normalize(collider_position)), 10.0f);
-                    // if (input_pressed(KEY_SPACE)) {
-                    // 	physics_add_force(&colliders[i], force);
-                    // }
+                     //Vec3 collider_position = colliders[i].position;
+                     //Vec3 force = vec3_scale(vec3_negate(vec3_normalize(collider_position)), 10.0f);
+                     //if (input_pressed(KEY_SPACE)) {
+                     //	physics_add_force(&colliders[i], force);
+                     //}
 
                     physics_add_force(&colliders[i], vec3_new(0, -10 * colliders[i].mass, 0));
                 }

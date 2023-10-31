@@ -74,7 +74,7 @@ Vec3 closest_point_on_obb_to_point(const OBB obb, const Vec3 point)
     Vec3 dist_to_center = vec3_sub(point, obb.center);
     for (int i = 0; i < 3; ++i)
     {
-        float dist                    = vec3_dot(dist_to_center, obb.axes[i]);
+        float dist = vec3_dot(dist_to_center, obb.axes[i]);
         const float current_halfwidth = obb.halfwidths[i];
         if (dist > current_halfwidth)
         {
@@ -91,7 +91,7 @@ Vec3 closest_point_on_obb_to_point(const OBB obb, const Vec3 point)
 
 float squared_distance_point_obb(Vec3 point, OBB obb)
 {
-    const Vec3 closest           = closest_point_on_obb_to_point(obb, point);
+    const Vec3 closest = closest_point_on_obb_to_point(obb, point);
     const Vec3 closest_sub_point = vec3_sub(closest, point);
     const float squared_distance = vec3_dot(closest_sub_point, closest_sub_point);
     return squared_distance;
@@ -116,9 +116,9 @@ bool hit_test_sphere_obb(const Sphere sphere, const OBB obb)
 bool hit_test_capsule_obb(const Capsule capsule, const OBB obb)
 {
     Vec3 closest_point_on_segment_to_obb_center = closest_point_between_point_and_segment(obb.center, capsule.segment);
-    const Sphere sphere                         = {
-                                .center = closest_point_on_segment_to_obb_center,
-                                .radius = capsule.radius,
+    const Sphere sphere = {
+        .center = closest_point_on_segment_to_obb_center,
+        .radius = capsule.radius,
     };
     return hit_test_sphere_obb(sphere, obb);
 }
@@ -153,7 +153,7 @@ void test_collision()
         .segment =
             {
                 .start = vec3_new(-10, -10, -10),
-                .end   = vec3_new(10, 10, 10),
+                .end = vec3_new(10, 10, 10),
             },
         .radius = 2.0f,
     };

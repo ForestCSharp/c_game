@@ -4,10 +4,77 @@
 #include "../types.h"
 #include "assert.h"
 
+// FCS TODO: SourceAnimation should have its own representation of bone hierarchy
+// FCS TODO: BakedAnimation should only maintain a flat array of bones in the layout they'll be sent to the GPU
+
+// ---- Source Animation: References GLTF Hierarchy Directly... slow to compute poses ---- //
+typedef struct SourceAnimationKeyframe
+{
+    float time;
+    Vec4 value; // scale,rot,or translation
+    // FCS TODO: Store scale,rot,translation together here (optional values)
+} SourceAnimationKeyframe;
+
+typedef struct SourceAnimationChannel
+{
+    GltfNode* node;
+    GltfAnimationPath path;
+
+    i32 num_keyframes;
+    SourceAnimationKeyframe* keyframes;
+} SourceAnimationChannel;
+
+declare_optional_type(Vec4);
+
+Vec4 source_animation_channel_compute(SourceAnimationChannel* in_channel, float in_time)
+{
+    // FCS TODO: clamp to first and last kefyrames if outside of time bounds
+    assert(in_channel->num_keyframes > 0);
+    SourceAnimationKeyframe* first_keyframe = &in_channel->keyframes[0];
+    if (in_time < first_keyframe->time)
+    {
+        return first_keyframe->value;
+    }
+
+    i32 last_keyframe_idx = in_channel->num_keyframes - 1;
+    int i = 0;
+    for (i32 keyframe_idx = 0; keyframe_idx < in_channel->num_keyframes; ++keyframe_idx)
+    {
+        SourceAnimationKeyframe* current_keyframe = &in_channel->keyframes[keyframe_idx];
+        if (in_time >= current_keyframe->time)
+        {
+            // Last keyframe. Clamp to end
+            if (keyframe_idx == last_keyframe_idx)
+            {
+                return current_keyframe->value;
+            }
+            else
+            {
+                SourceAnimationKeyframe* next_keyframe = &in_channel->keyframes[keyframe_idx + 1];
+                const float t = (in_time - current_keyframe->time) / (next_keyframe->time - current_keyframe->time);
+                // FCS TODO: special lerp for quaternion case?
+                return vec4_lerp(t, current_keyframe->value, next_keyframe->value);
+                // FCS TODO: Need to support different interpolation types...
+            }
+        }
+    }
+
+    printf("UNREACHABLE\n");
+    exit(0);
+    return vec4_new(0, 0, 0, 0);
+}
+
+typedef struct SourceAnimation
+{
+    i32 num_channels;
+    SourceAnimationChannel* channels;
+} SourceAnimation;
+
+// ---- Baked Animation: created by precomputing all bone matrices for each keyframe from a source animation ---- //
 typedef struct BakedAnimationKeyframe
 {
     float time;
-    // FCS TODO: Flat Array of Bone Matrices that we can just copy straight to the GPU
+    // FCS TODO: Flat Array of Bone Matrices that we can just lerp 2 keyframes and copy straight to the GPU
 } BakedAnimationKeyframe;
 
 typedef struct BakedAnimation
@@ -17,7 +84,9 @@ typedef struct BakedAnimation
     BakedAnimationKeyframe* keyframes;
 } BakedAnimation;
 
-typedef struct AnimatedVertex
+
+// ---- Animated Model ---- //
+typedef struct SkinnedVertex
 {
     Vec3 position;
     Vec3 normal;
@@ -25,12 +94,14 @@ typedef struct AnimatedVertex
     Vec2 uv;
     Vec4 joint_indices;
     Vec4 joint_weights;
-} AnimatedVertex;
+} SkinnedVertex;
 
 typedef struct AnimatedModel
 {
+    GltfAsset gltf_asset;
+
     i32 num_vertices;
-    AnimatedVertex* vertices;
+    SkinnedVertex* vertices;
 
     i32 num_indices;
     u32* indices;
@@ -47,8 +118,7 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
     assert(out_model);
     memset(out_model, 0, sizeof(AnimatedModel));
 
-    GltfAsset gltf_asset = {};
-    if (!gltf_load_asset(gltf_path, &gltf_asset))
+    if (!gltf_load_asset(gltf_path, &out_model->gltf_asset))
     {
         printf("Failed to Load GLTF Asset\n");
         return false;
@@ -58,9 +128,9 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
 
     // Find first animated node
     GltfNode* animated_node = NULL;
-    for (i32 node_idx = 0; node_idx < gltf_asset.num_nodes; ++node_idx)
+    for (i32 node_idx = 0; node_idx < out_model->gltf_asset.num_nodes; ++node_idx)
     {
-        GltfNode* current_node = &gltf_asset.nodes[node_idx];
+        GltfNode* current_node = &out_model->gltf_asset.nodes[node_idx];
         if (current_node->mesh && current_node->skin)
         {
             animated_node = current_node;
@@ -72,9 +142,6 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
     {
         return false;
     }
-
-    GltfSkin* skin = animated_node->skin;
-    assert(skin);
 
     GltfMesh* mesh = animated_node->mesh;
     assert(mesh);
@@ -91,12 +158,12 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
         return false;
     }
 
-    out_model->vertices = calloc(out_model->num_vertices, sizeof(AnimatedVertex));
-    out_model->indices  = calloc(out_model->num_indices, sizeof(u32));
+    out_model->vertices = calloc(out_model->num_vertices, sizeof(SkinnedVertex));
+    out_model->indices = calloc(out_model->num_indices, sizeof(u32));
 
     // Flatten all primitives into a single vertex/index array pair
     i32 vertex_offset = 0; // Incremented after each primitive
-    i32 index_offset  = 0; // Incremented after each primitive
+    i32 index_offset = 0; // Incremented after each primitive
     for (i32 prim_idx = 0; prim_idx < mesh->num_primitives; ++prim_idx)
     {
         GltfPrimitive* primitive = &mesh->primitives[prim_idx];
@@ -157,7 +224,6 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
             memcpy(&out_model->indices[out_index], indices_buffer, indices_byte_stride);
             // Offset our index buffer indices because we're flattening all primitives
             out_model->indices[out_index] += index_offset;
-
             indices_buffer += indices_byte_stride;
         }
 
@@ -166,19 +232,111 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
         index_offset += primitive_indices_count;
     }
 
-    // Skeleton Setup
+    // Skeleton+Animation Setup
+    {
+        // TODO: Bind Pose + Skeleton Setup
+        GltfSkin* skin = animated_node->skin;
+        assert(skin);
+
+        printf("Num Joints: %i\n", skin->num_joints);
+
+
+        assert(out_model->gltf_asset.num_animations > 0);
+
+
+        // FCS TODO: Load all anims...
+        GltfAnimation* animation = &out_model->gltf_asset.animations[0];
+
+        // Create Source Animation
+        SourceAnimation source_animation = {};
+        source_animation.num_channels = animation->num_channels;
+        source_animation.channels = calloc(source_animation.num_channels, sizeof(SourceAnimationChannel));
+
+        // Deterine Animation Start and End Times
+        optional(f32) animation_start = {};
+        optional(f32) animation_end = {};
+
+        for (i32 channel_idx = 0; channel_idx < animation->num_channels; ++channel_idx)
+        {
+            SourceAnimationChannel* source_channel = &source_animation.channels[channel_idx];
+
+            GltfAnimationChannel* gltf_channel = &animation->channels[channel_idx];
+            GltfAnimationSampler* gltf_sampler = gltf_channel->sampler;
+
+            source_channel->node = gltf_channel->target.node;
+            source_channel->path = gltf_channel->target.path;
+
+            u8* input_buffer = gltf_sampler->input->buffer_view->buffer->data;
+            input_buffer += gltf_accessor_get_initial_offset(gltf_sampler->input);
+            u32 input_buffer_byte_stride = gltf_accessor_get_stride(gltf_sampler->input);
+            assert(input_buffer_byte_stride == sizeof(float));
+
+            u8* output_buffer = gltf_sampler->output->buffer_view->buffer->data;
+            output_buffer += gltf_accessor_get_initial_offset(gltf_sampler->output);
+            u32 output_buffer_byte_stride = gltf_accessor_get_stride(gltf_sampler->output);
+
+            source_channel->num_keyframes = gltf_sampler->input->count;
+            source_channel->keyframes = calloc(source_channel->num_keyframes, sizeof(SourceAnimationKeyframe));
+            for (i32 keyframe_idx = 0; keyframe_idx < source_channel->num_keyframes; ++keyframe_idx)
+            {
+                SourceAnimationKeyframe* source_keyframe = &source_channel->keyframes[keyframe_idx];
+
+                memcpy(&source_keyframe->time, input_buffer, input_buffer_byte_stride);
+                input_buffer += input_buffer_byte_stride;
+
+                memcpy(&source_keyframe->value, output_buffer, output_buffer_byte_stride);
+                output_buffer += output_buffer_byte_stride;
+
+                // animation_start = MIN(animation_start, source_keyframe->time);
+                if (!optional_is_set(animation_start) || optional_get(animation_start) > source_keyframe->time)
+                {
+                    optional_set(animation_start, source_keyframe->time);
+                }
+                if (!optional_is_set(animation_end) || optional_get(animation_end) < source_keyframe->time)
+                {
+                    optional_set(animation_end, source_keyframe->time);
+                }
+            }
+        }
+
+        assert(optional_is_set(animation_start) && optional_is_set(animation_end));
+        const float timestep = 1.0f / 60.0f;
+        // printf("Animation Start: %f End: %f\n", animation_start.value, animation_end.value);
+        for (float current_time = optional_get(animation_start); current_time <= optional_get(animation_end); current_time += timestep)
+        {
+            printf("Anim Time: %f seconds\n", current_time);
+
+            // 1. Compute all animation channel current values
+            Vec4 current_channel_values[source_animation.num_channels];
+            for (i32 channel_idx = 0; channel_idx < source_animation.num_channels; ++channel_idx)
+            {
+                SourceAnimationChannel* current_channel = &source_animation.channels[channel_idx];
+                current_channel_values[channel_idx] = source_animation_channel_compute(current_channel, current_time);
+                printf("\tChannel Idx: %i Value: ", channel_idx);
+                vec4_print(current_channel_values[channel_idx]);
+            }
+
+            // 2. Compute all node xforms, working from root
+        }
+
+        // FCS TODO: make sure to throw on one last keyframe if we have some space left?
+
+        exit(0);
+
+        // FCS TODO: use SourceAnimation to generate BakedAnimation
+    }
 
 
     // GPU Data Setup
     {
-        size_t vertices_size                    = sizeof(AnimatedVertex) * out_model->num_vertices;
+        size_t vertices_size = sizeof(SkinnedVertex) * out_model->num_vertices;
         GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->vertex_buffer                = gpu_create_buffer(gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
+        out_model->vertex_buffer = gpu_create_buffer(gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
         gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertices_size, out_model->vertices);
 
-        size_t indices_size                    = sizeof(u32) * out_model->num_indices;
+        size_t indices_size = sizeof(u32) * out_model->num_indices;
         GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->index_buffer                = gpu_create_buffer(gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
+        out_model->index_buffer = gpu_create_buffer(gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
         gpu_upload_buffer(gpu_context, &out_model->index_buffer, indices_size, out_model->indices);
     }
 
@@ -188,10 +346,10 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
 void animated_model_free(GpuContext* gpu_context, AnimatedModel* in_model)
 {
     assert(in_model);
+    gltf_free_asset(&in_model->gltf_asset);
     free(in_model->vertices);
     free(in_model->indices);
 
-    // FCS TODO: Free gpu resources...
     gpu_destroy_buffer(gpu_context, &in_model->vertex_buffer);
     gpu_destroy_buffer(gpu_context, &in_model->index_buffer);
 }

@@ -13,6 +13,8 @@ typedef struct StaticVertex
 
 typedef struct StaticModel
 {
+    GltfAsset gltf_asset;
+
     i32 num_vertices;
     StaticVertex* vertices;
 
@@ -28,8 +30,7 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
     assert(out_model);
     memset(out_model, 0, sizeof(StaticModel));
 
-    GltfAsset gltf_asset = {};
-    if (!gltf_load_asset(gltf_path, &gltf_asset))
+    if (!gltf_load_asset(gltf_path, &out_model->gltf_asset))
     {
         printf("Failed to Load GLTF Asset\n");
         return false;
@@ -37,9 +38,9 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
 
     // Find first node with mesh
     GltfNode* static_node = NULL;
-    for (i32 node_idx = 0; node_idx < gltf_asset.num_nodes; ++node_idx)
+    for (i32 node_idx = 0; node_idx < out_model->gltf_asset.num_nodes; ++node_idx)
     {
-        GltfNode* current_node = &gltf_asset.nodes[node_idx];
+        GltfNode* current_node = &out_model->gltf_asset.nodes[node_idx];
         if (current_node->mesh)
         {
             static_node = current_node;
@@ -68,11 +69,11 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
     }
 
     out_model->vertices = calloc(out_model->num_vertices, sizeof(StaticVertex));
-    out_model->indices  = calloc(out_model->num_indices, sizeof(u32));
+    out_model->indices = calloc(out_model->num_indices, sizeof(u32));
 
     // Flatten all primitives into a single vertex/index array pair
     i32 vertex_offset = 0; // Incremented after each primitive
-    i32 index_offset  = 0; // Incremented after each primitive
+    i32 index_offset = 0; // Incremented after each primitive
     for (i32 prim_idx = 0; prim_idx < mesh->num_primitives; ++prim_idx)
     {
         GltfPrimitive* primitive = &mesh->primitives[prim_idx];
@@ -131,14 +132,14 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
 
     // GPU Data Setup
     {
-        size_t vertices_size                    = sizeof(StaticVertex) * out_model->num_vertices;
+        size_t vertices_size = sizeof(StaticVertex) * out_model->num_vertices;
         GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->vertex_buffer                = gpu_create_buffer(gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
+        out_model->vertex_buffer = gpu_create_buffer(gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
         gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertices_size, out_model->vertices);
 
-        size_t indices_size                    = sizeof(u32) * out_model->num_indices;
+        size_t indices_size = sizeof(u32) * out_model->num_indices;
         GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->index_buffer                = gpu_create_buffer(gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
+        out_model->index_buffer = gpu_create_buffer(gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
         gpu_upload_buffer(gpu_context, &out_model->index_buffer, indices_size, out_model->indices);
     }
 
@@ -149,6 +150,7 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
 void static_model_free(GpuContext* gpu_context, StaticModel* in_model)
 {
     assert(in_model);
+    gltf_free_asset(&in_model->gltf_asset);
     free(in_model->vertices);
     free(in_model->indices);
 

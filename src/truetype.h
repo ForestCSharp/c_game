@@ -108,7 +108,7 @@ void read_bytes(void* dst, void* src, size_t offset, size_t num_bytes)
 bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
 {
     size_t file_size = 0;
-    u8* file_data    = NULL;
+    u8* file_data = NULL;
     if (truetype_read_file(filename, &file_size, &file_data))
     {
         printf("Font File Size: %zu\n", file_size);
@@ -116,11 +116,11 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
         u8* font_directory_start = file_data;
 
         TrueTypeFontDirectory font_directory = {};
-        font_directory.scaler                = read_u32(font_directory_start, 0);
-        font_directory.num_tables            = read_u16(font_directory_start, 4);
-        font_directory.search_range          = read_u16(font_directory_start, 6);
-        font_directory.entry_selector        = read_u16(font_directory_start, 8);
-        font_directory.range_shift           = read_u16(font_directory_start, 10);
+        font_directory.scaler = read_u32(font_directory_start, 0);
+        font_directory.num_tables = read_u16(font_directory_start, 4);
+        font_directory.search_range = read_u16(font_directory_start, 6);
+        font_directory.entry_selector = read_u16(font_directory_start, 8);
+        font_directory.range_shift = read_u16(font_directory_start, 10);
 
         printf("Offset Subtable\n");
         printf("\tScaler: %u\n", font_directory.scaler);
@@ -134,7 +134,7 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
         font_directory.table_directory = calloc(font_directory.num_tables, sizeof(TrueTypeTable));
         for (i32 table_index = 0; table_index < font_directory.num_tables; ++table_index)
         {
-            u8* current_table_start      = table_directory_start + (16 * table_index);
+            u8* current_table_start = table_directory_start + (16 * table_index);
             TrueTypeTable* current_table = &font_directory.table_directory[table_index];
 
             for (i32 i = 3; i >= 0; --i)
@@ -142,8 +142,8 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
                 current_table->tag[i] = read_u8(current_table_start, i);
             }
             current_table->checksum = read_u32(current_table_start, 4);
-            current_table->offset   = read_u32(current_table_start, 8);
-            current_table->length   = read_u32(current_table_start, 12);
+            current_table->offset = read_u32(current_table_start, 8);
+            current_table->length = read_u32(current_table_start, 12);
 
             printf("Table %i:", table_index);
             printf("\ttag: %.4s", (char*) &current_table->tag);

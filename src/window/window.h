@@ -12,11 +12,11 @@ void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out
 typedef enum KeyCode
 {
     /* 0 - 127 reserved for ASCII */
-    KEY_ESCAPE       = 128,
-    KEY_SHIFT        = 129,
-    KEY_SPACE        = 130,
-    KEY_LEFT_MOUSE   = 131,
-    KEY_RIGHT_MOUSE  = 132,
+    KEY_ESCAPE = 128,
+    KEY_SHIFT = 129,
+    KEY_SPACE = 130,
+    KEY_LEFT_MOUSE = 131,
+    KEY_RIGHT_MOUSE = 132,
     KEY_MIDDLE_MOUSE = 133,
     KEY_MAX_VALUE,
 } KeyCode;

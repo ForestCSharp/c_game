@@ -13,11 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-const u32 GLTF_MAGIC_NUMBER      = 0x46546C67;
-const u32 GLTF_CHUNK_TYPE_JSON   = 0x4E4F534A;
+const u32 GLTF_MAGIC_NUMBER = 0x46546C67;
+const u32 GLTF_CHUNK_TYPE_JSON = 0x4E4F534A;
 const u32 GLTF_CHUNK_TYPE_BUFFER = 0x004E4942;
 
-const char* STRING_TRUE  = "true";
+const char* STRING_TRUE = "true";
 const char* STRING_FALSE = "false";
 
 typedef struct JsonObject
@@ -136,7 +136,7 @@ bool string_check(const char* in_string, const char* identifier)
 // can modify p_string, allocates and returns a new string
 char* parse_string(char** p_string)
 {
-    char** old_string        = p_string;
+    char** old_string = p_string;
     bool found_leading_quote = consume('\"', p_string);
     if (found_leading_quote)
     {
@@ -169,13 +169,13 @@ bool parse_json_value(char** json_string, JsonValue* out_value)
     }
     else if (current_position[0] == '"')
     {
-        out_value->type        = JSON_VALUE_TYPE_STRING;
+        out_value->type = JSON_VALUE_TYPE_STRING;
         out_value->data.string = parse_string(&current_position);
     }
     else if (isdigit(current_position[0]) || current_position[0] == '-')
     {
-        char* end_ptr          = NULL;
-        out_value->type        = JSON_VALUE_TYPE_NUMBER;
+        char* end_ptr = NULL;
+        out_value->type = JSON_VALUE_TYPE_NUMBER;
         out_value->data.number = strtof(current_position, &end_ptr);
         if (current_position != end_ptr)
         {
@@ -184,15 +184,15 @@ bool parse_json_value(char** json_string, JsonValue* out_value)
     }
     else if (current_position[0] == '[')
     {
-        out_value->type              = JSON_VALUE_TYPE_ARRAY;
-        out_value->data.array.count  = 0;
+        out_value->type = JSON_VALUE_TYPE_ARRAY;
+        out_value->data.array.count = 0;
         out_value->data.array.values = NULL;
         consume('[', &current_position);
         do
         {
             out_value->data.array.count += 1;
             out_value->data.array.values = (JsonValue*) realloc(out_value->data.array.values, sizeof(JsonValue) * out_value->data.array.count);
-            JsonValue* array_value       = &out_value->data.array.values[out_value->data.array.count - 1];
+            JsonValue* array_value = &out_value->data.array.values[out_value->data.array.count - 1];
             memset(array_value, 0, sizeof(JsonValue));
             if (!parse_json_value(&current_position, array_value))
             {
@@ -204,13 +204,13 @@ bool parse_json_value(char** json_string, JsonValue* out_value)
     }
     else if (string_check(current_position, STRING_TRUE))
     {
-        out_value->type         = JSON_VALUE_TYPE_BOOLEAN;
+        out_value->type = JSON_VALUE_TYPE_BOOLEAN;
         out_value->data.boolean = true;
         current_position += strlen(STRING_TRUE);
     }
     else if (string_check(current_position, STRING_FALSE))
     {
-        out_value->type         = JSON_VALUE_TYPE_BOOLEAN;
+        out_value->type = JSON_VALUE_TYPE_BOOLEAN;
         out_value->data.boolean = false;
         current_position += strlen(STRING_FALSE);
     }
@@ -230,13 +230,13 @@ bool parse_json_object(char** json_string, JsonObject* out_json_object)
     }
 
     // 2. Iterate over key/value pairs
-    out_json_object->count           = 0;
+    out_json_object->count = 0;
     out_json_object->key_value_pairs = NULL;
     do
     {
         out_json_object->count += 1;
         out_json_object->key_value_pairs = (JsonKeyValuePair*) realloc(out_json_object->key_value_pairs, sizeof(JsonKeyValuePair) * out_json_object->count);
-        JsonKeyValuePair* key_value      = &out_json_object->key_value_pairs[out_json_object->count - 1];
+        JsonKeyValuePair* key_value = &out_json_object->key_value_pairs[out_json_object->count - 1];
         memset(key_value, 0, sizeof(JsonKeyValuePair));
 
         // Key (string)
@@ -527,12 +527,12 @@ typedef struct GltfBufferView
 
 typedef enum GltfComponentType
 {
-    GLTF_COMPONENT_TYPE_BYTE           = 5120,
-    GLTF_COMPONENT_TYPE_UNSIGNED_BYTE  = 5121,
-    GLTF_COMPONENT_TYPE_SHORT          = 5122,
+    GLTF_COMPONENT_TYPE_BYTE = 5120,
+    GLTF_COMPONENT_TYPE_UNSIGNED_BYTE = 5121,
+    GLTF_COMPONENT_TYPE_SHORT = 5122,
     GLTF_COMPONENT_TYPE_UNSIGNED_SHORT = 5123,
-    GLTF_COMPONENT_TYPE_UNSIGNED_INT   = 5125,
-    GLTF_COMPONENT_TYPE_FLOAT          = 5126,
+    GLTF_COMPONENT_TYPE_UNSIGNED_INT = 5125,
+    GLTF_COMPONENT_TYPE_FLOAT = 5126,
 } GltfComponentType;
 
 i32 gltf_component_type_size(GltfComponentType type)
@@ -658,8 +658,12 @@ typedef struct GltfNode
 {
     const char* name;
     float transform[16];
+
+    struct GltfNode* parent;
+
     i32 num_children;
     struct GltfNode** children;
+
     GltfMesh* mesh;
     GltfSkin* skin;
 } GltfNode;
@@ -799,7 +803,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                 printf("Found Json Chunk\n");
             }
 
-            char* json_string        = (char*) malloc(json_length + 1);
+            char* json_string = (char*) malloc(json_length + 1);
             json_string[json_length] = 0; // Null-terminate string
 
             if (fread(json_string, json_length, 1, file) != 0)
@@ -816,7 +820,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
         // BUFFERS
         {
             out_asset->num_buffers = 0;
-            out_asset->buffers     = NULL;
+            out_asset->buffers = NULL;
 
             i32 buffer_length;
             while (fread(&buffer_length, 4, 1, file) == 1)
@@ -837,7 +841,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                 if (fread(buffer_data, buffer_length, 1, file) == 1)
                 {
                     out_asset->buffers[out_asset->num_buffers - 1].byte_length = buffer_length;
-                    out_asset->buffers[out_asset->num_buffers - 1].data        = buffer_data;
+                    out_asset->buffers[out_asset->num_buffers - 1].data = buffer_data;
                 }
                 else
                 {
@@ -855,11 +859,11 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             }
 
             out_asset->num_buffer_views = json_buffer_views->count;
-            out_asset->buffer_views     = (GltfBufferView*) calloc(sizeof(GltfBufferView), out_asset->num_buffer_views);
+            out_asset->buffer_views = (GltfBufferView*) calloc(out_asset->num_buffer_views, sizeof(GltfBufferView));
 
             for (i32 i = 0; i < out_asset->num_buffer_views; ++i)
             {
-                GltfBufferView* buffer_view        = &out_asset->buffer_views[i];
+                GltfBufferView* buffer_view = &out_asset->buffer_views[i];
                 const JsonObject* json_buffer_view = json_array_get_object(json_buffer_views, i);
 
                 i32 buffer_index = 0;
@@ -887,11 +891,11 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_accessors)
             {
                 out_asset->num_accessors = json_accessors->count;
-                out_asset->accessors     = (GltfAccessor*) calloc(sizeof(GltfAccessor), out_asset->num_accessors);
+                out_asset->accessors = (GltfAccessor*) calloc(out_asset->num_accessors, sizeof(GltfAccessor));
 
                 for (i32 i = 0; i < out_asset->num_accessors; ++i)
                 {
-                    GltfAccessor* accessor          = &out_asset->accessors[i];
+                    GltfAccessor* accessor = &out_asset->accessors[i];
                     const JsonObject* json_accessor = json_array_get_object(json_accessors, i);
 
                     i32 buffer_view_index = 0;
@@ -929,12 +933,12 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_meshes)
             {
                 out_asset->num_meshes = json_meshes->count;
-                out_asset->meshes     = (GltfMesh*) calloc(sizeof(GltfMesh), out_asset->num_meshes);
+                out_asset->meshes = (GltfMesh*) calloc(out_asset->num_meshes, sizeof(GltfMesh));
 
                 for (i32 i = 0; i < out_asset->num_meshes; ++i)
                 {
-                    GltfMesh* mesh                   = &out_asset->meshes[i];
-                    const JsonObject* json_mesh      = json_array_get_object(json_meshes, i);
+                    GltfMesh* mesh = &out_asset->meshes[i];
+                    const JsonObject* json_mesh = json_array_get_object(json_meshes, i);
                     const JsonArray* json_primitives = json_object_get_array(json_mesh, "primitives");
 
                     // We keep the json alive for the duration of the gltf asset, so just point to the json string
@@ -946,12 +950,12 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     }
 
                     mesh->num_primitives = json_primitives->count;
-                    mesh->primitives     = (GltfPrimitive*) calloc(sizeof(GltfPrimitive), mesh->num_primitives);
+                    mesh->primitives = (GltfPrimitive*) calloc(mesh->num_primitives, sizeof(GltfPrimitive));
 
                     for (i32 j = 0; j < mesh->num_primitives; ++j)
                     {
-                        GltfPrimitive* primitive          = &mesh->primitives[j];
-                        const JsonObject* json_primitive  = json_array_get_object(json_primitives, j);
+                        GltfPrimitive* primitive = &mesh->primitives[j];
+                        const JsonObject* json_primitive = json_array_get_object(json_primitives, j);
                         const JsonObject* json_attributes = json_object_get_object(json_primitive, "attributes");
 
                         // TODO: Primitive Topology (Triangle (4) is default, but check for
@@ -1003,7 +1007,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_nodes)
             {
                 out_asset->num_nodes = json_nodes->count;
-                out_asset->nodes     = (GltfNode*) calloc(sizeof(GltfNode), out_asset->num_nodes);
+                out_asset->nodes = (GltfNode*) calloc(out_asset->num_nodes, sizeof(GltfNode));
 
                 // SKINS (we set up skins here because they reference the nodes we just allocated above)
                 {
@@ -1011,11 +1015,11 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_skins)
                     {
                         out_asset->num_skins = json_skins->count;
-                        out_asset->skins     = (GltfSkin*) calloc(sizeof(GltfSkin), out_asset->num_skins);
+                        out_asset->skins = (GltfSkin*) calloc(out_asset->num_skins, sizeof(GltfSkin));
 
                         for (i32 skin_index = 0; skin_index < out_asset->num_skins; ++skin_index)
                         {
-                            GltfSkin* skin              = &out_asset->skins[skin_index];
+                            GltfSkin* skin = &out_asset->skins[skin_index];
                             const JsonObject* json_skin = json_array_get_object(json_skins, skin_index);
 
                             i32 inverse_bind_matrices_accessor_index;
@@ -1028,7 +1032,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                             if (json_joints)
                             {
                                 skin->num_joints = json_joints->count;
-                                skin->joints     = calloc(sizeof(GltfNode*), skin->num_joints);
+                                skin->joints = calloc(skin->num_joints, sizeof(GltfNode*));
                                 for (i32 joint_array_index = 0; joint_array_index < skin->num_joints; ++joint_array_index)
                                 {
                                     i32 joint_node_index;
@@ -1044,7 +1048,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 
                 for (i32 i = 0; i < out_asset->num_nodes; ++i)
                 {
-                    GltfNode* node              = &out_asset->nodes[i];
+                    GltfNode* node = &out_asset->nodes[i];
                     const JsonObject* json_node = json_array_get_object(json_nodes, i);
 
                     // We keep the json alive for the duration of the gltf asset, so just point to the json string
@@ -1057,15 +1061,15 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_children_nodes)
                     {
                         node->num_children = json_children_nodes->count;
-                        node->children     = calloc(sizeof(GltfNode*), node->num_children);
+                        node->children = calloc(node->num_children, sizeof(GltfNode*));
                         for (i32 index_in_children_array = 0; index_in_children_array < node->num_children; ++index_in_children_array)
                         {
                             i32 index_in_nodes_array;
                             if (json_value_as_i32(json_array_get_value(json_children_nodes, index_in_children_array), &index_in_nodes_array))
                             {
-                                // Children may not be set up yet, but we can still point to their memory which we've
-                                // already allocated
+                                // Children may not be set up yet, but we can still point to their memory which we've already allocated
                                 node->children[index_in_children_array] = &out_asset->nodes[index_in_nodes_array];
+                                node->children[index_in_children_array]->parent = node;
                             }
                         }
                     }
@@ -1080,7 +1084,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     }
                     else
                     {
-                        float scale[3]              = {1.f, 1.f, 1.f};
+                        float scale[3] = {1.f, 1.f, 1.f};
                         const JsonArray* json_scale = json_object_get_array(json_node, "scale");
                         if (json_scale)
                         {
@@ -1089,7 +1093,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 
                         Mat4 scale_matrix = mat4_scale(vec3_new(scale[0], scale[1], scale[2]));
 
-                        float rotation[4]              = {0.f, 0.f, 0.f, 1.f};
+                        float rotation[4] = {0.f, 0.f, 0.f, 1.f};
                         const JsonArray* json_rotation = json_object_get_array(json_node, "rotation");
                         if (json_rotation)
                         {
@@ -1097,7 +1101,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                         }
                         Mat4 rotation_matrix = quat_to_mat4(quat_new(vec3_new(rotation[0], rotation[1], rotation[2]), rotation[3]));
 
-                        float translation[3]              = {0.f, 0.f, 0.f};
+                        float translation[3] = {0.f, 0.f, 0.f};
                         const JsonArray* json_translation = json_object_get_array(json_node, "translation");
                         if (json_translation)
                         {
@@ -1138,11 +1142,11 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_animations)
             {
                 out_asset->num_animations = json_animations->count;
-                out_asset->animations     = (GltfAnimation*) calloc(sizeof(GltfAnimation), out_asset->num_animations);
+                out_asset->animations = (GltfAnimation*) calloc(out_asset->num_animations, sizeof(GltfAnimation));
 
                 for (i32 anim_index = 0; anim_index < out_asset->num_animations; ++anim_index)
                 {
-                    GltfAnimation* animation         = &out_asset->animations[anim_index];
+                    GltfAnimation* animation = &out_asset->animations[anim_index];
                     const JsonObject* json_animation = json_array_get_object(json_animations, anim_index);
                     assert(json_animation);
 
@@ -1151,11 +1155,11 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_samplers)
                     {
                         animation->num_samplers = json_samplers->count;
-                        animation->samplers     = (GltfAnimationSampler*) calloc(sizeof(GltfAnimationSampler), animation->num_samplers);
+                        animation->samplers = (GltfAnimationSampler*) calloc(animation->num_samplers, sizeof(GltfAnimationSampler));
 
                         for (i32 sampler_index = 0; sampler_index < animation->num_samplers; ++sampler_index)
                         {
-                            GltfAnimationSampler* sampler  = &animation->samplers[sampler_index];
+                            GltfAnimationSampler* sampler = &animation->samplers[sampler_index];
                             const JsonObject* json_sampler = json_array_get_object(json_samplers, sampler_index);
                             assert(json_sampler);
 
@@ -1203,11 +1207,11 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_channels)
                     {
                         animation->num_channels = json_channels->count;
-                        animation->channels     = (GltfAnimationChannel*) calloc(sizeof(GltfAnimationChannel), animation->num_channels);
+                        animation->channels = (GltfAnimationChannel*) calloc(animation->num_channels, sizeof(GltfAnimationChannel));
 
                         for (i32 channel_index = 0; channel_index < animation->num_samplers; ++channel_index)
                         {
-                            GltfAnimationChannel* channel  = &animation->channels[channel_index];
+                            GltfAnimationChannel* channel = &animation->channels[channel_index];
                             const JsonObject* json_channel = json_array_get_object(json_channels, channel_index);
                             assert(json_channel);
 
