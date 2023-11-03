@@ -1219,23 +1219,29 @@ void gpu_destroy_descriptor_set(GpuContext *context, GpuDescriptorSet *descripto
 void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set, u32 write_count,
                               GpuDescriptorWrite *descriptor_writes)
 {
+	VkDescriptorImageInfo vk_descriptor_image_infos[write_count];
+	VkDescriptorBufferInfo vk_descriptor_buffer_infos[write_count];
     VkWriteDescriptorSet vk_descriptor_writes[write_count];
-    for (u32 i = 0; i < write_count; ++i)
+    
+	for (u32 i = 0; i < write_count; ++i)
     {
+		if (descriptor_writes[i].image_write)
+		{
+			vk_descriptor_image_infos[i] = (VkDescriptorImageInfo) {
+				.sampler = descriptor_writes[i].image_write->sampler->vk_sampler,
+			    .imageView = descriptor_writes[i].image_write->image_view->vk_image_view,
+			    .imageLayout = (VkImageLayout) descriptor_writes[i].image_write->layout,
+			};
+		}
 
-        VkDescriptorImageInfo* vk_desc_image_info = descriptor_writes[i].image_write ? 
-            &(VkDescriptorImageInfo) {
-                .sampler = descriptor_writes[i].image_write->sampler->vk_sampler,
-                .imageView = descriptor_writes[i].image_write->image_view->vk_image_view,
-                .imageLayout = (VkImageLayout) descriptor_writes[i].image_write->layout,
-            } : NULL;
-
-        VkDescriptorBufferInfo* vk_desc_buffer_info = descriptor_writes[i].buffer_write ?
-            &(VkDescriptorBufferInfo) {
-                .buffer = descriptor_writes[i].buffer_write->buffer->vk_buffer,
-                .offset = descriptor_writes[i].buffer_write->offset,
-                .range  = descriptor_writes[i].buffer_write->range,
-            } : NULL;
+		if (descriptor_writes[i].buffer_write)
+		{
+			vk_descriptor_buffer_infos[i] = (VkDescriptorBufferInfo) {
+				.buffer = descriptor_writes[i].buffer_write->buffer->vk_buffer,
+				.offset = descriptor_writes[i].buffer_write->offset,
+				.range  = descriptor_writes[i].buffer_write->range,
+			};
+		}
 
         vk_descriptor_writes[i] = (VkWriteDescriptorSet){
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1245,8 +1251,8 @@ void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_
             .dstArrayElement = 0,
             .descriptorCount = 1,
             .descriptorType = (VkDescriptorType)descriptor_writes[i].binding_desc->type,
-            .pImageInfo = vk_desc_image_info,
-            .pBufferInfo = vk_desc_buffer_info,
+            .pImageInfo = descriptor_writes[i].image_write ? &vk_descriptor_image_infos[i] : NULL,
+            .pBufferInfo = descriptor_writes[i].buffer_write ? &vk_descriptor_buffer_infos[i] : NULL,
             .pTexelBufferView = NULL,
         };
     }

@@ -189,7 +189,6 @@ int main()
 
     GpuContext gpu_context = gpu_create_context(&window);
 
-	//FCS TODO: Have models manage GPU resources...
 	StaticModel static_model;
 	if (!static_model_load("data/meshes/monkey.glb", &gpu_context, &static_model))
 	{
@@ -206,6 +205,17 @@ int main()
 
 	printf("Successfully loaded Animated Model\n");
 
+	//FCS TODO: Pass JointData as arg, have it assert that it has enough space for all joints already allocated...
+	float animation_start = animated_model.baked_animation.animation_start;
+	float animation_end = animated_model.baked_animation.animation_end;
+	float current_anim_time = animation_start;
+	JointData animated_joint_data = animated_model_sample_animation(&animated_model, current_anim_time);
+
+	size_t animated_joint_buffer_size = animated_joint_data.num_joints * sizeof(Mat4);
+	GpuBuffer animated_joint_buffer  = gpu_create_buffer(
+		        &gpu_context, GPU_BUFFER_USAGE_STORAGE_BUFFER,
+		        GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+		        animated_joint_buffer_size, "animated joint buffer");
 
     // BEGIN GUI SETUP
 
@@ -309,11 +319,11 @@ int main()
     gpu_destroy_shader_module(&gpu_context, &gui_vertex_module);
     gpu_destroy_shader_module(&gpu_context, &gui_fragment_module);
 
-    size_t max_gui_vertices = sizeof(GuiVert) * 10000; // TODO: need to support gpu buffer resizing
+    size_t max_gui_vertices_size = sizeof(GuiVert) * 10000; // TODO: need to support gpu buffer resizing
     GpuBuffer gui_vertex_buffer = gpu_create_buffer(
         &gpu_context, GPU_BUFFER_USAGE_VERTEX_BUFFER,
         GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-        max_gui_vertices, "gui vertex buffer");
+        max_gui_vertices_size, "gui vertex buffer");
 
     size_t max_gui_indices = sizeof(u32) * 30000; // TODO: need to support gpu buffer resizing
     GpuBuffer gui_index_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_INDEX_BUFFER,
@@ -326,6 +336,8 @@ int main()
     typedef struct UniformStruct
     {
         Mat4 model;
+		Mat4 view;
+		Mat4 projection;
         Mat4 mvp;
         Vec4 eye;
         Vec4 light_dir;
@@ -350,9 +362,9 @@ int main()
     GpuShaderModule fragment_module = create_shader_module_from_file(&gpu_context, "data/shaders/basic.frag.spv");
 
     GpuDescriptorLayout descriptor_layout = {
-        .binding_count = 2,
+        .binding_count = 3,
         .bindings =
-            (GpuDescriptorBinding[2]){
+            (GpuDescriptorBinding[3]){
                 {
                     .binding = 0,
                     .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -361,8 +373,14 @@ int main()
                 {
                     .binding = 1,
                     .type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .stage_flags = GPU_SHADER_STAGE_ALL_GRAPHICS,
+                    .stage_flags = GPU_SHADER_STAGE_FRAGMENT,
                 },
+				{
+					.binding = 2,
+                    .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .stage_flags = GPU_SHADER_STAGE_VERTEX,
+
+				},
             },
     };
 
@@ -373,24 +391,34 @@ int main()
     {
         descriptor_sets[i] = gpu_create_descriptor_set(&gpu_context, &pipeline_layout);
 
-        GpuDescriptorWrite descriptor_writes[2] = {{.binding_desc = &pipeline_layout.descriptor_layout.bindings[0],
-                                                    .buffer_write =
-                                                        &(GpuDescriptorWriteBuffer){
-                                                            .buffer = &uniform_buffers[i],
-                                                            .offset = 0,
-                                                            .range = sizeof(uniform_data),
-                                                        }},
-                                                   {
-                                                       .binding_desc = &pipeline_layout.descriptor_layout.bindings[1],
-                                                       .image_write =
-                                                           &(GpuDescriptorWriteImage){
-                                                               .image_view = &font_image_view,
-                                                               .sampler = &font_sampler,
-                                                               .layout = GPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
-                                                           },
-                                                   }};
+        GpuDescriptorWrite descriptor_writes[3] = {
+			{
+				.binding_desc = &pipeline_layout.descriptor_layout.bindings[0],
+				.buffer_write = &(GpuDescriptorWriteBuffer) {
+						.buffer = &uniform_buffers[i],
+						.offset = 0,
+						.range = sizeof(uniform_data),
+				}
+			},
+			{
+				.binding_desc = &pipeline_layout.descriptor_layout.bindings[1],
+				.image_write = &(GpuDescriptorWriteImage){
+					.image_view = &font_image_view,
+					.sampler = &font_sampler,
+					.layout = GPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
+				},
+			},
+			{
+				.binding_desc = &pipeline_layout.descriptor_layout.bindings[2],
+				.buffer_write = &(GpuDescriptorWriteBuffer){
+					.buffer = &animated_joint_buffer,
+					.offset = 0,
+					.range = animated_joint_buffer_size,
+				}
+			}
+		};
 
-        gpu_write_descriptor_set(&gpu_context, &descriptor_sets[i], 2, descriptor_writes);
+        gpu_write_descriptor_set(&gpu_context, &descriptor_sets[i], 3, descriptor_writes);
     }
 
     // BEGIN COLLIDERS GPU DATA SETUP
@@ -521,7 +549,6 @@ int main()
     u32 current_frame = 0;
     while (window_handle_messages(&window))
     {
-
         if (input_pressed(KEY_ESCAPE))
         {
             break;
@@ -887,27 +914,40 @@ int main()
             target.y += move_speed;
         }
 
+		{	//Anim Update
+			current_anim_time += delta_time;
+			if (current_anim_time >= animation_end)
+			{
+				current_anim_time = animation_start;
+			}
+
+			animated_joint_data = animated_model_sample_animation(&animated_model, current_anim_time);
+			gpu_upload_buffer(&gpu_context, &animated_joint_buffer, animated_joint_buffer_size, animated_joint_data.joint_matrices);
+		}
+
         {
             Quat q1 = quat_new(vec3_new(0, 1, 0), 90 * DEGREES_TO_RADIANS);
             Quat q2 = quat_new(vec3_new(1, 0, 0), 135 * DEGREES_TO_RADIANS);
 			Quat q3 = quat_new(vec3_new(0, 0, 1), 90 * DEGREES_TO_RADIANS);
 
-            Quat q = quat_normalize(quat_mult(quat_mult(q1, q2), q3));
+            Quat q = quat_normalize(quat_mul(quat_mul(q1, q2), q3));
 
-            orientation = q; //quat_mult(orientation, q);
+            orientation = q; //quat_mul(orientation, q);
             orientation = quat_normalize(orientation);
 
 			Vec3 scale = vec3_new(5,5,5);
 			Mat4 scale_matrix = mat4_scale(scale);
 			Mat4 orientation_matrix = quat_to_mat4(orientation);
 
-            Mat4 model = mat4_mult_mat4(scale_matrix, orientation_matrix); 
+            Mat4 model = mat4_mul_mat4(scale_matrix, orientation_matrix); 
             Mat4 view = mat4_look_at(position, target, up);
             Mat4 proj = mat4_perspective(60.0f, (float)width / (float)height, 0.01f, 1000.0f);
 
-            Mat4 mv = mat4_mult_mat4(model, view);
+            Mat4 mv = mat4_mul_mat4(model, view);
             uniform_data.model = model;
-            uniform_data.mvp = mat4_mult_mat4(mv, proj);
+			uniform_data.view = view;
+			uniform_data.projection = proj;
+            uniform_data.mvp = mat4_mul_mat4(mv, proj);
 
             memcpy(&uniform_data.eye, &position, sizeof(float) * 3);
 
@@ -934,10 +974,10 @@ int main()
                 Mat4 collider_scale = mat4_scale(colliders[i].scale);
                 Mat4 collider_rotation = quat_to_mat4(colliders[i].rotation);
                 Mat4 collider_translation = mat4_translation(colliders[i].position);
-                Mat4 scale_rot = mat4_mult_mat4(collider_scale, collider_rotation);
-                Mat4 collider_transform = mat4_mult_mat4(scale_rot, collider_translation);
-                Mat4 collider_mv = mat4_mult_mat4(collider_transform, view);
-                Mat4 collider_mvp = mat4_mult_mat4(collider_mv, proj);
+                Mat4 scale_rot = mat4_mul_mat4(collider_scale, collider_rotation);
+                Mat4 collider_transform = mat4_mul_mat4(scale_rot, collider_translation);
+                Mat4 collider_mv = mat4_mul_mat4(collider_transform, view);
+                Mat4 collider_mvp = mat4_mul_mat4(collider_mv, proj);
 
                 UniformStruct collider_uniform_data = {
                     .model = collider_transform,

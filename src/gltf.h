@@ -1109,11 +1109,8 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                         }
                         Mat4 translation_matrix = mat4_translation(vec3_new(translation[0], translation[1], translation[2]));
 
-                        Mat4 final_matrix = mat4_mult_mat4(mat4_mult_mat4(scale_matrix, rotation_matrix), translation_matrix);
+                        Mat4 final_matrix = mat4_mul_mat4(mat4_mul_mat4(scale_matrix, rotation_matrix), translation_matrix);
                         memcpy(node->transform, &final_matrix, sizeof(Mat4));
-
-                        // FCS TODO: test asset that actually uses translation / rotation / scale for transform (cesium
-                        // man)
                     }
 
                     // Optional Node Mesh

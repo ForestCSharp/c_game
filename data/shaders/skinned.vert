@@ -4,10 +4,16 @@
 
 layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
+	mat4 view;
+	mat4 projection;
     mat4 mvp;
     vec4 eye;
-    vec4 light_dir;
+    vec4 light_dir;	
 } ubo;
+
+layout(binding = 2) buffer JointBuffer {
+	mat4 data[];
+} joint_buffer;
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
@@ -22,7 +28,22 @@ layout(location = 2) out vec4 out_color;
 layout(location = 3) out vec2 out_uv;
 
 void main() {
-    gl_Position = ubo.mvp * vec4(in_position, 1.0);
+
+	//TODO: snake_case...
+	mat4 skin_matrix = mat4(0.0);
+	
+	for (int i=0; i<4; ++i)
+    {
+        skin_matrix += (in_joint_weights[i] * joint_buffer.data[int(in_joint_indices[i])]);
+    }
+
+    //Skin matrix is identity if joint weights are all zero
+    if ((abs(in_joint_weights[0] - 0.0)) < 0.000001)
+    {
+        skin_matrix = mat4(1.0);
+    }
+
+    gl_Position = ubo.mvp * skin_matrix * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;
 

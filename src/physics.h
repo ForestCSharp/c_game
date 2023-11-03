@@ -157,7 +157,7 @@ void physics_run_simulation(Collider* in_colliders, float delta_time)
             Vec3 angular_velocity_axis = vec3_normalize(collider->angular_velocity);
 
             Quat delta_rotation = quat_new(angular_velocity_axis, angular_velocity_magnitude);
-            collider->rotation = quat_mult(collider->rotation, delta_rotation);
+            collider->rotation = quat_mul(collider->rotation, delta_rotation);
             collider->rotation = quat_normalize(collider->rotation);
         }
     }
@@ -176,12 +176,12 @@ void physics_run_simulation(Collider* in_colliders, float delta_time)
                 Mat4 scale_a = mat4_scale(collider_a->scale);
                 Mat4 rotation_a = quat_to_mat4(collider_a->rotation);
                 Mat4 translation_a = mat4_translation(collider_a->position);
-                Mat4 transform_a = mat4_mult_mat4(mat4_mult_mat4(scale_a, rotation_a), translation_a);
+                Mat4 transform_a = mat4_mul_mat4(mat4_mul_mat4(scale_a, rotation_a), translation_a);
 
                 Mat4 scale_b = mat4_scale(collider_b->scale);
                 Mat4 rotation_b = quat_to_mat4(collider_b->rotation);
                 Mat4 translation_b = mat4_translation(collider_b->position);
-                Mat4 transform_b = mat4_mult_mat4(mat4_mult_mat4(scale_b, rotation_b), translation_b);
+                Mat4 transform_b = mat4_mul_mat4(mat4_mul_mat4(scale_b, rotation_b), translation_b);
 
                 // hit_normal is scaled by penetration depth?
                 const MprInputData input_data = {

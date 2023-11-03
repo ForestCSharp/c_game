@@ -91,6 +91,8 @@ typedef struct Vec3
     float z;
 } Vec3;
 
+declare_optional_type(Vec3);
+
 const Vec3 vec3_zero = {.x = 0, .y = 0, .z = 0};
 
 void vec3_print(const Vec3 vec)
@@ -197,6 +199,8 @@ typedef struct Vec4
     float w;
 } Vec4;
 
+declare_optional_type(Vec4);
+
 const Vec4 vec4_zero = {.x = 0, .y = 0, .z = 0, .w = 0};
 
 void vec4_print(const Vec4 vec)
@@ -207,6 +211,16 @@ void vec4_print(const Vec4 vec)
 Vec4 vec4_new(float x, float y, float z, float w)
 {
     return (Vec4){.x = x, .y = y, .z = z, .w = w};
+}
+
+Vec4 vec4_from_vec3(const Vec3 v, const float w)
+{
+    return (Vec4){
+        .x = v.x,
+        .y = v.y,
+        .z = v.z,
+        .w = w,
+    };
 }
 
 Vec4 vec4_negate(const Vec4 v)
@@ -255,22 +269,12 @@ Vec4 vec4_lerp(const float t, const Vec4 a, const Vec4 b)
     return vec4_add(vec4_scale(a, 1.0f - t), vec4_scale(b, t));
 }
 
-Vec3 vec4_to_vec3(const Vec4 v)
+Vec3 vec4_xyz(const Vec4 v)
 {
     return (Vec3){
         .x = v.x,
         .y = v.y,
         .z = v.z,
-    };
-}
-
-Vec4 vec3_to_vec4(const Vec3 v, const float w)
-{
-    return (Vec4){
-        .x = v.x,
-        .y = v.y,
-        .z = v.z,
-        .w = w,
     };
 }
 

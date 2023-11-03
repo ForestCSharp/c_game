@@ -12,6 +12,8 @@ typedef struct Quat
     float w;
 } Quat;
 
+declare_optional_type(Quat);
+
 const Quat quat_identity = {
     .x = 0,
     .y = 0,
@@ -69,7 +71,7 @@ Quat quat_normalize(const Quat q)
 
 // (s1,v1) * (s2, v2) = (s1s2 - v1 dot v2, s1v2 + s2v1 + v1 cross v2)
 
-Quat quat_mult(const Quat q1, const Quat q2)
+Quat quat_mul(const Quat q1, const Quat q2)
 {
     return (Quat){
         .x = q1.x * q2.w + q1.y * q2.z - q1.z * q2.y + q1.w * q2.x,
@@ -79,7 +81,7 @@ Quat quat_mult(const Quat q1, const Quat q2)
     };
 }
 
-Quat quat_slerp(const Quat a, const Quat b, const float t)
+Quat quat_slerp(const float t, const Quat a, const Quat b)
 {
     float theta = acosf(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
     float sin_theta = sinf(theta);

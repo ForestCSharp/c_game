@@ -1,6 +1,9 @@
 #pragma once
 
 #include "assert.h"
+#include "math.h"
+
+#include "types.h"
 
 #ifndef MAX
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -12,6 +15,10 @@
 
 #ifndef CLAMP
 #define CLAMP(value, min, max) (MAX(min, MIN(max, value)))
+#endif
+
+#ifndef ABS
+#define ABS(value) (value < 0 ? -value : value)
 #endif
 
 float lerp(float t, float a, float b)
@@ -59,4 +66,16 @@ float float_fractional(const float input)
 {
     float integral;
     return modff(input, &integral);
+}
+
+#define ZERO_TOLERANCE 0.0001
+
+bool float_nearly_zero(const float value)
+{
+	return ABS(value) <= ZERO_TOLERANCE;
+}
+
+bool float_nearly_equal(const float a, const float b)
+{
+	return float_nearly_zero(a - b);
 }

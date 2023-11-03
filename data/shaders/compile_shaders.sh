@@ -6,6 +6,7 @@ compile_shader_extension() {
 	for f in $SCRIPT_DIR/*.$1
 	do
 		echo compiling $f to $f.spv
+		rm $f.spv
 		glslc $f -o $f.spv
 	done
 }

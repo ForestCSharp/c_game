@@ -3,6 +3,8 @@
 
 layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
+	mat4 view;
+	mat4 projection;
     mat4 mvp;
     vec4 eye;
     vec4 light_dir;
