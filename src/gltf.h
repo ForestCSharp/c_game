@@ -76,16 +76,13 @@ bool is_char_in_string(char c, const char* str)
 // can modify p_string, trims p_string of leading chars_to_trim
 i32 trim_characters(char** p_string, const char* chars_to_trim)
 {
-    i32 i = 0;
-    for (; i < strlen(*p_string); ++i)
-    {
-        if (!is_char_in_string(*p_string[i], chars_to_trim))
-        {
-            *p_string = *p_string + i;
-            break;
-        }
-    }
-    return i;
+	i32 characters_trimmed = 0;
+	while(is_char_in_string(*p_string[0], chars_to_trim))
+	{
+		*p_string = *p_string + 1;
+		++characters_trimmed;
+	}
+	return characters_trimmed;
 }
 
 // can modify p_string, trims whitespace characters
@@ -165,7 +162,10 @@ bool parse_json_value(char** json_string, JsonValue* out_value)
     if (current_position[0] == '{')
     {
         out_value->type = JSON_VALUE_TYPE_OBJECT;
-        parse_json_object(&current_position, &out_value->data.object);
+        if (!parse_json_object(&current_position, &out_value->data.object))
+		{
+			return false;
+		}
     }
     else if (current_position[0] == '"')
     {
@@ -187,7 +187,21 @@ bool parse_json_value(char** json_string, JsonValue* out_value)
         out_value->type = JSON_VALUE_TYPE_ARRAY;
         out_value->data.array.count = 0;
         out_value->data.array.values = NULL;
-        consume('[', &current_position);
+
+		// consume opening brace 
+        if (!consume('[', &current_position))
+		{
+			return false;
+		}
+
+		// check for empty array
+		if (consume(']', &current_position))
+		{
+			*json_string = current_position;
+			return true;
+		}
+
+		// process array elements
         do
         {
             out_value->data.array.count += 1;
@@ -200,7 +214,12 @@ bool parse_json_value(char** json_string, JsonValue* out_value)
             }
 
         } while (consume(',', &current_position));
-        consume(']', &current_position);
+
+		// consume closing brace
+        if (!consume(']', &current_position))
+		{
+			return false;
+		}
     }
     else if (string_check(current_position, STRING_TRUE))
     {
@@ -229,7 +248,14 @@ bool parse_json_object(char** json_string, JsonObject* out_json_object)
         return false;
     }
 
-    // 2. Iterate over key/value pairs
+	// 2. Check for empty object
+	if (consume('}', &current_position))
+	{
+		*json_string = current_position;
+		return true;
+	}
+
+    // 3. Iterate over key/value pairs
     out_json_object->count = 0;
     out_json_object->key_value_pairs = NULL;
     do
@@ -254,7 +280,6 @@ bool parse_json_object(char** json_string, JsonObject* out_json_object)
         {
             return false;
         }
-
     } while (consume(',', &current_position));
 
     // Consume final closing bracket
@@ -262,7 +287,6 @@ bool parse_json_object(char** json_string, JsonObject* out_json_object)
     {
         return false;
     }
-
     *json_string = current_position;
     return true;
 }
@@ -445,9 +469,9 @@ static inline void indent_printf(FILE* out_file, int n, const char* format, ...)
     va_end(args);
 }
 
-void print_json_object(JsonObject* in_object, int depth, FILE* out_file);
+void print_json_object(const JsonObject* in_object, int depth, FILE* out_file);
 
-void print_json_value(JsonValue* in_value, int depth, bool leading_indent, FILE* out_file)
+void print_json_value(const JsonValue* in_value, int depth, bool leading_indent, FILE* out_file)
 {
     if (leading_indent)
     {
@@ -487,7 +511,7 @@ void print_json_value(JsonValue* in_value, int depth, bool leading_indent, FILE*
     }
 }
 
-void print_json_object(JsonObject* in_object, int depth, FILE* out_file)
+void print_json_object(const JsonObject* in_object, int depth, FILE* out_file)
 {
 
     fprintf(out_file, "{\n");
@@ -654,10 +678,51 @@ typedef struct GltfSkin
     struct GltfNode** joints;
 } GltfSkin;
 
+//FCS TODO: GltfTransform (either matrix or TRS)
+//FCS TODO: When a node is targeted for animation (referenced by an animation.channel.target), 
+// 			only TRS properties may be present; matrix will not be present.
+
+typedef enum GltfTransformType
+{
+	GLTF_TRANSFORM_TYPE_MATRIX = 0,
+	GLTF_TRANSFORM_TYPE_TRS = 1,
+} GltfTransformType;
+
+typedef struct GltfTransform
+{
+	GltfTransformType type;
+	union
+	{
+		Mat4 matrix;
+		struct
+		{
+			Vec3 scale;
+			Quat rotation;
+			Vec3 translation;
+		};
+	};
+} GltfTransform;
+
+Mat4 gltf_transform_to_mat4(const GltfTransform* in_transform)
+{
+	if (in_transform->type == GLTF_TRANSFORM_TYPE_MATRIX)
+	{
+		return in_transform->matrix;
+	}
+	else
+	{
+		assert(in_transform->type == GLTF_TRANSFORM_TYPE_TRS);
+		Mat4 scale_matrix = mat4_scale(in_transform->scale);
+		Mat4 rotation_matrix = quat_to_mat4(in_transform->rotation);
+		Mat4 translation_matrix = mat4_translation(in_transform->translation);
+		return mat4_mul_mat4(mat4_mul_mat4(scale_matrix, rotation_matrix), translation_matrix);
+	}
+}
+
 typedef struct GltfNode
 {
     const char* name;
-    float transform[16];
+    GltfTransform transform;
 
     struct GltfNode* parent;
 
@@ -739,25 +804,6 @@ typedef struct GltfAsset
     GltfAnimation* animations;
 } GltfAsset;
 
-const float gltf_identity_matrix[16] = {
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-};
-
 void print_gltf_asset(GltfAsset* in_asset)
 {
     print_json_object(&in_asset->json, 0, stdout);
@@ -765,7 +811,7 @@ void print_gltf_asset(GltfAsset* in_asset)
 
 bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 {
-
+	printf("gltf_load_asset: %s\n", filename);
     // TODO: check extension, add functions for GLB and GLTF (only GLB is
     // currently supported)
 
@@ -773,7 +819,6 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 
     if (file && out_asset)
     {
-
         // HEADER
         {
             u32 magic, version, length;
@@ -808,10 +853,12 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 
             if (fread(json_string, json_length, 1, file) != 0)
             {
-                printf("json data: %s\n", json_string);
                 char* modified_json_string = json_string;
-                parse_json_object(&modified_json_string, &out_asset->json);
-                // TODO: Error checking, make sure to free json string if we early-exit
+                if (!parse_json_object(&modified_json_string, &out_asset->json))
+				{
+					free(json_string);
+					return false;
+				}
             }
 
             free(json_string);
@@ -1054,8 +1101,6 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     // We keep the json alive for the duration of the gltf asset, so just point to the json string
                     json_value_as_string(json_object_get_value(json_node, "name"), &node->name);
 
-                    printf("%s\n", node->name);
-
                     // Set up pointer array to our children nodes
                     const JsonArray* json_children_nodes = json_object_get_array(json_node, "children");
                     if (json_children_nodes)
@@ -1074,43 +1119,44 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                         }
                     }
 
-                    memcpy(node->transform, gltf_identity_matrix, sizeof(gltf_identity_matrix));
-                    // 1. search for "matrix"
+					node->transform.type = GLTF_TRANSFORM_TYPE_MATRIX;
+					node->transform.matrix = mat4_identity;
+ 
+					// 1. search for "matrix"
                     // 2. If no matrix, search for translation, rotation, scale
                     const JsonArray* json_matrix = json_object_get_array(json_node, "matrix");
                     if (json_matrix)
                     {
-                        json_copy_float_array(node->transform, json_matrix, 16);
+						node->transform.type = GLTF_TRANSFORM_TYPE_MATRIX; 
+                        json_copy_float_array((float*)node->transform.matrix.d, json_matrix, 16);
                     }
                     else
                     {
-                        float scale[3] = {1.f, 1.f, 1.f};
+						node->transform.type = GLTF_TRANSFORM_TYPE_TRS;
+
+                        Vec3 scale = {1.f, 1.f, 1.f};
                         const JsonArray* json_scale = json_object_get_array(json_node, "scale");
                         if (json_scale)
                         {
-                            json_copy_float_array(scale, json_scale, 3);
+                            json_copy_float_array((float*)&scale, json_scale, 3);
                         }
+						node->transform.scale = scale; 
 
-                        Mat4 scale_matrix = mat4_scale(vec3_new(scale[0], scale[1], scale[2]));
-
-                        float rotation[4] = {0.f, 0.f, 0.f, 1.f};
+						Quat rotation = quat_identity;
                         const JsonArray* json_rotation = json_object_get_array(json_node, "rotation");
                         if (json_rotation)
                         {
-                            json_copy_float_array(rotation, json_rotation, 4);
+                            json_copy_float_array((float*)&rotation, json_rotation, 4);
                         }
-                        Mat4 rotation_matrix = quat_to_mat4(quat_new(vec3_new(rotation[0], rotation[1], rotation[2]), rotation[3]));
+						node->transform.rotation = rotation;
 
-                        float translation[3] = {0.f, 0.f, 0.f};
+						Vec3 translation = vec3_new(0.f, 0.f, 0.f);
                         const JsonArray* json_translation = json_object_get_array(json_node, "translation");
                         if (json_translation)
                         {
-                            json_copy_float_array(translation, json_translation, 3);
+                            json_copy_float_array((float*)&translation, json_translation, 3);
                         }
-                        Mat4 translation_matrix = mat4_translation(vec3_new(translation[0], translation[1], translation[2]));
-
-                        Mat4 final_matrix = mat4_mul_mat4(mat4_mul_mat4(scale_matrix, rotation_matrix), translation_matrix);
-                        memcpy(node->transform, &final_matrix, sizeof(Mat4));
+						node->transform.translation = translation;
                     }
 
                     // Optional Node Mesh
@@ -1220,6 +1266,9 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                                 {
                                     assert(node_index < out_asset->num_nodes);
                                     channel->target.node = &out_asset->nodes[node_index];
+
+									// Animated Nodes must use TRS transform type
+									assert(channel->target.node->transform.type == GLTF_TRANSFORM_TYPE_TRS);
                                 }
 
                                 const char* path_string;

@@ -5,15 +5,16 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(Windows) Launch",
-            "type": "cppvsdbg",
+            "name": "(lldb) Launch",
+            "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/game.exe",
+            "program": "${workspaceFolder}/bin/game",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "console": "externalTerminal"
+            "externalConsole": false,
+            "MIMode": "lldb"
         },
     ]
 }

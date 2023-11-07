@@ -1839,14 +1839,14 @@ void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *ver
     vkCmdBindVertexBuffers(command_buffer->vk_command_buffer, 0, 1, &vertex_buffer->vk_buffer, offsets);
 }
 
-void gpu_cmd_draw_indexed(GpuCommandBuffer *command_buffer, u32 index_count)
+void gpu_cmd_draw_indexed(GpuCommandBuffer *command_buffer, u32 index_count, u32 instance_count)
 {
-    vkCmdDrawIndexed(command_buffer->vk_command_buffer, index_count, 1, 0, 0, 0);
+    vkCmdDrawIndexed(command_buffer->vk_command_buffer, index_count, instance_count, 0, 0, 0);
 }
 
-void gpu_cmd_draw(GpuCommandBuffer *command_buffer, u32 vertex_count)
+void gpu_cmd_draw(GpuCommandBuffer *command_buffer, u32 vertex_count, u32 instance_count)
 {
-    vkCmdDraw(command_buffer->vk_command_buffer, vertex_count, 1, 0, 0);
+    vkCmdDraw(command_buffer->vk_command_buffer, vertex_count, instance_count, 0, 0);
 }
 
 void gpu_cmd_set_viewport(GpuCommandBuffer *command_buffer, GpuViewport *viewport)

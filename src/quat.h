@@ -101,8 +101,6 @@ Mat4 quat_to_mat4(const Quat in_q)
 {
     Quat q = in_q;
 
-    // TODO: zero_element quat check
-
     // check normalized
     if (fabsf(quat_size_squared(q) - 1.0f) > 0.001)
     {
@@ -126,22 +124,13 @@ Mat4 quat_to_mat4(const Quat in_q)
     float yz = y * z;
     float wz = w * z;
 
-    return (Mat4){
-        1 - 2 * y2 - 2 * z2,
-        2 * xy - 2 * wz,
-        2 * xz + 2 * wy,
-        0,
-        2 * xy + 2 * wz,
-        1 - 2 * x2 - 2 * z2,
-        2 * yz - 2 * wx,
-        0,
-        2 * xz - 2 * wy,
-        2 * yz + 2 * wx,
-        1 - 2 * x2 - 2 * y2,
-        0,
-        0,
-        0,
-        0,
-        1,
-    };
+	//FCS TODO: Just fill in the values transposed...
+    return mat4_transpose((Mat4){
+		.d = {
+			1 - 2 * y2 - 2 * z2, 2 * xy - 2 * wz, 2 * xz + 2 * wy, 0,
+			2 * xy + 2 * wz, 1 - 2 * x2 - 2 * z2, 2 * yz - 2 * wx, 0,
+			2 * xz - 2 * wy, 2 * yz + 2 * wx, 1 - 2 * x2 - 2 * y2, 0,
+			0, 0, 0, 1,
+		},
+    });
 }

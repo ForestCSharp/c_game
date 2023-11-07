@@ -499,8 +499,8 @@ void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* ver
 void gpu_cmd_bind_descriptor_set(GpuCommandBuffer* command_buffer, GpuPipelineLayout* layout, GpuDescriptorSet* descriptor_set);
 
 // TODO: non-indexed-draw, instance_count for both draw types
-void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, u32 index_count);
-void gpu_cmd_draw(GpuCommandBuffer* command_buffer, u32 vertex_count);
+void gpu_cmd_draw_indexed(GpuCommandBuffer* command_buffer, u32 index_count, u32 instance_count);
+void gpu_cmd_draw(GpuCommandBuffer* command_buffer, u32 vertex_count, u32 instance_count);
 
 void gpu_cmd_set_viewport(GpuCommandBuffer* command_buffer, GpuViewport* viewport);
 

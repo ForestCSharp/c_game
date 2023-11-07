@@ -6,10 +6,6 @@
 #include "../types.h"
 #include "assert.h"
 
-// FCS TODO: SourceAnimation should have its own representation of bone hierarchy
-// FCS TODO: BakedAnimation should only maintain a flat array of bones in the layout they'll be sent to the GPU
-// FCS TODO: shared struct for flat array of bones...
-
 // ---- Source Animation: References GLTF Hierarchy Directly... slow to compute poses ---- //
 typedef struct SourceAnimationKeyframe
 {
@@ -44,15 +40,18 @@ typedef struct SourceAnimation
 typedef struct BakedAnimationKeyframe
 {
     float time;
-	i32 num_joints;
 	Mat4* joint_matrices;
+	Mat4* joint_transforms; //doesn't include inverse bind matrices TODO: Remove
 } BakedAnimationKeyframe;
 
 typedef struct BakedAnimation
 {
     float timestep; // baked frames all have equal timesteps, used for fast access
-	float animation_start; //FCS TODO: Rename to start_time
-	float animation_end; //FCS TODO: Rename to end_time
+	float start_time;
+	float end_time;
+
+	i32 num_joints; // Each BakedAnimationKeyframe's joint_matrices array has the same number of joints
+
     i32 num_keyframes;
     BakedAnimationKeyframe* keyframes;
 } BakedAnimation;
@@ -83,7 +82,7 @@ typedef struct AnimatedModel
     GpuBuffer index_buffer;
 
 	BakedAnimation baked_animation;
-    // FCS TODO: JOINT MATRICES @ bind pose...
+
 } AnimatedModel;
 
 typedef struct NodeAnimData 
@@ -145,10 +144,8 @@ void anim_data_lerp_and_set(NodeAnimData* anim_data, GltfAnimationPath path, Sou
 	}
 }
 
-//FCS TODO: move out_anim_data to first arg rename to "anim_data"
 void anim_data_compute_from_channel(NodeAnimData* anim_data, SourceAnimationChannel* in_channel, float in_time)
 {
-    // FCS TODO: clamp to first and last kefyrames if outside of time bounds
     assert(in_channel->num_keyframes > 0);
     SourceAnimationKeyframe* first_keyframe = &in_channel->keyframes[0];
     if (in_time < first_keyframe->time)
@@ -169,17 +166,19 @@ void anim_data_compute_from_channel(NodeAnimData* anim_data, SourceAnimationChan
             }
             else
             {
+				anim_data_set(anim_data, in_channel->path, current_keyframe);
+
+				//FCS TODO: Lerp was busted...
 				// Need to lerp two keyframes
-                SourceAnimationKeyframe* next_keyframe = &in_channel->keyframes[keyframe_idx + 1];
-                const float t = (in_time - current_keyframe->time) / (next_keyframe->time - current_keyframe->time);
-            	anim_data_lerp_and_set(anim_data, in_channel->path, current_keyframe, next_keyframe, t);    
+                //SourceAnimationKeyframe* next_keyframe = &in_channel->keyframes[keyframe_idx + 1];
+                //const float t = (in_time - current_keyframe->time) / (next_keyframe->time - current_keyframe->time);
+            	//anim_data_lerp_and_set(anim_data, in_channel->path, current_keyframe, next_keyframe, t);    
             }
         }
     }
 }
 
 // nodes_array and anim_data_array are of length num_nodes 
-// FCS TODO: pass args as struct?
 Mat4 compute_node_transform(GltfNode* target_node, GltfNode* nodes_array, NodeAnimData* anim_data_array, i32 num_nodes)
 {
 	const size_t node_index = (target_node - nodes_array);
@@ -200,28 +199,44 @@ Mat4 compute_node_transform(GltfNode* target_node, GltfNode* nodes_array, NodeAn
 			parent_transform = compute_node_transform(target_node->parent, nodes_array, anim_data_array, num_nodes);
 		}
 
-		Mat4 local_transform = mat4_identity;
+		// Compute Local Transform
+		GltfTransform local_transform = target_node->transform;
+
+		Mat4 animated_transform = mat4_identity; 
 		if (optional_is_set(anim_data->scale))
 		{
-			Vec3 scale = optional_get(anim_data->scale);
-			local_transform = mat4_mul_mat4(local_transform, mat4_scale(scale));
+			assert(local_transform.type = GLTF_TRANSFORM_TYPE_TRS);
+			local_transform.scale = optional_get(anim_data->scale);
 		}
 		if (optional_is_set(anim_data->rotation))
 		{
-			Quat rotation = optional_get(anim_data->rotation);
-			local_transform = mat4_mul_mat4(local_transform, quat_to_mat4(rotation));
+			assert(local_transform.type = GLTF_TRANSFORM_TYPE_TRS);
+			local_transform.rotation = optional_get(anim_data->rotation);
 		}
 		if (optional_is_set(anim_data->translation))
 		{
-			Vec3 translation = optional_get(anim_data->translation);
-			local_transform = mat4_mul_mat4(local_transform, mat4_translation(translation));
+			assert(local_transform.type = GLTF_TRANSFORM_TYPE_TRS);
+			local_transform.translation = optional_get(anim_data->translation);
 		}
-
-		Mat4 computed_transform = mat4_mul_mat4(parent_transform, local_transform);
-
+	
+		Mat4 local_transform_matrix = gltf_transform_to_mat4(&local_transform); 
+		//FCS TODO: Need to figure out our matrix order...
+		Mat4 computed_transform = mat4_mul_mat4(local_transform_matrix, parent_transform); 
 		optional_set(anim_data->cached_transform, computed_transform);
 		return computed_transform;
 	}
+}
+
+//FCS TODO: REMOVE: TESTING
+Mat4 compute_node_transform2(GltfNode* in_node)
+{
+	Mat4 local_transform_matrix = gltf_transform_to_mat4(&in_node->transform); 
+	if (in_node->parent)
+	{
+		Mat4 parent_transform = compute_node_transform2(in_node->parent);
+		return mat4_mul_mat4(local_transform_matrix, parent_transform);
+	}
+	return local_transform_matrix;
 }
 
 bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, AnimatedModel* out_model)
@@ -234,8 +249,6 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
         printf("Failed to Load GLTF Asset\n");
         return false;
     }
-
-    // TODO: create animated models for all nodes with mesh + skin...
 
     // Find first animated node
     GltfNode* animated_node = NULL;
@@ -288,9 +301,10 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
         normals_buffer += gltf_accessor_get_initial_offset(primitive->normals);
         u32 normals_byte_stride = gltf_accessor_get_stride(primitive->normals);
 
-        u8* uvs_buffer = primitive->texcoord0->buffer_view->buffer->data;
-        uvs_buffer += gltf_accessor_get_initial_offset(primitive->texcoord0);
-        u32 uvs_byte_stride = gltf_accessor_get_stride(primitive->texcoord0);
+		// FCS TODO: Re-enable, but this isn't guaranteed to exist
+        //u8* uvs_buffer = primitive->texcoord0->buffer_view->buffer->data;
+        //uvs_buffer += gltf_accessor_get_initial_offset(primitive->texcoord0);
+        //u32 uvs_byte_stride = gltf_accessor_get_stride(primitive->texcoord0);
 
         u8* joint_indices_buffer = primitive->joint_indices->buffer_view->buffer->data;
         joint_indices_buffer += gltf_accessor_get_initial_offset(primitive->joint_indices);
@@ -309,14 +323,22 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
             memcpy(&out_model->vertices[out_index].position, positions_buffer, positions_byte_stride);
             memcpy(&out_model->vertices[out_index].normal, normals_buffer, normals_byte_stride);
             memcpy(&out_model->vertices[out_index].color, (float[4]){0.8f, 0.2f, 0.2f, 1.0f}, sizeof(float) * 4);
-            memcpy(&out_model->vertices[out_index].uv, uvs_buffer, uvs_byte_stride);
-            memcpy(&out_model->vertices[out_index].joint_indices, joint_indices_buffer, joint_indices_byte_stride);
+            //memcpy(&out_model->vertices[out_index].uv, uvs_buffer, uvs_byte_stride);
+
+			// Joint Indices can't just be memcpy'd into a vec4 as they may be smaller than 32-bits
+			const i32 joint_indices_component_size = gltf_component_type_size(primitive->joint_indices->component_type);
+			for (i32 i = 0; i < 4; ++i)
+			{
+				i32 joint_idx = (i32) *(joint_indices_buffer + (joint_indices_component_size * i));
+				float* vec_ptr = (float*)&out_model->vertices[out_index].joint_indices;
+				vec_ptr[i] = (float) joint_idx; 
+			}
+
             memcpy(&out_model->vertices[out_index].joint_weights, joint_weights_buffer, joint_weights_byte_stride);
 
             positions_buffer += positions_byte_stride;
             normals_buffer += normals_byte_stride;
-            // colors_buffer += colors_byte_stride; //FCS TODO: Load real colors
-            uvs_buffer += uvs_byte_stride;
+            //uvs_buffer += uvs_byte_stride;
 
             joint_indices_buffer += joint_indices_byte_stride;
             joint_weights_buffer += joint_weights_byte_stride;
@@ -343,14 +365,13 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
         index_offset += primitive_indices_count;
     }
 
+
     // Skeleton + Animation Setup
     {
-        // TODO: Bind Pose + Skeleton Setup
         GltfSkin* skin = animated_node->skin;
         assert(skin);
 
         assert(out_model->gltf_asset.num_animations > 0);
-
 
         // FCS TODO: Load all anims...
         GltfAnimation* animation = &out_model->gltf_asset.animations[0];
@@ -376,7 +397,7 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
 			}
 		}
 
-        // Deterine Animation Start and End Times
+        // Load Animation Channels and determine Animation Start and End Times
         optional(f32) animation_start = {};
         optional(f32) animation_end = {};
 
@@ -429,27 +450,27 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
         const float timestep = 1.0f / 60.0f;
 
 		const i32 num_keyframes = (i32) ceil(animation_duration / timestep);
-		printf("Num Keyframes: %i\n", num_keyframes);
+
+		//FCS TODO: if timestep * (num_keyframes - 1) isn't nearly equal to animation_end, add 1 additional frame...
 
 		out_model->baked_animation = (BakedAnimation) {
 			.timestep = timestep,
-			.animation_start = optional_get(animation_start),
-			.animation_end = optional_get(animation_end),
+			.start_time = optional_get(animation_start),
+			.end_time = optional_get(animation_end),
+			.num_joints = skin->num_joints,
 			.num_keyframes = num_keyframes,
 			.keyframes = calloc(num_keyframes, sizeof(BakedAnimationKeyframe))
 		};
 
-		float current_time = optional_get(animation_start);
 		for (i32 keyframe_idx = 0; keyframe_idx < num_keyframes; ++keyframe_idx)
 		{
+			const float current_time = timestep * (float)keyframe_idx;
 			BakedAnimationKeyframe* keyframe = &out_model->baked_animation.keyframes[keyframe_idx];
 			*keyframe = (BakedAnimationKeyframe) {
 				.time = current_time,
-				.num_joints = skin->num_joints,
-				.joint_matrices = calloc(skin->num_joints, sizeof(Mat4))
+				.joint_matrices = calloc(skin->num_joints, sizeof(Mat4)),
+				.joint_transforms = calloc(skin->num_joints, sizeof(Mat4)),
 			};
-
-			current_time += timestep;
 
 			const i32 num_gltf_nodes = out_model->gltf_asset.num_nodes;
 			NodeAnimData* node_anim_data_array = calloc(num_gltf_nodes, sizeof(NodeAnimData));	
@@ -467,33 +488,23 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
 				anim_data_compute_from_channel(node_anim_data, current_channel, current_time);
             }
 
-			Mat4 animated_node_transform = compute_node_transform(animated_node, out_model->gltf_asset.nodes, node_anim_data_array, num_gltf_nodes);
-			optional(Mat4) inverse_global_transform = mat4_inverse(animated_node_transform); 
-			assert(optional_is_set(inverse_global_transform));
-
-            // 2. Iterate over Joints and computer their xforms (have to work back to root)
+            // 2. Iterate over Joints and compute their transforms 
 			for (i32 joint_idx = 0; joint_idx < skin->num_joints; ++joint_idx)
 			{
 				GltfNode* joint = skin->joints[joint_idx];
 
 				Mat4 global_joint_transform = compute_node_transform(joint, out_model->gltf_asset.nodes, node_anim_data_array, num_gltf_nodes);
 				Mat4 inverse_bind_matrix = source_animation.joint_inverse_bind_matrices[joint_idx];
-				Mat4 final_joint_matrix = mat4_mul_mat4(optional_get(inverse_global_transform), mat4_mul_mat4(global_joint_transform, inverse_bind_matrix));
-
-				keyframe->joint_matrices[joint_idx] = final_joint_matrix; 
+				Mat4 final_joint_matrix = mat4_mul_mat4(inverse_bind_matrix, global_joint_transform);
+				keyframe->joint_matrices[joint_idx] = final_joint_matrix;
+				keyframe->joint_transforms[joint_idx] = global_joint_transform;
 			}
 
 			free(node_anim_data_array);
-			current_time += timestep;
-		}
+		}	
 
-        // FCS TODO: make sure to throw on one last keyframe if we have some space left (current_time != animation_end)
-
-		//FCS TODO: Free up SourceAnimation data...
-
-        //exit(0);
+		//FCS TODO: Free up or store SourceAnimation data...
     }
-
 
     // GPU Data Setup
     {
@@ -533,9 +544,11 @@ void animated_model_free(GpuContext* gpu_context, AnimatedModel* in_model)
 typedef struct JointData
 {
 	i32 num_joints;
-	Mat4* joint_matrices;
+	Mat4* joint_matrices;	// for skinning
+	Mat4* joint_transforms;	// for joint visualization (FCS TODO: REMOVE)
 } JointData;
 
+//FCS TODO: store animated joint data internally so we can return a ptr to the lerped value 
 JointData animated_model_sample_animation(AnimatedModel* in_model, float in_anim_time)
 {	
 	BakedAnimation* animation = &in_model->baked_animation;
@@ -552,8 +565,9 @@ JointData animated_model_sample_animation(AnimatedModel* in_model, float in_anim
 			printf("in_anim_time: %f keyframe->time: %f\n", in_anim_time, keyframe->time);
 			printf("Returning keyframe %i\n", keyframe_idx);
 			return (JointData) {
-				.num_joints = keyframe->num_joints,
+				.num_joints = animation->num_joints,
 				.joint_matrices = keyframe->joint_matrices,
+				.joint_transforms = keyframe->joint_transforms,
 			};
 		}
 		
@@ -564,8 +578,9 @@ JointData animated_model_sample_animation(AnimatedModel* in_model, float in_anim
 			printf("in_anim_time: %f keyframe->time: %f\n", in_anim_time, keyframe->time);
 			printf("Returning keyframe %i\n", keyframe_idx);
 			return (JointData) {
-				.num_joints = keyframe->num_joints,
+				.num_joints = animation->num_joints,
 				.joint_matrices = keyframe->joint_matrices,
+				.joint_transforms = keyframe->joint_transforms,
 			};
 		}
 

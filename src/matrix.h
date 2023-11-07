@@ -93,6 +93,19 @@ Mat4 mat4_mul_f32(const Mat4 m, const float f)
 	return result;
 }
 
+Mat4 mat4_transpose(const Mat4 in_mat)
+{
+	Mat4 result = {};
+	for (int i = 0; i < 4; ++i)
+	{
+		for (int j = 0; j < 4; ++j)
+		{
+			result.d[i][j] = in_mat.d[j][i];
+		}
+	}
+	return result;
+}
+
 Mat4 mat4_translation(const Vec3 position)
 {
     Mat4 result = mat4_identity;
@@ -141,7 +154,12 @@ Mat4 mat4_perspective(const float fov, const float aspect_ratio, const float nea
     float near_minus_far = near - far;
 
     return (Mat4){
-        .d = {x_scale, 0, 0, 0, 0, y_scale * -1.0, 0, 0, 0, 0, (far + near) / near_minus_far, -1, 0, 0, 2 * far * near / near_minus_far, 0},
+        .d = {
+			x_scale, 0, 0, 0, 
+			0, y_scale * -1.0, 0, 0, 
+			0, 0, (far + near) / near_minus_far, -1, 
+			0, 0, 2 * far * near / near_minus_far, 0
+		},
     };
 }
 
@@ -182,8 +200,6 @@ Mat4 mat4_angle_axis(float x, float y, float z, float theta)
     };
 }
 
-bool InverseMat44(const float* m, float* invOut);
-
 optional(Mat4) mat4_inverse(Mat4 in_mat)
 {
 	optional(Mat4) out_matrix = {};
@@ -220,28 +236,3 @@ optional(Mat4) mat4_inverse(Mat4 in_mat)
 	return out_matrix;
 }
 
-void mat4_test_inverse()
-{
-	Mat4 matrix = {
-		.d = {
-			12.0f, 2.0f, 1.0f, 1.0f,
-			0.0f, 0.0f, 1.0f, 1.0f,
-			0.0f, 1.0f, 5.0f, 1.0f,
-			11.0f, 1.0f, 0.0f, 10.0f
-		},
-	};
-
-	optional(Mat4) inverse = mat4_inverse(matrix);
-	assert(optional_is_set(inverse));
-
-	Mat4 result = mat4_mul_mat4(matrix, optional_get(inverse));	
-	for (i32 row = 0; row < 4; ++row)
-	{
-		for (i32 col = 0; col < 4; ++col)
-		{
-			assert(float_nearly_equal(result.d[row][col], mat4_identity.d[row][col]));
-		}
-	}
-
-	printf("ALL TESTS PASSED!\n");
-}

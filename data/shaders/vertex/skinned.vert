@@ -11,7 +11,7 @@ layout(binding = 0) uniform UniformBufferObject {
     vec4 light_dir;	
 } ubo;
 
-layout(binding = 2) buffer JointBuffer {
+layout(binding = 2) readonly buffer JointBuffer {
 	mat4 data[];
 } joint_buffer;
 
@@ -34,7 +34,7 @@ void main() {
 	
 	for (int i=0; i<4; ++i)
     {
-        skin_matrix += (in_joint_weights[i] * joint_buffer.data[int(in_joint_indices[i])]);
+        skin_matrix += (joint_buffer.data[int(in_joint_indices[i])] * in_joint_weights[i]);
     }
 
     //Skin matrix is identity if joint weights are all zero
@@ -43,7 +43,7 @@ void main() {
         skin_matrix = mat4(1.0);
     }
 
-    gl_Position = ubo.mvp * skin_matrix * vec4(in_position, 1.0);
+    gl_Position = ubo.mvp  * skin_matrix * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;
 
