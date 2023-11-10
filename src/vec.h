@@ -84,6 +84,12 @@ Vec2 vec2_rotate(const Vec2 v, const float radians)
     };
 }
 
+bool vec2_nearly_equal(const Vec2 a, const Vec2 b)
+{
+	return 	float_nearly_equal(a.x, b.x)
+		&&	float_nearly_equal(a.y, b.y);
+}
+
 typedef struct Vec3
 {
     float x;
@@ -191,6 +197,13 @@ Vec3 vec3_plane_projection(const Vec3 v, const Vec3 plane_normal)
     return vec3_sub(v, vec3_projection(v, plane_normal));
 }
 
+bool vec3_nearly_equal(const Vec3 a, const Vec3 b)
+{
+		return 	float_nearly_equal(a.x, b.x)
+			&&	float_nearly_equal(a.y, b.y)
+			&&	float_nearly_equal(a.z, b.z);
+}
+
 typedef struct Vec4
 {
     float x;
@@ -276,6 +289,14 @@ Vec3 vec4_xyz(const Vec4 v)
         .y = v.y,
         .z = v.z,
     };
+}
+
+bool vec4_nearly_equal(const Vec4 a, const Vec4 b)
+{
+	return 	float_nearly_equal(a.x, b.x)
+		&&	float_nearly_equal(a.y, b.y)
+		&&	float_nearly_equal(a.z, b.z)
+		&&	float_nearly_equal(a.w, b.w);
 }
 
 // Floating point LHS

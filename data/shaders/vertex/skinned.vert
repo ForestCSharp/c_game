@@ -13,7 +13,11 @@ layout(binding = 0) uniform UniformBufferObject {
 
 layout(binding = 2) readonly buffer JointBuffer {
 	mat4 data[];
-} joint_buffer;
+} joint_transforms;
+
+layout(binding = 3) buffer JointTransforms {
+	mat4 data[];
+} inverse_bind_matrices;
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
@@ -34,7 +38,8 @@ void main() {
 	
 	for (int i=0; i<4; ++i)
     {
-        skin_matrix += (joint_buffer.data[int(in_joint_indices[i])] * in_joint_weights[i]);
+		int joint_idx = int(in_joint_indices[i]);
+        skin_matrix += (joint_transforms.data[joint_idx] * inverse_bind_matrices.data[joint_idx] * in_joint_weights[i]);
     }
 
     //Skin matrix is identity if joint weights are all zero

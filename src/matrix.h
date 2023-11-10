@@ -5,6 +5,7 @@
 #include "types.h"
 #define _USE_MATH_DEFINES
 #include "vec.h"
+#include "quat.h"
 #include <math.h>
 
 typedef struct Mat4
@@ -180,22 +181,10 @@ Mat4 mat4_angle_axis(float x, float y, float z, float theta)
     return (Mat4){
         .d =
             {
-                cos + x * x * (1 - cos),
-                x * y * (1 - cos) - z * sin,
-                x * z * (1 - cos) + y * sin,
-                0.0f,
-                y * x * (1 - cos) + z * sin,
-                cos + y * y * (1 - cos),
-                y * z * (1 - cos) - x * sin,
-                0.0f,
-                z * x * (1 - cos) - y * sin,
-                z * y * (1 - cos) + x * sin,
-                cos + z * z * (1 - cos),
-                0.0f,
-                0.0f,
-                0.0f,
-                0.0f,
-                1.0f,
+                cos + x * x * (1 - cos), 		x * y * (1 - cos) - z * sin, 	x * z * (1 - cos) + y * sin, 	0.0f,
+                y * x * (1 - cos) + z * sin,	cos + y * y * (1 - cos),		y * z * (1 - cos) - x * sin,	0.0f,
+                z * x * (1 - cos) - y * sin,	z * y * (1 - cos) + x * sin,	cos + z * z * (1 - cos),		0.0f,
+                0.0f,							0.0f,							0.0f,							1.0f,
             },
     };
 }
@@ -236,3 +225,124 @@ optional(Mat4) mat4_inverse(Mat4 in_mat)
 	return out_matrix;
 }
 
+bool mat4_nearly_equal(const Mat4 a, const Mat4 b)
+{
+	for (i32 column_idx = 0; column_idx < 4; ++column_idx)
+	{
+		if (!vec4_nearly_equal(a.columns[column_idx], b.columns[column_idx]))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+Mat4 mat4_lerp(float t, const Mat4 a, const Mat4 b)
+{
+	t = CLAMP(t, 0.0f, 1.0f);
+	Mat4 result = {};
+	for (i32 i = 0; i < 4; ++i)
+	{
+		result.columns[i] = vec4_lerp(t, a.columns[i], b.columns[i]);
+	}
+	return result;
+}
+
+Mat4 quat_to_mat4(const Quat in_q)
+{
+    Quat q = in_q;
+
+    // check normalized
+    if (fabsf(quat_size_squared(q) - 1.0f) > 0.001)
+    {
+        printf("quat_to_mat4 error: quaternion should be normalized \n");
+        q = quat_normalize(q);
+    }
+
+    float x = q.x;		float x2 = x * x;
+    float y = q.y;		float y2 = y * y;
+    float z = q.z;		float z2 = z * z;
+    float w = q.w;		float w2 = w * w;
+
+    float xy = x * y;	float wy = w * y;
+    float wx = w * x;   float yz = y * z;
+    float xz = x * z;   float wz = w * z; 
+
+	return (Mat4) {
+		.d = {
+			1 - 2 * y2 - 2 * z2,	2 * xy + 2 * wz, 		2 * xz - 2 * wy, 		0,
+			2 * xy - 2 * wz,		1 - 2 * x2 - 2 * z2,	2 * yz + 2 * wx, 		0,
+			2 * xz + 2 * wy, 		2 * yz - 2 * wx, 		1 - 2 * x2 - 2 * y2,	0,
+			0, 						0, 						0, 						1
+		}
+	};
+}
+
+Quat mat4_to_quat(const Mat4 in_mat)
+{
+	float w = sqrt(1.0f + in_mat.d[0][0] + in_mat.d[1][1] + in_mat.d[2][2]) / 2.0;
+	float w4 = w * 4.0f; 
+	return (Quat) {
+		.x = (in_mat.d[1][2] - in_mat.d[2][1]) / w4,
+		.y = (in_mat.d[2][0] - in_mat.d[0][2]) / w4,
+		.z = (in_mat.d[0][1] - in_mat.d[1][0]) / w4,
+		.w = w,
+	};
+}
+
+typedef struct TRS
+{
+	Vec3 scale;
+	Quat rotation;
+	Vec3 translation;
+} TRS;
+
+TRS trs_identity()
+{
+	return (TRS) {
+		.scale = vec3_new(1,1,1),
+		.rotation = quat_identity,
+		.translation = vec3_zero,
+	};
+}
+
+TRS mat4_to_trs(Mat4 in_mat)
+{
+	TRS out_trs;
+
+	out_trs.translation = vec4_xyz(in_mat.columns[3]);
+	
+	out_trs.scale.x = vec3_length(vec4_xyz(in_mat.columns[0]));
+	out_trs.scale.y = vec3_length(vec4_xyz(in_mat.columns[1]));
+	out_trs.scale.z = vec3_length(vec4_xyz(in_mat.columns[2]));
+	
+	const Mat4 rotation_matrix = {
+		.columns = {
+			vec4_scale(in_mat.columns[0], 1.0f / out_trs.scale.x),
+			vec4_scale(in_mat.columns[1], 1.0f / out_trs.scale.y),	
+			vec4_scale(in_mat.columns[2], 1.0f / out_trs.scale.z),
+			vec4_new(0,0,0,1),
+		}
+	};
+	out_trs.rotation = mat4_to_quat(rotation_matrix);
+
+	return out_trs;
+}
+
+Mat4 trs_to_mat4(const TRS trs)
+{
+	return mat4_mul_mat4(
+		mat4_mul_mat4(mat4_scale(trs.scale), quat_to_mat4(trs.rotation)), 
+		mat4_translation(trs.translation)
+	);
+}
+
+TRS trs_lerp(float t, const TRS a, const TRS b)
+{
+	return (TRS) {
+		.scale = vec3_lerp(t, a.scale, b.scale),
+		.rotation = quat_nlerp(t, a.rotation, b.rotation),
+		.translation = vec3_lerp(t, a.translation, b.translation),
+	};
+}

@@ -10,8 +10,8 @@ layout(binding = 0) uniform UniformBufferObject {
     vec4 light_dir;
 } ubo;
 
-layout(binding = 3) buffer JointTransforms {
-		mat4 data[];
+layout(binding = 2) readonly buffer JointBuffer {
+	mat4 data[];
 } joint_transforms;
 
 layout(location = 0) in vec3 in_position;
@@ -33,7 +33,7 @@ mat4 mat4_uniform_scale(float scale)
 }
 
 void main() {
-	mat4 joint_vis_scale = mat4_uniform_scale(0.05);
+	mat4 joint_vis_scale = mat4_uniform_scale(0.025);
     gl_Position = ubo.mvp * joint_transforms.data[gl_InstanceIndex] * joint_vis_scale * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;

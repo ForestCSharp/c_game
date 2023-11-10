@@ -1,6 +1,5 @@
 #pragma once
 
-#include "matrix.h"
 #include "vec.h"
 #include <math.h>
 
@@ -81,56 +80,44 @@ Quat quat_mul(const Quat q1, const Quat q2)
     };
 }
 
-Quat quat_slerp(const float t, const Quat a, const Quat b)
+float quat_dot(const Quat a, const Quat b)
 {
-    float theta = acosf(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
-    float sin_theta = sinf(theta);
-    float wa = sinf((1 - t) * theta) / sin_theta;
-    float wb = sinf(t * theta) / sin_theta;
-    Quat r = {
-        .x = wa * a.x + wb * b.x,
-        .y = wa * a.y + wb * b.y,
-        .z = wa * a.z + wb * b.z,
-        .w = wa * a.w + wb * b.w,
-    };
-    r = quat_normalize(r);
-    return r;
+	return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
 
-Mat4 quat_to_mat4(const Quat in_q)
+Quat quat_add(const Quat a, const Quat b)
 {
-    Quat q = in_q;
+	return (Quat) {
+		.x = a.x + b.x,
+		.y = a.y + b.y,
+		.z = a.z + b.z,
+		.w = a.w + b.w,
+	};
+}
 
-    // check normalized
-    if (fabsf(quat_size_squared(q) - 1.0f) > 0.001)
-    {
-        printf("quat_to_mat4 error: quaternion should be normalized \n");
-        q = quat_normalize(q);
-    }
+Quat quat_nlerp(float t, const Quat a, const Quat b)
+{
+	t = CLAMP(t, 0.0f, 1.0f);
+	return quat_add(quat_scale(a,1.0f - t), quat_scale(b, t));	
+}
 
-    float x = q.x;
-    float x2 = x * x;
-    float y = q.y;
-    float y2 = y * y;
-    float z = q.z;
-    float z2 = z * z;
-    float w = q.w;
-    float w2 = w * w;
+Quat quat_slerp(float t, const Quat a, const Quat b)
+{
+	t = CLAMP(t, 0.0f, 1.0f);
+    float angle = acosf(quat_dot(a,b));
+    float denom = sinf(angle);
 
-    float xy = x * y;
-    float wx = w * x;
-    float xz = x * z;
-    float wy = w * y;
-    float yz = y * z;
-    float wz = w * z;
+	Quat a_scaled = quat_scale(a, sin((1-t)*angle));
+	Quat b_scaled = quat_scale(b, sin(t*angle));
+	Quat result = quat_scale(quat_add(a_scaled,b_scaled), 1.0f / denom);
 
-	//FCS TODO: Just fill in the values transposed...
-    return mat4_transpose((Mat4){
-		.d = {
-			1 - 2 * y2 - 2 * z2, 2 * xy - 2 * wz, 2 * xz + 2 * wy, 0,
-			2 * xy + 2 * wz, 1 - 2 * x2 - 2 * z2, 2 * yz - 2 * wx, 0,
-			2 * xz - 2 * wy, 2 * yz + 2 * wx, 1 - 2 * x2 - 2 * y2, 0,
-			0, 0, 0, 1,
-		},
-    });
+	return result;
+}
+
+bool quat_nearly_equal(const Quat a, const Quat b)
+{
+	return 	float_nearly_equal(a.x, b.x)
+		&&	float_nearly_equal(a.y, b.y)
+		&&	float_nearly_equal(a.z, b.z)
+		&&	float_nearly_equal(a.w, b.w);
 }

@@ -191,32 +191,11 @@ int main()
 		return 1;
 	}
 
-	//FCS TODO: Pass JointData as arg, have it assert that it has enough space for all joints already allocated...
+	//FCS TODO: BEGIN Move this logic to AnimatedModel as well?
 	float animation_start = animated_model.baked_animation.start_time;
 	float animation_end = animated_model.baked_animation.end_time;
 	float current_anim_time = animation_start;
-	JointData animated_joint_data = animated_model_sample_animation(&animated_model, current_anim_time);
-	size_t animated_joint_buffer_size = animated_joint_data.num_joints * sizeof(Mat4);
-
-	// Joint matrices passed to skinned vertex shader
-	GpuBuffer animated_joint_buffer  = gpu_create_buffer(
-		&gpu_context, 
-		GPU_BUFFER_USAGE_STORAGE_BUFFER,
-		GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-		animated_joint_buffer_size, 
-		"animated_joint_buffer"
-	);
-
-	// Joint matrices passed to joint visualization shader
-	GpuBuffer joint_transform_buffer = gpu_create_buffer(
-		&gpu_context, 
-		GPU_BUFFER_USAGE_STORAGE_BUFFER,
-		GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-		animated_joint_buffer_size, 
-		"joint_transform_buffer"
-	);
-
-	//FCS TODO: Move animated_joint_buffer to animated_model...
+	//FCS TODO: END
 
 	StaticModel static_model;
 	if (!static_model_load("data/meshes/monkey.glb", &gpu_context, &static_model))
@@ -426,17 +405,17 @@ int main()
 			{
 				.binding_desc = &pipeline_layout.descriptor_layout.bindings[2],
 				.buffer_write = &(GpuDescriptorWriteBuffer){
-					.buffer = &animated_joint_buffer,
+					.buffer = &animated_model.joint_matrices_buffer,
 					.offset = 0,
-					.range = animated_joint_buffer_size,
+					.range = animated_model.joints_buffer_size,
 				}
 			},
 			{
 				.binding_desc = &pipeline_layout.descriptor_layout.bindings[3],
 				.buffer_write = &(GpuDescriptorWriteBuffer){
-					.buffer = &joint_transform_buffer,
+					.buffer = &animated_model.inverse_bind_matrices_buffer,
 					.offset = 0,
-					.range = animated_joint_buffer_size,
+					.range = animated_model.joints_buffer_size,
 				}
 			}
 		};
@@ -739,8 +718,8 @@ int main()
 		static float animation_rate = 1.0f;
         gui_window_slider_float(&gui_context, &gui_window_1, &animation_rate, vec2_new(-5.0, 5.0), "Anim Rate");
 
-        static float rotation_rate = 1.25f;
-        gui_window_slider_float(&gui_context, &gui_window_1, &rotation_rate, vec2_new(-25.0, 25.0), "Rot Rate");
+        static float model_rotation = 135.0f;
+        gui_window_slider_float(&gui_context, &gui_window_1, &model_rotation, vec2_new(-360, 360), "Anim Model Rotation");
         for (u32 i = 0; i < 12; ++i)
         {
             char buffer[256];
@@ -869,7 +848,7 @@ int main()
 			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &joint_vis_pipeline);
 			gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
 			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &descriptor_sets[current_frame]);
-			//gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count, animated_joint_data.num_joints);
+			gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count, animated_model.num_joints);
 		}
 
 		{	// Draw Our Static Geometry
@@ -978,17 +957,11 @@ int main()
 				current_anim_time = animation_start;
 			}
 
-			animated_joint_data = animated_model_sample_animation(&animated_model, current_anim_time);
-			gpu_upload_buffer(&gpu_context, &animated_joint_buffer, animated_joint_buffer_size, animated_joint_data.joint_matrices);
-			gpu_upload_buffer(&gpu_context, &joint_transform_buffer, animated_joint_buffer_size, animated_joint_data.joint_transforms);
+			animated_model_update_animation(&gpu_context, &animated_model, current_anim_time);
 		}
 
         {
-            //Quat q1 = quat_new(vec3_new(0, 1, 0), 0 * DEGREES_TO_RADIANS);
-            //Quat q2 = quat_new(vec3_new(1, 0, 0), 180 * DEGREES_TO_RADIANS);
-			//Quat q3 = quat_new(vec3_new(0, 0, 1), 180 * DEGREES_TO_RADIANS);
-
-            Quat q1 = quat_new(vec3_new(0, 1, 0), 135 * DEGREES_TO_RADIANS);
+            Quat q1 = quat_new(vec3_new(0, 1, 0), model_rotation * DEGREES_TO_RADIANS);
             Quat q2 = quat_new(vec3_new(1, 0, 0), 0 * DEGREES_TO_RADIANS);
 			Quat q3 = quat_new(vec3_new(0, 0, 1), 0 * DEGREES_TO_RADIANS);
 
