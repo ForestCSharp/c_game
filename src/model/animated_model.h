@@ -407,6 +407,9 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
             GltfAnimationChannel* gltf_channel = &animation->channels[channel_idx];
             GltfAnimationSampler* gltf_sampler = gltf_channel->sampler;
 
+			//FCS TODO: Support other interpolation methods
+			assert(gltf_sampler->interpolation == GLTF_INTERPOLATION_LINEAR);
+
             source_channel->node = gltf_channel->target.node;
             source_channel->path = gltf_channel->target.path;
 
