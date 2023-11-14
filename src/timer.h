@@ -2,8 +2,21 @@
 
 #if defined(_WIN32)
 
-// FCS TODO: QueryPerformanceCounter...
-#pragma message "TODO: NOT YET IMPLEMENTED ON WINDOWS"
+//#include "profileapi.h" // FCS TODO: QueryPerformanceCounter...
+#include "time.h"
+
+//NOTE: windows clock() function returns wall time, rather than cpu time used by the process
+
+u64 time_now()
+{
+    // clock() returns a 32-bit int on windows
+    return (u64) clock();
+}
+
+double time_seconds(u64 in_time)
+{
+    return (double) in_time / (double) CLOCKS_PER_SEC;
+}
 
 #elif defined(__APPLE__)
 

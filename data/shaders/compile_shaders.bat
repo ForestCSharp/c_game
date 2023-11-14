@@ -1,9 +1,14 @@
 @echo off
 
-pushd %~p0
+pushd %~p0\vertex
 call :compile_shader_extension "vert"
 call :compile_shader_extension "frag"
-popd %~p0
+popd
+
+pushd %~p0\fragment
+call :compile_shader_extension "vert"
+call :compile_shader_extension "frag"
+popd
 
 EXIT /B 0
 
