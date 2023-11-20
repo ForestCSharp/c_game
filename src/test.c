@@ -44,7 +44,7 @@ bool test_mat4_inverse()
 	{
 		for (i32 col = 0; col < 4; ++col)
 	  		{
-	  			assert(float_nearly_equal(result.d[row][col], mat4_identity.d[row][col]));
+	  			assert(f32_nearly_equal(result.d[row][col], mat4_identity.d[row][col]));
 	  		}
 	}
 

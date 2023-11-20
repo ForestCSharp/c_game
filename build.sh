@@ -24,6 +24,7 @@ cp /usr/local/lib/libvulkan.dylib ./bin/
 clang -ObjC -g ./src/main.c ./bin/libvulkan.dylib \
 	-o bin/game \
 	-I /usr/local/include/vulkan \
+	-I ./src/ \
 	-framework Cocoa \
 	-framework Metal \
 	-framework MetalKit \

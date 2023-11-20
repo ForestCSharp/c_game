@@ -8,6 +8,8 @@ typedef struct Vec2
     float y;
 } Vec2;
 
+const Vec2 vec2_zero = {.x = 0, .y = 0};
+
 void vec2_print(const Vec2 vec)
 {
     printf("[%f %f] ", vec.x, vec.y);
@@ -86,8 +88,8 @@ Vec2 vec2_rotate(const Vec2 v, const float radians)
 
 bool vec2_nearly_equal(const Vec2 a, const Vec2 b)
 {
-	return 	float_nearly_equal(a.x, b.x)
-		&&	float_nearly_equal(a.y, b.y);
+	return 	f32_nearly_equal(a.x, b.x)
+		&&	f32_nearly_equal(a.y, b.y);
 }
 
 typedef struct Vec3
@@ -147,8 +149,7 @@ Vec3 vec3_sub(const Vec3 a, const Vec3 b)
 
 float vec3_dot(const Vec3 a, const Vec3 b)
 {
-    float result = a.x * b.x + a.y * b.y + a.z * b.z;
-    return result;
+    return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
 Vec3 vec3_cross(const Vec3 a, const Vec3 b)
@@ -163,7 +164,7 @@ Vec3 vec3_cross(const Vec3 a, const Vec3 b)
 
 float vec3_length_squared(const Vec3 v)
 {
-    return v.x * v.x + v.y * v.y + v.z * v.z;
+    return vec3_dot(v, v);
 }
 
 float vec3_length(const Vec3 v)
@@ -199,9 +200,9 @@ Vec3 vec3_plane_projection(const Vec3 v, const Vec3 plane_normal)
 
 bool vec3_nearly_equal(const Vec3 a, const Vec3 b)
 {
-		return 	float_nearly_equal(a.x, b.x)
-			&&	float_nearly_equal(a.y, b.y)
-			&&	float_nearly_equal(a.z, b.z);
+		return 	f32_nearly_equal(a.x, b.x)
+			&&	f32_nearly_equal(a.y, b.y)
+			&&	f32_nearly_equal(a.z, b.z);
 }
 
 typedef struct Vec4
@@ -293,10 +294,10 @@ Vec3 vec4_xyz(const Vec4 v)
 
 bool vec4_nearly_equal(const Vec4 a, const Vec4 b)
 {
-	return 	float_nearly_equal(a.x, b.x)
-		&&	float_nearly_equal(a.y, b.y)
-		&&	float_nearly_equal(a.z, b.z)
-		&&	float_nearly_equal(a.w, b.w);
+	return  f32_nearly_equal(a.x, b.x)
+		&&	f32_nearly_equal(a.y, b.y)
+		&&	f32_nearly_equal(a.z, b.z)
+		&&	f32_nearly_equal(a.w, b.w);
 }
 
 // Floating point LHS

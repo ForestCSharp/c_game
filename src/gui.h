@@ -815,7 +815,7 @@ bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_re
 
         // FCS TODO: Scrolling math
         const u32 first_visible_index = (u32) in_window->scroll_amount;
-        // const float first_visible_offset = float_fractional(in_window->scroll_amount);
+        // const float first_visible_offset 322_fractional(in_window->scroll_amount);
         const u32 max_visible_controls = (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
         const u32 last_visible_index = first_visible_index + max_visible_controls;
 

@@ -26,4 +26,9 @@ TODO: window keeps handling messages on MAC after closing (escape properly shuts
 TODO: Dedicated logging and memory files (Memory: linked memory. Allows freeing grouped allocations with a single call...)
 TODO: Helper to copy all data (or some number of elements) from an accessor into a preallocated array...
 TODO: Replace all usages with types.h typedefs (floats + ints)
-TODO: Joint visualization
+
+TODO: PerFrameResources (for keeping a per-frame copy of things like uniform buffers...)
+TODO: Better Descriptor set management in general. Make it easy to add new uniform buffers independent from existing data
+		At the very least, definitely need a separate "GLOBAL" uniform buffer in addition to our per-object buffers
+
+TODO: Reorganize main into a proper game loop, pull out testing logic

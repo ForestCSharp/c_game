@@ -65,10 +65,15 @@ Quat quat_normalize(const Quat q)
     return quat_scale(q, 1.0f / size);
 }
 
-// TODO: quat_inverse: If the quaternion q = <w, v> is a unit quaternion, then its inverse is just its conjugate: q{-1}
-// = <w, -v> (just negate x,y,z)
-
-// (s1,v1) * (s2, v2) = (s1s2 - v1 dot v2, s1v2 + s2v1 + v1 cross v2)
+Quat quat_conjugate(const Quat q)
+{
+	return (Quat) {
+		.x = -q.x,
+		.y = -q.y,
+		.z = -q.z,
+		.w = q.w,
+	};
+}
 
 Quat quat_mul(const Quat q1, const Quat q2)
 {
@@ -116,8 +121,24 @@ Quat quat_slerp(float t, const Quat a, const Quat b)
 
 bool quat_nearly_equal(const Quat a, const Quat b)
 {
-	return 	float_nearly_equal(a.x, b.x)
-		&&	float_nearly_equal(a.y, b.y)
-		&&	float_nearly_equal(a.z, b.z)
-		&&	float_nearly_equal(a.w, b.w);
+	return 	f32_nearly_equal(a.x, b.x)
+		&&	f32_nearly_equal(a.y, b.y)
+		&&	f32_nearly_equal(a.z, b.z)
+		&&	f32_nearly_equal(a.w, b.w);
+}
+
+Vec3 quat_rotate_vec3(const Quat q, const Vec3 v)
+{
+	const Quat vector_quat = {
+		.x = v.x,
+		.y = v.y,
+		.z = v.z,
+		.w = 0.0f,
+	};
+
+	const Quat q_conjugate = quat_conjugate(q);
+
+	const Quat result_quat = quat_mul(quat_mul(q, vector_quat), q_conjugate);
+
+	return vec3_new(result_quat.x, result_quat.y, result_quat.z);
 }

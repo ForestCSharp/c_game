@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../basic_math.h"
-#include "../gltf.h"
-#include "../gpu.h"
-#include "../types.h"
+#include "basic_math.h"
+#include "gltf.h"
+#include "gpu.h"
+#include "types.h"
 #include "assert.h"
 
 // ---- Source Animation: References GLTF Hierarchy Directly... slow to compute poses ---- //
@@ -451,7 +451,7 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
         const float timestep = 1.0f / 60.0f;
 
 		i32 num_keyframes = (i32) ceil(animation_duration / timestep);
-		if (!float_nearly_equal(optional_get(animation_start) + timestep * (num_keyframes - 1), optional_get(animation_end)))
+		if (!f32_nearly_equal(optional_get(animation_start) + timestep * (num_keyframes - 1), optional_get(animation_end)))
 		{
 			++num_keyframes;
 		}

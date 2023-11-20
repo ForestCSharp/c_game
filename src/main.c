@@ -21,13 +21,23 @@
 #include "model/static_model.h"
 #include "model/animated_model.h"
 #include "gui.h"
-#include "physics.h"
 
 // FCS TODO: Testing collision
-#include "collision.h"
+#include "physics/collision.h"
+#include "physics/collision_render.h"
 
 // FCS TODO: Testing truetype
 #include "truetype.h"
+
+typedef struct UniformStruct
+{
+	Mat4 model;
+	Mat4 view;
+	Mat4 projection;
+	Mat4 mvp;
+	Vec4 eye;
+	Vec4 light_dir;
+} UniformStruct;
 
 bool read_file(const char *filename, size_t *out_file_size, u32 **out_data)
 {
@@ -73,66 +83,6 @@ GpuShaderModule create_shader_module_from_file(GpuContext *gpu_context, const ch
     return module;
 }
 
-// Computes all possible triangles (as vertices) for a convex solid, returned in a stretchy buffer
-StaticVertex *compute_all_triangles(Vec3 *in_vertices, Vec4 in_color)
-{
-    sbuffer(StaticVertex) out_verts = NULL;
-    u32 num_verts = sb_count(in_vertices);
-
-    Vec3 center = vec3_new(0, 0, 0);
-    for (size_t i = 0; i < num_verts; i++)
-    {
-        center.x += in_vertices[i].x;
-        center.y += in_vertices[i].y;
-        center.z += in_vertices[i].z;
-    }
-    center.x /= num_verts;
-    center.y /= num_verts;
-    center.z /= num_verts;
-
-    for (int i = 0; i < num_verts - 2; ++i)
-    {
-        for (int j = i + 1; j < num_verts - 1; ++j)
-        {
-            for (int k = j + 1; k < num_verts; ++k)
-            {
-                Vec3 pos_i = in_vertices[i];
-                Vec3 pos_j = in_vertices[j];
-                Vec3 pos_k = in_vertices[k];
-
-                // Compute normal
-                const Vec3 j_min_i = vec3_sub(pos_j, pos_i);
-                const Vec3 k_min_i = vec3_sub(pos_k, pos_i);
-                Vec3 normal = vec3_cross(j_min_i, k_min_i);
-                normal = vec3_normalize(normal); // FIXME: make normal always face outwards
-
-                Vec3 center_to_i = vec3_sub(pos_i, center);
-                center_to_i = vec3_normalize(center_to_i);
-
-                if (vec3_dot(normal, center_to_i) < 0)
-                {
-                    normal = vec3_negate(normal);
-                }
-
-                StaticVertex v = {
-                    .position = pos_i,
-                    .normal = normal,
-                    .color = in_color,
-                    .uv = vec2_new(0, 0),
-                };
-                sb_push(out_verts, v);
-                v.position = pos_j;
-                v.uv.x = 1;
-                sb_push(out_verts, v);
-                v.position = pos_k;
-                v.uv.y = 1;
-                sb_push(out_verts, v);
-            }
-        }
-    }
-    return out_verts;
-}
-
 float rand_float(float lower_bound, float upper_bound)
 {
     return lower_bound + (float)(rand()) / ((float)(RAND_MAX / (upper_bound - lower_bound)));
@@ -148,38 +98,9 @@ int main()
         // exit(0);
     }
 
-    test_collision(); // FCS TODO: See Collision.h
-
-    Collider ground_collider = make_cube_collider();
-
-    Collider *colliders = NULL;
-
-    // Ground
-    ground_collider.scale = vec3_new(100, 1, 100);
-    ground_collider.position = vec3_new(0, -5, 0);
-    ground_collider.is_kinematic = false;
-    sb_push(colliders, ground_collider);
-
-    const u32 dimensions = 3;
-    for (i32 x = 0; x < dimensions; ++x)
-    {
-        for (i32 y = 0; y < dimensions; ++y)
-        {
-            for (i32 z = 0; z < dimensions; ++z)
-            {
-                Collider collider = make_cube_collider();
-
-                const float spacing = 2.05f;
-                const float y_offset = 2.0f;
-                collider.position = vec3_scale(vec3_new(x + 5, y + y_offset, z), spacing);
-                sb_push(colliders, collider);
-            }
-        }
-    }
-
     Window window = window_create("C Game", 1920, 1080);
 
-    GpuContext gpu_context = gpu_create_context(&window);	
+    GpuContext gpu_context = gpu_create_context(&window);
 
 	AnimatedModel animated_model;
 	//if (!animated_model_load("data/meshes/simple_skin.glb", &gpu_context, &animated_model))
@@ -320,16 +241,6 @@ int main()
 
     // END GUI SETUP
 
-    typedef struct UniformStruct
-    {
-        Mat4 model;
-		Mat4 view;
-		Mat4 projection;
-        Mat4 mvp;
-        Vec4 eye;
-        Vec4 light_dir;
-    } UniformStruct;
-
     UniformStruct uniform_data = {
         .eye = vec4_new(0.0f, 0.0f, 0.0f, 1.0f),
         .light_dir = vec4_new(0.0f, -1.0f, 1.0f, 0.0f),
@@ -339,9 +250,10 @@ int main()
     for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
     {
         uniform_buffers[i] = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_UNIFORM_BUFFER,
-                                               GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
-                                                   GPU_MEMORY_PROPERTY_HOST_COHERENT,
-                                               sizeof(UniformStruct), "uniform_buffer");
+			GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
+			GPU_MEMORY_PROPERTY_HOST_COHERENT,
+			sizeof(UniformStruct), "uniform_buffer"
+		);
     }
 
     GpuShaderModule static_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/vertex/static.vert.spv");
@@ -423,54 +335,109 @@ int main()
         gpu_write_descriptor_set(&gpu_context, &descriptor_sets[i], 4, descriptor_writes);
     }
 
-    // BEGIN COLLIDERS GPU DATA SETUP
-    sbuffer(StaticVertex) cube_render_vertices =
-        compute_all_triangles(ground_collider.convex_points, vec4_new(0, 0.5, 0.0, 1.0));
-    u32 cube_vertices_count = sb_count(cube_render_vertices);
+
+	//BEGIN TEST COLLISION
+
+	test_collision(); // FCS TODO: See Collision.h
+
+	static const i32 NUM_COLLIDERS = 3;
+
+	Collider colliders[NUM_COLLIDERS] = 
+	{
+		{
+			.type = COLLIDER_TYPE_SPHERE,
+			.sphere = {
+				.center = vec3_new(5, 15, 0),
+				.radius = 1.0f,
+			},
+		},
+		{
+			.type = COLLIDER_TYPE_CAPSULE,
+			.capsule = {
+				.center = vec3_new(12,0,0),
+				.orientation = quat_identity,
+				.half_height = 5.0f,
+				.radius = 2.0f,
+			},
+		},
+		{
+			.type = COLLIDER_TYPE_OBB,
+			.obb = {
+				.center = vec3_new(5,0,0),
+				.orientation = quat_identity,
+				.halfwidths = {3.f, 2.f, 5.f},
+			},
+		},
+	};
+
+	ColliderRenderData collider_render_datas[NUM_COLLIDERS];
+    GpuBuffer collider_uniform_buffers[NUM_COLLIDERS];
+	GpuDescriptorSet collider_descriptor_sets[NUM_COLLIDERS];
+    for (u32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
+    {
+		collider_render_data_create(&gpu_context, &colliders[collider_idx], &collider_render_datas[collider_idx]);
+
+        collider_uniform_buffers[collider_idx] = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_UNIFORM_BUFFER,
+		   GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
+		   GPU_MEMORY_PROPERTY_HOST_COHERENT,
+		   sizeof(UniformStruct), "collider_uniform_buffer"
+		);
+
+		collider_descriptor_sets[collider_idx] = gpu_create_descriptor_set(&gpu_context, &pipeline_layout);
+
+        GpuDescriptorWrite collider_descriptor_writes[1] = {
+			{
+				.binding_desc = &pipeline_layout.descriptor_layout.bindings[0],
+				.buffer_write = &(GpuDescriptorWriteBuffer) {
+						.buffer = &collider_uniform_buffers[collider_idx],
+						.offset = 0,
+						.range = sizeof(uniform_data),
+				}
+			},
+		};
+
+        gpu_write_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx], 1, collider_descriptor_writes);
+    }
+
+	Quat collider_debug_rotation = quat_identity; 
+
+	//END TEST COLLISION
+
+	//JOINT VIS DATA
+
+	const i32 cube_vertices_count = 36;
+	Vec3 cube_vert_positions[cube_vertices_count] = 
+	{
+		vec3_new(-1,-1,-1),		vec3_new(1,-1,-1),	vec3_new(-1, 1, -1), 
+		vec3_new(-1, 1, -1),	vec3_new(1,-1,-1),	vec3_new(1,1,-1),
+		vec3_new(-1,-1,1), 		vec3_new(1,-1,1), 	vec3_new(-1, 1, 1),
+		vec3_new(-1, 1, 1), 	vec3_new(1,-1,1), 	vec3_new(1,1,1),
+		vec3_new(-1,-1,-1),		vec3_new(-1,1,-1),	vec3_new(-1, -1, 1),
+		vec3_new(-1, -1, 1),	vec3_new(-1,1,-1),	vec3_new(-1,1,1),
+		vec3_new(1,-1,-1),		vec3_new(1,1,-1),	vec3_new(1, -1, 1),
+		vec3_new(1, -1, 1),		vec3_new(1,1,-1),	vec3_new(1,1,1),	
+		vec3_new(-1,-1,-1),		vec3_new(-1,-1,1),	vec3_new(1, -1, -1),
+		vec3_new(1, -1, -1),	vec3_new(-1,-1,1),	vec3_new(1,-1,1),
+		vec3_new(-1,1,-1),		vec3_new(-1,1,1),	vec3_new(1, 1, -1),
+		vec3_new(1, 1, -1),		vec3_new(-1,1,1),	vec3_new(1,1,1),	
+	};
+
+	StaticVertex cube_vertices[cube_vertices_count];
+	for (i32 i = 0; i < cube_vertices_count; ++i)
+	{
+		cube_vertices[i] = (StaticVertex) {
+	 		.position = cube_vert_positions[i],
+	  		.normal = vec3_new(0,0,0),
+	  		.color = vec4_new(0,0,1,1),
+	  		.uv = vec2_new(0,0),
+		};
+	}
+
     size_t cube_vertices_size = sizeof(StaticVertex) * cube_vertices_count;
 	GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
     GpuBuffer cube_vertex_buffer = gpu_create_buffer(
         &gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, cube_vertices_size, "cube vertex buffer");
-    gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertices_size, cube_render_vertices);
-    sb_free(cube_render_vertices);
-
-    GpuBuffer *collider_uniform_buffers = NULL;
-    sb_add(collider_uniform_buffers, sb_count(colliders));
-    GpuDescriptorSet *collider_descriptor_sets = NULL;
-    sb_add(collider_descriptor_sets, sb_count(colliders));
-
-    for (u32 i = 0; i < sb_count(collider_uniform_buffers); ++i)
-    {
-        char debug_name[50];
-        sprintf(debug_name, "collider uniform buffer #%i", i);
-        collider_uniform_buffers[i] = gpu_create_buffer(
-            &gpu_context, GPU_BUFFER_USAGE_UNIFORM_BUFFER,
-            GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-            sizeof(UniformStruct), debug_name);
-
-        collider_descriptor_sets[i] = gpu_create_descriptor_set(&gpu_context, &pipeline_layout);
-
-        GpuDescriptorWrite collider_descriptor_writes[2] = {
-            {.binding_desc = &pipeline_layout.descriptor_layout.bindings[0],
-             .buffer_write =
-                 &(GpuDescriptorWriteBuffer){
-                     .buffer = &collider_uniform_buffers[i],
-                     .offset = 0,
-                     .range = sizeof(uniform_data),
-                 }},
-            {
-                .binding_desc = &pipeline_layout.descriptor_layout.bindings[1],
-                .image_write =
-                    &(GpuDescriptorWriteImage){
-                        .image_view = &font_image_view,
-                        .sampler = &font_sampler,
-                        .layout = GPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
-                    },
-            }};
-
-        gpu_write_descriptor_set(&gpu_context, &collider_descriptor_sets[i], 2, collider_descriptor_writes);
-    }
-    // END COLLIDERS GPU DATA SETUP
+    gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertices_size, cube_vertices);
 
     GpuFormat static_attribute_formats[] = {
         GPU_FORMAT_RGB32_SFLOAT,
@@ -493,6 +460,25 @@ int main()
 
     GpuPipeline static_pipeline = gpu_create_graphics_pipeline(&gpu_context, &static_pipeline_create_info);
 
+
+    GpuGraphicsPipelineCreateInfo static_wireframe_pipeline_create_info = {
+		.vertex_module = &static_vertex_module,
+	   .fragment_module = &shaded_fragment_module,
+	   .rendering_info = &dynamic_rendering_info,
+	   .layout = &pipeline_layout,
+	   .num_attributes = 4,
+	   .attribute_formats = static_attribute_formats,
+	   .depth_stencil = {
+		   .depth_test = true,
+		   .depth_write = true,
+		},
+		.rasterizer = {
+			.polygon_mode = GPU_POLYGON_MODE_LINE,
+		},
+	};
+
+	GpuPipeline static_wireframe_pipeline = gpu_create_graphics_pipeline(&gpu_context, &static_wireframe_pipeline_create_info);
+
 	GpuGraphicsPipelineCreateInfo joint_vis_pipeline_create_info = {
 		.vertex_module = &joint_vis_vertex_module,
 	   .fragment_module = &unshaded_fragment_module,
@@ -503,18 +489,23 @@ int main()
 	   .depth_stencil = {
 		   .depth_test = false,
 		   .depth_write = false,
-	}};
+		},
+		.rasterizer = {
+			.polygon_mode = GPU_POLYGON_MODE_LINE,
+		},
+	};
 
 	GpuPipeline joint_vis_pipeline = gpu_create_graphics_pipeline(&gpu_context, &joint_vis_pipeline_create_info);
 
-	GpuFormat skinned_attribute_formats[] = {
-		        GPU_FORMAT_RGB32_SFLOAT,
-		        GPU_FORMAT_RGB32_SFLOAT,
-		        GPU_FORMAT_RGBA32_SFLOAT,
-		        GPU_FORMAT_RG32_SFLOAT,
-				GPU_FORMAT_RGBA32_SFLOAT, //should be int?
-				GPU_FORMAT_RGBA32_SFLOAT  //should be int?
-		    };
+	GpuFormat skinned_attribute_formats[] = 
+	{
+		GPU_FORMAT_RGB32_SFLOAT,
+		GPU_FORMAT_RGB32_SFLOAT,
+		GPU_FORMAT_RGBA32_SFLOAT,
+		GPU_FORMAT_RG32_SFLOAT,
+		GPU_FORMAT_RGBA32_SFLOAT, //should be int?
+		GPU_FORMAT_RGBA32_SFLOAT  //should be int?
+	};
 
     GpuGraphicsPipelineCreateInfo skinned_pipeline_create_info = {
 		.vertex_module = &skinned_vertex_module,
@@ -859,17 +850,19 @@ int main()
 			//gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &static_model.vertex_buffer);
 			//gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &descriptor_sets[current_frame]);
 			//gpu_cmd_draw_indexed(&command_buffers[current_frame], static_model.num_indices, 1);
+		}
 
-			// Physics Objects
-			for (u32 i = 0; i < sb_count(colliders); ++i)
+		{	// Draw our colliders
+			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_wireframe_pipeline);
+			
+			for (i32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
 			{
-				// FIXME: one vertex buffer per collider (we're assuming all same-data (cubes) currently)
-				gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
-				gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout,
-								&collider_descriptor_sets[i]);
-				gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count, 1);
-			}
-		}	
+				gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &collider_render_datas[collider_idx].index_buffer);
+				gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &collider_render_datas[collider_idx].vertex_buffer);
+				gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &pipeline_layout, &collider_descriptor_sets[collider_idx]);
+				gpu_cmd_draw_indexed(&command_buffers[current_frame], collider_render_datas[collider_idx].num_indices, 1);
+			}			
+		}
 
         // BEGIN gui rendering
         gpu_cmd_bind_pipeline(&command_buffers[current_frame], &gui_pipeline);
@@ -988,37 +981,17 @@ int main()
 
             gpu_upload_buffer(&gpu_context, &uniform_buffers[current_frame], sizeof(uniform_data), &uniform_data);
 
-            // BEGIN COLLIDERS GPU DATA UPDATE
-            if (input_pressed(KEY_SPACE))
-            {
-                for (i32 i = 1; i < sb_count(colliders); ++i)
-                {
-                    physics_add_force(&colliders[i], vec3_new(0, -10 * colliders[i].mass, 0));
-                }
-                physics_run_simulation(colliders, delta_time);
-            }
-
-            for (u32 i = 0; i < sb_count(collider_uniform_buffers); ++i)
-            {
-                Mat4 collider_scale = mat4_scale(colliders[i].scale);
-                Mat4 collider_rotation = quat_to_mat4(colliders[i].rotation);
-                Mat4 collider_translation = mat4_translation(colliders[i].position);
-                Mat4 scale_rot = mat4_mul_mat4(collider_scale, collider_rotation);
-                Mat4 collider_transform = mat4_mul_mat4(scale_rot, collider_translation);
-                Mat4 collider_mv = mat4_mul_mat4(collider_transform, view);
-                Mat4 collider_mvp = mat4_mul_mat4(collider_mv, proj);
-
-                UniformStruct collider_uniform_data = {
-                    .model = collider_transform,
-                    .mvp = collider_mvp,
-                    .eye = uniform_data.eye,
-                    .light_dir = uniform_data.light_dir,
-                };
-
-                gpu_upload_buffer(&gpu_context, &collider_uniform_buffers[i], sizeof(collider_uniform_data),
-                                  &collider_uniform_data);
-            }
-            // END COLLIDERS GPU DATA UPDATE
+			collider_debug_rotation = quat_mul(collider_debug_rotation, quat_new(vec3_new(0,1,0), delta_time * 0.5f));	
+			for (i32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
+			{	
+				Mat4 collider_transform = collider_compute_transform(&colliders[collider_idx]);
+				uniform_data.model = mat4_mul_mat4(quat_to_mat4(collider_debug_rotation), collider_transform); 
+				uniform_data.view = view;
+            	Mat4 mv = mat4_mul_mat4(uniform_data.model, uniform_data.view);
+				uniform_data.projection = proj;
+				uniform_data.mvp = mat4_mul_mat4(mv, proj);
+				gpu_upload_buffer(&gpu_context, &collider_uniform_buffers[collider_idx], sizeof(uniform_data), &uniform_data);
+			}
         }
 
         current_frame = (current_frame + 1) % gpu_context.swapchain_image_count;
@@ -1028,18 +1001,19 @@ int main()
 
     gpu_wait_idle(&gpu_context);
 
+    for (u32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
+	{
+		collider_render_data_free(&gpu_context, &collider_render_datas[collider_idx]);
+		gpu_destroy_buffer(&gpu_context, &collider_uniform_buffers[collider_idx]);
+		gpu_destroy_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx]);
+	}
+
     for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
     {
         gpu_free_command_buffer(&gpu_context, &command_buffers[i]);
         gpu_destroy_semaphore(&gpu_context, &image_acquired_semaphores[i]);
         gpu_destroy_semaphore(&gpu_context, &render_complete_semaphores[i]);
         gpu_destroy_fence(&gpu_context, &in_flight_fences[i]);
-    }
-
-    for (u32 i = 0; i < sb_count(colliders); ++i)
-    {
-        gpu_destroy_descriptor_set(&gpu_context, &collider_descriptor_sets[i]);
-        gpu_destroy_buffer(&gpu_context, &collider_uniform_buffers[i]);
     }
 
     gpu_destroy_buffer(&gpu_context, &gui_vertex_buffer);

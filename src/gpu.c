@@ -1513,7 +1513,7 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext *context, GpuGraphicsPipelin
         .flags = 0,
         .depthClampEnable = VK_FALSE,
         .rasterizerDiscardEnable = VK_FALSE,
-        .polygonMode = VK_POLYGON_MODE_FILL,
+        .polygonMode = (VkPolygonMode) create_info->rasterizer.polygon_mode,
         .cullMode = VK_CULL_MODE_NONE,
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,

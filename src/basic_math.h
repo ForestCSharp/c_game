@@ -62,7 +62,7 @@ float radians_to_degrees(const float radians)
     return radians * RADIANS_TO_DEGREES;
 }
 
-float float_fractional(const float input)
+float f32_fractional(const float input)
 {
     float integral;
     return modff(input, &integral);
@@ -70,12 +70,12 @@ float float_fractional(const float input)
 
 #define ZERO_TOLERANCE 0.0001
 
-bool float_nearly_zero(const float value)
+bool f32_nearly_zero(const float value)
 {
 	return ABS(value) <= ZERO_TOLERANCE;
 }
 
-bool float_nearly_equal(const float a, const float b)
+bool f32_nearly_equal(const float a, const float b)
 {
-	return float_nearly_zero(a - b);
+	return f32_nearly_zero(a - b);
 }

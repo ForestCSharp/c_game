@@ -139,6 +139,13 @@ typedef enum GpuPipelineStageFlagBits
 } GpuPipelineStage;
 typedef u32 GpuPipelineStageFlags;
 
+typedef enum GpuPolygonMode
+{
+	GPU_POLYGON_MODE_FILL = VK_POLYGON_MODE_FILL,
+	GPU_POLYGON_MODE_LINE = VK_POLYGON_MODE_LINE,
+	GPU_POLYGON_MODE_POINT = VK_POLYGON_MODE_POINT,
+} GpuPolygonMode;
+
 typedef struct GpuMemoryType
 {
     struct GpuMemoryBlock* memory_blocks;
@@ -313,7 +320,9 @@ typedef struct GpuGraphicsPipelineCreateInfo
     GpuFormat* attribute_formats;
     GpuPipelineDepthStencilState depth_stencil;
     bool enable_color_blending; // FCS TODO: need to pass in per-color attachment for this
-    // TODO: More FixedFunction State
+	struct {
+		GpuPolygonMode polygon_mode;
+	} rasterizer;
 } GpuGraphicsPipelineCreateInfo;
 
 typedef struct GpuPipeline

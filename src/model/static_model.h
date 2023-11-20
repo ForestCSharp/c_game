@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../gltf.h"
-#include "../gpu.h"
-#include "../types.h"
+#include "gltf.h"
+#include "gpu.h"
+#include "types.h"
 #include "assert.h"
 
 typedef struct StaticVertex
