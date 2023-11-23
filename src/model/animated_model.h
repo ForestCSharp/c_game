@@ -1,6 +1,9 @@
 #pragma once
 
-#include "basic_math.h"
+#include "math/basic_math.h"
+#include "math/matrix.h"
+#include "math/vec.h"
+#include "math/quat.h"
 #include "gltf.h"
 #include "gpu.h"
 #include "types.h"

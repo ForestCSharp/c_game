@@ -9,6 +9,7 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 mvp;
     vec4 eye;
     vec4 light_dir;	
+	bool is_colliding;
 } ubo;
 
 layout(binding = 2) readonly buffer JointBuffer {

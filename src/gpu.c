@@ -1,5 +1,5 @@
 #include "gpu.h"
-#include "basic_math.h"
+#include "math/basic_math.h"
 #include "stretchy_buffer.h"
 
 #include <assert.h>
@@ -8,14 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// FCS TODO: Move these to somewhere generic
-#ifndef MIN
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#endif
-
-#ifndef MAX
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
 
 // FCS TODO: MoltenVK testing
 PFN_vkCmdBeginRenderingKHR pfn_begin_rendering = NULL;

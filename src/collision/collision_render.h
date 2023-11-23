@@ -248,9 +248,10 @@ void collider_render_data_create(GpuContext* gpu_context, const Collider* in_col
 		}
 		case COLLIDER_TYPE_CAPSULE:
 		{
-			const Vec3 top_sphere_offset = vec3_scale(vec3_new(0,1,0), in_collider->capsule.half_height);
+			LineSegment segment = capsule_segment(in_collider->capsule);
+			const Vec3 top_sphere_offset = vec3_sub(segment.start, in_collider->capsule.center); 
 			append_uv_sphere(top_sphere_offset, in_collider->capsule.radius, 12, 12, &vertices, &indices);
-			const Vec3 bottom_sphere_offset = vec3_scale(vec3_new(0,-1,0), in_collider->capsule.half_height);
+			const Vec3 bottom_sphere_offset = vec3_sub(segment.end, in_collider->capsule.center);
 			append_uv_sphere(bottom_sphere_offset, in_collider->capsule.radius, 12, 12, &vertices, &indices);
 			const Vec3 capsule_offset = vec3_zero;
 			append_cylinder(capsule_offset, in_collider->capsule.radius, in_collider->capsule.half_height, 12, 12, &vertices, &indices);

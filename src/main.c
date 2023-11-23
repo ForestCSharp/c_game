@@ -9,10 +9,10 @@
 #define printf(...)
 #endif
 
-#include "matrix.h"
-#include "quat.h"
+#include "math/matrix.h"
+#include "math/quat.h"
+#include "math/vec.h"
 #include "stretchy_buffer.h"
-#include "vec.h"
 
 #include "gpu.c"
 #include "window/window.h"
@@ -23,8 +23,8 @@
 #include "gui.h"
 
 // FCS TODO: Testing collision
-#include "physics/collision.h"
-#include "physics/collision_render.h"
+#include "collision/collision.h"
+#include "collision/collision_render.h"
 
 // FCS TODO: Testing truetype
 #include "truetype.h"
@@ -37,6 +37,7 @@ typedef struct UniformStruct
 	Mat4 mvp;
 	Vec4 eye;
 	Vec4 light_dir;
+	bool is_colliding;
 } UniformStruct;
 
 bool read_file(const char *filename, size_t *out_file_size, u32 **out_data)
@@ -257,6 +258,7 @@ int main()
     }
 
     GpuShaderModule static_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/vertex/static.vert.spv");
+    GpuShaderModule collision_vis_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/vertex/collision_vis.vert.spv");
 	GpuShaderModule skinned_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/vertex/skinned.vert.spv");
 	GpuShaderModule joint_vis_vertex_module = create_shader_module_from_file(&gpu_context, "data/shaders/vertex/visualize_joints.vert.spv");
     GpuShaderModule shaded_fragment_module = create_shader_module_from_file(&gpu_context, "data/shaders/fragment/basic_shaded.frag.spv");
@@ -340,24 +342,22 @@ int main()
 
 	test_collision(); // FCS TODO: See Collision.h
 
-	static const i32 NUM_COLLIDERS = 3;
-
-	Collider colliders[NUM_COLLIDERS] = 
+	Collider colliders[] = 
 	{
 		{
 			.type = COLLIDER_TYPE_SPHERE,
 			.sphere = {
-				.center = vec3_new(5, 15, 0),
-				.radius = 1.0f,
+				.center = vec3_new(15, 0, 0),
+				.radius = 2.0f,
 			},
 		},
 		{
 			.type = COLLIDER_TYPE_CAPSULE,
 			.capsule = {
-				.center = vec3_new(12,0,0),
+				.center = vec3_new(10,0,0),
 				.orientation = quat_identity,
 				.half_height = 5.0f,
-				.radius = 2.0f,
+				.radius = 1.0f,
 			},
 		},
 		{
@@ -365,10 +365,20 @@ int main()
 			.obb = {
 				.center = vec3_new(5,0,0),
 				.orientation = quat_identity,
-				.halfwidths = {3.f, 2.f, 5.f},
+				.halfwidths = {3.f, 2.f, 8.f},
+			},
+		},
+		{
+			.type = COLLIDER_TYPE_OBB,
+			.obb = {
+				.center = vec3_new(-10,0,0),
+				.orientation = quat_identity,
+				.halfwidths = {3.f, 2.f, 8.f},
 			},
 		},
 	};
+
+	static const i32 NUM_COLLIDERS = sizeof(colliders) / sizeof(colliders[0]);
 
 	ColliderRenderData collider_render_datas[NUM_COLLIDERS];
     GpuBuffer collider_uniform_buffers[NUM_COLLIDERS];
@@ -398,8 +408,6 @@ int main()
 
         gpu_write_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx], 1, collider_descriptor_writes);
     }
-
-	Quat collider_debug_rotation = quat_identity; 
 
 	//END TEST COLLISION
 
@@ -461,9 +469,9 @@ int main()
     GpuPipeline static_pipeline = gpu_create_graphics_pipeline(&gpu_context, &static_pipeline_create_info);
 
 
-    GpuGraphicsPipelineCreateInfo static_wireframe_pipeline_create_info = {
-		.vertex_module = &static_vertex_module,
-	   .fragment_module = &shaded_fragment_module,
+    GpuGraphicsPipelineCreateInfo collision_vis_pipeline_create_info = {
+		.vertex_module = &collision_vis_vertex_module,
+	   .fragment_module = &unshaded_fragment_module,
 	   .rendering_info = &dynamic_rendering_info,
 	   .layout = &pipeline_layout,
 	   .num_attributes = 4,
@@ -477,7 +485,7 @@ int main()
 		},
 	};
 
-	GpuPipeline static_wireframe_pipeline = gpu_create_graphics_pipeline(&gpu_context, &static_wireframe_pipeline_create_info);
+	GpuPipeline collision_vis_pipeline = gpu_create_graphics_pipeline(&gpu_context, &collision_vis_pipeline_create_info);
 
 	GpuGraphicsPipelineCreateInfo joint_vis_pipeline_create_info = {
 		.vertex_module = &joint_vis_vertex_module,
@@ -522,6 +530,7 @@ int main()
 
     // destroy shader modules after creating pipeline
     gpu_destroy_shader_module(&gpu_context, &static_vertex_module);
+	gpu_destroy_shader_module(&gpu_context, &collision_vis_vertex_module);
     gpu_destroy_shader_module(&gpu_context, &skinned_vertex_module);
 	gpu_destroy_shader_module(&gpu_context, &joint_vis_vertex_module);
     gpu_destroy_shader_module(&gpu_context, &shaded_fragment_module);
@@ -711,6 +720,10 @@ int main()
 
         static float model_rotation = 135.0f;
         gui_window_slider_float(&gui_context, &gui_window_1, &model_rotation, vec2_new(-360, 360), "Anim Model Rotation");
+
+		static float collider_rotation = 90.0f;
+        gui_window_slider_float(&gui_context, &gui_window_1, &collider_rotation, vec2_new(-360, 360), "Collider Rotation");
+
         for (u32 i = 0; i < 12; ++i)
         {
             char buffer[256];
@@ -853,7 +866,7 @@ int main()
 		}
 
 		{	// Draw our colliders
-			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_wireframe_pipeline);
+			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &collision_vis_pipeline);
 			
 			for (i32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
 			{
@@ -963,11 +976,11 @@ int main()
             orientation = quat_normalize(q);
 
 			Vec3 scale = vec3_new(15,15,15);
-			//scale = vec3_scale(scale, 0.015);
 			Mat4 scale_matrix = mat4_scale(scale);
 			Mat4 orientation_matrix = quat_to_mat4(orientation);
+			Mat4 translation_matrix = mat4_translation(vec3_new(0, 30, 30));
 
-            Mat4 model = mat4_mul_mat4(scale_matrix, orientation_matrix); 
+            Mat4 model = mat4_mul_mat4(mat4_mul_mat4(scale_matrix, orientation_matrix), translation_matrix); 
             Mat4 view = mat4_look_at(position, target, up);
             Mat4 proj = mat4_perspective(60.0f, (float)width / (float)height, 0.01f, 1000.0f);
 
@@ -981,15 +994,32 @@ int main()
 
             gpu_upload_buffer(&gpu_context, &uniform_buffers[current_frame], sizeof(uniform_data), &uniform_data);
 
-			collider_debug_rotation = quat_mul(collider_debug_rotation, quat_new(vec3_new(0,1,0), delta_time * 0.5f));	
 			for (i32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
-			{	
-				Mat4 collider_transform = collider_compute_transform(&colliders[collider_idx]);
-				uniform_data.model = mat4_mul_mat4(quat_to_mat4(collider_debug_rotation), collider_transform); 
+			{
+				Collider* collider = &colliders[collider_idx];
+
+				collider_set_orientation(collider, quat_new(vec3_new(0,0,1), collider_rotation * DEGREES_TO_RADIANS));
+
+				Mat4 collider_transform = collider_compute_transform(collider);
+				uniform_data.model = collider_transform; 
 				uniform_data.view = view;
             	Mat4 mv = mat4_mul_mat4(uniform_data.model, uniform_data.view);
 				uniform_data.projection = proj;
 				uniform_data.mvp = mat4_mul_mat4(mv, proj);
+
+				uniform_data.is_colliding = false;
+				for (i32 other_idx = 0; other_idx < NUM_COLLIDERS; ++other_idx)
+				{
+					if (other_idx == collider_idx) continue;
+
+					const Collider* other_collider = &colliders[other_idx];
+
+					if (hit_test_colliders(collider, other_collider, NULL))
+					{
+						uniform_data.is_colliding = true;
+						break;
+					}
+				}
 				gpu_upload_buffer(&gpu_context, &collider_uniform_buffers[collider_idx], sizeof(uniform_data), &uniform_data);
 			}
         }
@@ -1000,6 +1030,7 @@ int main()
     }
 
     gpu_wait_idle(&gpu_context);
+
 
     for (u32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
 	{
@@ -1029,6 +1060,7 @@ int main()
     // END Gui Cleanup
 
     gpu_destroy_pipeline(&gpu_context, &static_pipeline);
+    gpu_destroy_pipeline(&gpu_context, &collision_vis_pipeline);
 	gpu_destroy_pipeline(&gpu_context, &joint_vis_pipeline);
 	gpu_destroy_pipeline(&gpu_context, &skinned_pipeline);
 

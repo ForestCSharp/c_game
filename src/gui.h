@@ -1,8 +1,9 @@
 #pragma once
-#include "basic_math.h"
+
+#include "math/basic_math.h"
+#include "math/vec.h"
 #include "stretchy_buffer.h"
 #include "types.h"
-#include "vec.h"
 
 /*
     Naming Conventions

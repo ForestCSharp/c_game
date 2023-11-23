@@ -2,10 +2,10 @@
 
 // Primitive Collision routines. For convex collision, see mpr.h
 
-#include "basic_math.h"
+#include "math/basic_math.h"
 #include "types.h"
-#include "vec.h"
-#include "matrix.h"
+#include "math/vec.h"
+#include "math/matrix.h"
 
 typedef struct Plane
 {
@@ -87,19 +87,19 @@ LineSegment capsule_segment(const Capsule in_capsule)
 
 void obb_make_axes(const OBB in_obb, Vec3 out_axes[3])
 {
-	static const Vec3 forward = {
-		.x = 0, .y = 0, .z = 1,
-	};
-	static const Vec3 up = {
-		.x = 0, .y = 1, .z = 0,
-	};
-	static const Vec3 right = {
+	static const Vec3 x_axis = {
 		.x = 1, .y = 0, .z = 0,
 	};
+	static const Vec3 y_axis = {
+		.x = 0, .y = 1, .z = 0,
+	};
+	static const Vec3 z_axis = {
+		.x = 0, .y = 0, .z = 1,
+	};
 
-	out_axes[0] = quat_rotate_vec3(in_obb.orientation, forward);
-	out_axes[1] = quat_rotate_vec3(in_obb.orientation, up);
-	out_axes[2] = quat_rotate_vec3(in_obb.orientation, right);
+	out_axes[0] = quat_rotate_vec3(in_obb.orientation, x_axis);
+	out_axes[1] = quat_rotate_vec3(in_obb.orientation, y_axis);
+	out_axes[2] = quat_rotate_vec3(in_obb.orientation, z_axis);
 }
 
 f32 distance_point_to_plane(const Vec3 point, const Plane plane)
@@ -180,7 +180,8 @@ Vec3 closest_point_between_point_and_segment(const Vec3 point, const LineSegment
     // If outside segment, clamp t (and therefore d) to the closest endpoint
 	t = CLAMP(t, 0.0f, 1.0f);
     // Compute projected position from the clamped t
-    return vec3_add(segment.start, vec3_scale(ab, t));
+    const Vec3 result = vec3_add(segment.start, vec3_scale(ab, t));
+	return result;
 }
 
 Vec3 closest_point_on_obb_to_point(const OBB obb, const Vec3 point)
@@ -476,6 +477,48 @@ Mat4 collider_compute_transform(const Collider* in_collider)
 	}
 }
 
+void collider_set_orientation(Collider* in_collider, const Quat in_orientation)
+{
+	switch(in_collider->type)
+	{
+		case COLLIDER_TYPE_SPHERE:
+		{
+			break;
+		}
+		case COLLIDER_TYPE_CAPSULE:
+		{
+			in_collider->capsule.orientation = in_orientation;
+			break;
+		}
+		case COLLIDER_TYPE_OBB:
+		{
+			in_collider->obb.orientation = in_orientation;
+			break;
+		}
+		default: assert(false);
+	}
+}
+
+Quat collider_get_orientation(const Collider* in_collider)
+{
+	switch(in_collider->type)
+	{
+		case COLLIDER_TYPE_SPHERE:
+		{
+			return quat_identity;
+		}
+		case COLLIDER_TYPE_CAPSULE:
+		{
+			return in_collider->capsule.orientation;
+		}
+		case COLLIDER_TYPE_OBB:
+		{
+			return in_collider->obb.orientation;
+		}
+		default: assert(false);
+	}
+}
+
 // FCS TODO: Capsule character moving through collider world
 // FCS TODO: primitive collision penetration depth
 // FCS TODO: MPR collision penetration depth
@@ -484,24 +527,6 @@ Mat4 collider_compute_transform(const Collider* in_collider)
 //FCS TODO: Rewrite (better) tests in test.c
 void test_collision()
 {
-	Collider collider_a = {
-		.type = COLLIDER_TYPE_SPHERE,
-		.sphere = {
-			.center = vec3_new(5, 0, 0),
-			.radius = 1.0f,
-		},
-	};
-
-	Collider collider_b = {
-		.type = COLLIDER_TYPE_CAPSULE,
-		.capsule = {
-			.center = vec3_new(10,0,0),
-			.orientation = quat_new(vec3_new(1,0,0), 0),
-			.half_height = 5.0f,
-        	.radius = 2.0f,
-		},
-	};
-
 	Collider collider_c = {
 		.type = COLLIDER_TYPE_OBB,
 		.obb = {
@@ -517,9 +542,5 @@ void test_collision()
 	{
 		vec3_print(axes[i]);
 	}
-
-	HitResult colliders_hit_result = {};
-	bool did_hit_colliders = hit_test_colliders(&collider_a, &collider_b, &colliders_hit_result); 
-    printf("hit_test_colliders: %s \n", did_hit_colliders ? "hit" : "no hit");
 }
 
