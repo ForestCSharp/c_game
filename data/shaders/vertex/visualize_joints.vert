@@ -1,15 +1,7 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
-	mat4 view;
-	mat4 projection;
-    mat4 mvp;
-    vec4 eye;
-    vec4 light_dir;
-	bool is_colliding;
-} ubo;
+#include "../include/uniform_buffers.glsl"
 
 layout(binding = 2) readonly buffer JointBuffer {
 	mat4 data[];
@@ -35,11 +27,11 @@ mat4 mat4_uniform_scale(float scale)
 
 void main() {
 	mat4 joint_vis_scale = mat4_uniform_scale(0.025);
-    gl_Position = ubo.mvp * joint_transforms.data[gl_InstanceIndex] * joint_vis_scale * vec4(in_position, 1.0);
+    gl_Position = global_ubo.mvp * joint_transforms.data[gl_InstanceIndex] * joint_vis_scale * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;
 
-    out_normal = mat3(transpose(inverse(ubo.model))) * in_normal;
+    out_normal = mat3(transpose(inverse(global_ubo.model))) * in_normal;
 
     out_color = in_color;
 

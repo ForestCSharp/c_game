@@ -7,7 +7,7 @@
 #endif
 
 #include "types.h"
-#include "window/window.h"
+#include "app/app.h"
 #include <vulkan/vulkan.h>
 
 typedef enum GpuFormat
@@ -154,8 +154,8 @@ typedef struct GpuMemoryType
 typedef struct GpuMemoryBlock
 {
     u64 size;
-    struct GpuMemoryRegion* free_list;
-    struct GpuMemoryRegion* used_list;
+    sbuffer(struct GpuMemoryRegion) free_list;
+    sbuffer(struct GpuMemoryRegion) used_list;
     struct GpuMemoryType* owning_type;
     VkDeviceMemory vk_memory;
 } GpuMemoryBlock;
@@ -228,6 +228,7 @@ typedef struct GpuDescriptorSet
 {
     VkDescriptorPool vk_descriptor_pool; // One pool per set for now
     VkDescriptorSet vk_descriptor_set;
+	u32 set_number;
 } GpuDescriptorSet;
 
 typedef struct GpuDescriptorWriteImage
@@ -277,17 +278,25 @@ typedef struct GpuShaderModule
     VkShaderModule vk_shader_module;
 } GpuShaderModule;
 
+typedef struct GpuDescriptorLayoutCreateInfo
+{
+	u32 set_number;
+	u32 binding_count;
+	GpuDescriptorBinding* bindings;
+} GpuDescriptorLayoutCreateInfo;
+
 typedef struct GpuDescriptorLayout
 {
-    u32 binding_count;
-    GpuDescriptorBinding* bindings;
+	u32 set_number;
+	u32 binding_count;
+	GpuDescriptorBinding* bindings;
+
+	VkDescriptorSetLayout vk_descriptor_set_layout;	
 } GpuDescriptorLayout;
 
 typedef struct GpuPipelineLayout
 {
-    VkPipelineLayout vk_pipeline_layout;
-    VkDescriptorSetLayout vk_descriptor_set_layout;
-    GpuDescriptorLayout descriptor_layout;
+	VkPipelineLayout vk_pipeline_layout;
 } GpuPipelineLayout;
 
 typedef struct GpuPipelineDepthStencilState
@@ -465,8 +474,7 @@ void gpu_destroy_image_view(GpuContext* context, GpuImageView* image_view);
 GpuSampler gpu_create_sampler(GpuContext* context, GpuSamplerCreateInfo* create_info);
 void gpu_destroy_sampler(GpuContext* context, GpuSampler* sampler);
 
-// FIXME: consolidate final two args somehow
-GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, GpuPipelineLayout* pipeline_layout);
+GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, const GpuDescriptorLayout* descriptor_layout);
 void gpu_destroy_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set);
 void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, u32 write_count, GpuDescriptorWrite* descriptor_writes);
 
@@ -479,7 +487,9 @@ void gpu_destroy_shader_module(GpuContext* context, GpuShaderModule* shader_modu
 GpuRenderPass gpu_create_render_pass(GpuContext* context, u32 color_attachment_count, GpuAttachmentDesc* color_attachments, GpuAttachmentDesc* depth_stencil_attachment);
 void gpu_destroy_render_pass(GpuContext* context, GpuRenderPass* render_pass);
 
-GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, GpuDescriptorLayout* descriptor_layout);
+GpuDescriptorLayout gpu_create_descriptor_layout(GpuContext* context, const GpuDescriptorLayoutCreateInfo* create_info);
+void gpu_destroy_descriptor_layout(GpuContext* context, const GpuDescriptorLayout* descriptor_layout);
+GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, const i32 num_descriptor_layouts, const GpuDescriptorLayout* descriptor_layouts);
 void gpu_destroy_pipeline_layout(GpuContext* context, GpuPipelineLayout* layout);
 
 GpuPipeline gpu_create_graphics_pipeline(GpuContext* context, GpuGraphicsPipelineCreateInfo* create_info);
@@ -531,3 +541,5 @@ void gpu_reset_fence(GpuContext* context, GpuFence* fence);
 
 GpuSemaphore gpu_create_semaphore(GpuContext* context);
 void gpu_destroy_semaphore(GpuContext* context, GpuSemaphore* semaphore);
+
+GpuShaderModule gpu_create_shader_module_from_file(GpuContext *gpu_context, const char *filename);

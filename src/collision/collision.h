@@ -40,8 +40,6 @@ typedef struct OBB
     f32 halfwidths[3];
 } OBB;
 
-//FCS TODO: NEXT: Compute axes for OBB from orientation (rotate 1,0,0 0,1,0 and 0,0,1 by orientation...)
-
 typedef enum ColliderType
 {
 	COLLIDER_TYPE_SPHERE	= 1 << 0,
@@ -363,7 +361,15 @@ bool hit_test_obb_obb(const OBB a, const OBB b, HitResult* out_hit_result)
 
 	if (out_hit_result)
 	{
-		//FCS TODO: 
+		Vec3 hit_location_a = closest_point_on_obb_to_point(a, b.center);
+		Vec3 hit_location_b = closest_point_on_obb_to_point(b, a.center);
+		float hit_depth = vec3_length(vec3_sub(hit_location_a, hit_location_b));
+
+		(*out_hit_result) = (HitResult) {
+			.hit_location_a = hit_location_a,
+			.hit_location_b = hit_location_b,
+			.hit_depth = hit_depth,
+		};
 	}
 
 	return true;	

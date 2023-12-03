@@ -79,3 +79,13 @@ bool f32_nearly_equal(const float a, const float b)
 {
 	return f32_nearly_zero(a - b);
 }
+
+f32 rand_f32(f32 lower_bound, f32 upper_bound)
+{
+	return lower_bound + (f32)(rand()) / ((f32)(RAND_MAX/(upper_bound-lower_bound)));
+}
+
+f64 rand_f64(f64 lower_bound, f64 upper_bound)
+{
+	return lower_bound + (f64)(rand()) / ((f64)(RAND_MAX/(upper_bound-lower_bound)));
+}

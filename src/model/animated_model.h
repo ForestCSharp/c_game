@@ -5,7 +5,7 @@
 #include "math/vec.h"
 #include "math/quat.h"
 #include "gltf.h"
-#include "gpu.h"
+#include "gpu/gpu.h"
 #include "types.h"
 #include "assert.h"
 

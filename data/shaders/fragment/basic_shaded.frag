@@ -1,15 +1,7 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
-	mat4 view;
-	mat4 projection;
-    mat4 mvp;
-    vec4 eye;
-    vec4 light_dir;
-	bool is_colliding;
-} ubo;
+#include "../include/uniform_buffers.glsl"
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
@@ -24,12 +16,12 @@ void main() {
 
     //Diffuse
     vec3 normal = normalize(in_normal);
-    vec3 light_dir = normalize(ubo.light_dir.xyz);
+    vec3 light_dir = normalize(global_ubo.light_dir.xyz);
     float n_dot_l = max(dot(normal, -light_dir), 0.0);
     out_color += vec4(0.8,0.8,0.8,1) * n_dot_l;
 
     //Specular
-    vec3 view_dir = normalize(ubo.eye.xyz - in_position);
+    vec3 view_dir = normalize(global_ubo.eye.xyz - in_position);
     vec3 reflect_dir = reflect(light_dir, normal);
     float specular_strength = 1.0;
     vec4 specular_color = vec4(1,1,1,1);

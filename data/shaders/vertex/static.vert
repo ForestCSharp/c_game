@@ -1,15 +1,7 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
-	mat4 view;
-	mat4 projection;
-    mat4 mvp;
-    vec4 eye;
-    vec4 light_dir;
-	bool is_colliding;
-} ubo;
+#include "../include/uniform_buffers.glsl"
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
@@ -22,11 +14,11 @@ layout(location = 2) out vec4 out_color;
 layout(location = 3) out vec2 out_uv;
 
 void main() {
-    gl_Position = ubo.mvp * vec4(in_position, 1.0);
+    gl_Position = global_ubo.projection * global_ubo.view * object_ubo.model * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;
 
-    out_normal = mat3(transpose(inverse(ubo.model))) * in_normal;
+    out_normal = mat3(transpose(inverse(global_ubo.model))) * in_normal;
 
     out_color = in_color;
 

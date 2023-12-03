@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gltf.h"
-#include "gpu.h"
+#include "gpu/gpu.h"
 #include "types.h"
 #include "assert.h"
 

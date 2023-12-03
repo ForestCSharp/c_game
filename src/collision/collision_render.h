@@ -2,7 +2,7 @@
 
 //Collision Render Data 
 #include "collision.h"
-#include "gpu.h"
+#include "gpu/gpu.h"
 #include "model/static_model.h"
 #include "stretchy_buffer.h"
 

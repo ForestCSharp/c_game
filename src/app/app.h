@@ -24,9 +24,9 @@ typedef enum KeyCode
 bool input_pressed(int key_code);
 
 #if defined(_WIN32)
-#include "win32/window.h"
+#include "win32/app.h"
 #endif
 
 #if defined(__APPLE__)
-#include "mac/window.h"
+#include "mac/app.h"
 #endif

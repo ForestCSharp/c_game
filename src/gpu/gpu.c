@@ -1164,42 +1164,42 @@ void gpu_destroy_sampler(GpuContext *context, GpuSampler *sampler)
     vkDestroySampler(context->device, sampler->vk_sampler, NULL);
 }
 
-GpuDescriptorSet gpu_create_descriptor_set(GpuContext *context, GpuPipelineLayout *pipeline_layout)
+GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, const GpuDescriptorLayout* descriptor_layout)
 {
+	VkDescriptorPoolSize vk_pool_sizes[descriptor_layout->binding_count];
+	for (u32 i = 0; i < descriptor_layout->binding_count; ++i)
+	{
+		vk_pool_sizes[i].type = (VkDescriptorType)descriptor_layout->bindings[i].type;
+		vk_pool_sizes[i].descriptorCount = 1;
+	}
 
-    VkDescriptorPoolSize vk_pool_sizes[pipeline_layout->descriptor_layout.binding_count];
-    for (u32 i = 0; i < pipeline_layout->descriptor_layout.binding_count; ++i)
-    {
-        vk_pool_sizes[i].type = (VkDescriptorType)pipeline_layout->descriptor_layout.bindings[i].type;
-        vk_pool_sizes[i].descriptorCount = 1;
-    }
+	VkDescriptorPoolCreateInfo vk_descriptor_pool_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.maxSets = 1,
+		.poolSizeCount = descriptor_layout->binding_count,
+		.pPoolSizes = vk_pool_sizes,
+	};
 
-    VkDescriptorPoolCreateInfo vk_descriptor_pool_create_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .maxSets = 1,
-        .poolSizeCount = pipeline_layout->descriptor_layout.binding_count,
-        .pPoolSizes = vk_pool_sizes,
-    };
+	VkDescriptorPool vk_descriptor_pool = VK_NULL_HANDLE;
+	VK_CHECK(vkCreateDescriptorPool(context->device, &vk_descriptor_pool_create_info, NULL, &vk_descriptor_pool));
 
-    VkDescriptorPool vk_descriptor_pool = VK_NULL_HANDLE;
-    VK_CHECK(vkCreateDescriptorPool(context->device, &vk_descriptor_pool_create_info, NULL, &vk_descriptor_pool));
+	VkDescriptorSetAllocateInfo vk_descriptor_set_alloc_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.pNext = NULL,
+		.descriptorPool = vk_descriptor_pool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &descriptor_layout->vk_descriptor_set_layout,
+	};
+	VkDescriptorSet vk_descriptor_set = VK_NULL_HANDLE;
+	VK_CHECK(vkAllocateDescriptorSets(context->device, &vk_descriptor_set_alloc_info, &vk_descriptor_set));
 
-    VkDescriptorSetAllocateInfo vk_descriptor_set_alloc_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .pNext = NULL,
-        .descriptorPool = vk_descriptor_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &pipeline_layout->vk_descriptor_set_layout,
-    };
-    VkDescriptorSet vk_descriptor_set = VK_NULL_HANDLE;
-    VK_CHECK(vkAllocateDescriptorSets(context->device, &vk_descriptor_set_alloc_info, &vk_descriptor_set));
-
-    return (GpuDescriptorSet){
-        .vk_descriptor_pool = vk_descriptor_pool,
-        .vk_descriptor_set = vk_descriptor_set,
-    };
+	return (GpuDescriptorSet){
+		.vk_descriptor_pool = vk_descriptor_pool,
+		.vk_descriptor_set = vk_descriptor_set,
+		.set_number = descriptor_layout->set_number,
+	};
 }
 
 void gpu_destroy_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set)
@@ -1360,43 +1360,61 @@ void gpu_destroy_render_pass(GpuContext *context, GpuRenderPass *render_pass)
     vkDestroyRenderPass(context->device, render_pass->vk_render_pass, NULL);
 }
 
-GpuPipelineLayout gpu_create_pipeline_layout(GpuContext *context, GpuDescriptorLayout *descriptor_layout)
+GpuDescriptorLayout gpu_create_descriptor_layout(GpuContext* context, const GpuDescriptorLayoutCreateInfo* create_info)
 {
+	VkDescriptorSetLayoutBinding vk_bindings[create_info->binding_count];
+	for (int i = 0; i < create_info->binding_count; ++i)
+	{
+		vk_bindings[i].binding = create_info->bindings[i].binding;
+		vk_bindings[i].descriptorType = (VkDescriptorType)create_info->bindings[i].type;
+		vk_bindings[i].descriptorCount = 1;
+		vk_bindings[i].stageFlags = create_info->bindings[i].stage_flags;
+		vk_bindings[i].pImmutableSamplers = NULL;
+	}
 
-    u32 set_layout_count = 0;
-    VkDescriptorSetLayout vk_descriptor_set_layout = VK_NULL_HANDLE;
-    if (descriptor_layout != NULL)
-    {
-        set_layout_count = 1;
+	VkDescriptorSetLayoutCreateInfo vk_desc_layout_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.bindingCount = create_info->binding_count,
+		.pBindings = vk_bindings,
+	};
 
-        VkDescriptorSetLayoutBinding vk_bindings[descriptor_layout->binding_count];
-        for (int i = 0; i < descriptor_layout->binding_count; ++i)
-        {
-            vk_bindings[i].binding = descriptor_layout->bindings[i].binding;
-            vk_bindings[i].descriptorType = (VkDescriptorType)descriptor_layout->bindings[i].type;
-            vk_bindings[i].descriptorCount = 1;
-            vk_bindings[i].stageFlags = descriptor_layout->bindings[i].stage_flags;
-            vk_bindings[i].pImmutableSamplers = NULL;
-        }
+	VkDescriptorSetLayout vk_descriptor_set_layout = VK_NULL_HANDLE;
+	VK_CHECK(vkCreateDescriptorSetLayout(context->device, &vk_desc_layout_create_info, NULL, &vk_descriptor_set_layout));
 
-        VkDescriptorSetLayoutCreateInfo vk_desc_layout_create_info = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .bindingCount = descriptor_layout->binding_count,
-            .pBindings = vk_bindings,
-        };
+	u64 bindings_size = sizeof(GpuDescriptorBinding) * create_info->binding_count;
+	GpuDescriptorBinding* bindings = malloc(bindings_size);	
+	memcpy(bindings, create_info->bindings, bindings_size);
 
-        VK_CHECK(
-            vkCreateDescriptorSetLayout(context->device, &vk_desc_layout_create_info, NULL, &vk_descriptor_set_layout));
-    }
+	return (GpuDescriptorLayout) {
+		.set_number = create_info->set_number,
+		.binding_count = create_info->binding_count,
+		.bindings = bindings,
+		.vk_descriptor_set_layout = vk_descriptor_set_layout,
+	};
+}
+
+void gpu_destroy_descriptor_layout(GpuContext* context, const GpuDescriptorLayout* descriptor_layout)
+{
+	free(descriptor_layout->bindings);
+	vkDestroyDescriptorSetLayout(context->device, descriptor_layout->vk_descriptor_set_layout, NULL);
+}
+
+GpuPipelineLayout gpu_create_pipeline_layout(GpuContext* context, const i32 num_descriptor_layouts, const GpuDescriptorLayout* descriptor_layouts)
+{
+	VkDescriptorSetLayout vk_descriptor_set_layouts[num_descriptor_layouts];
+	for (i32 i = 0; i < num_descriptor_layouts; ++i)
+	{
+		vk_descriptor_set_layouts[i] = descriptor_layouts[i].vk_descriptor_set_layout;
+	}
 
     VkPipelineLayoutCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
-        .setLayoutCount = set_layout_count,
-        .pSetLayouts = &vk_descriptor_set_layout,
+        .setLayoutCount = num_descriptor_layouts,
+        .pSetLayouts = vk_descriptor_set_layouts,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = NULL,
     };
@@ -1404,26 +1422,14 @@ GpuPipelineLayout gpu_create_pipeline_layout(GpuContext *context, GpuDescriptorL
     VkPipelineLayout vk_pipeline_layout = VK_NULL_HANDLE;
     VK_CHECK(vkCreatePipelineLayout(context->device, &create_info, NULL, &vk_pipeline_layout));
 
-    u32 binding_size = descriptor_layout->binding_count * sizeof(GpuDescriptorBinding);
-    GpuDescriptorBinding *descriptor_bindings = binding_size > 0 ? malloc(binding_size) : NULL;
-    if (descriptor_bindings != NULL)
-    {
-        memcpy(descriptor_bindings, descriptor_layout->bindings, binding_size);
-    }
-
-    return (GpuPipelineLayout){.vk_pipeline_layout = vk_pipeline_layout,
-                               .vk_descriptor_set_layout = vk_descriptor_set_layout,
-                               .descriptor_layout = {
-                                   .binding_count = descriptor_layout->binding_count,
-                                   .bindings = descriptor_bindings,
-                               }};
+    return (GpuPipelineLayout){
+		.vk_pipeline_layout = vk_pipeline_layout,
+	};
 }
 
 void gpu_destroy_pipeline_layout(GpuContext *context, GpuPipelineLayout *layout)
 {
     vkDestroyPipelineLayout(context->device, layout->vk_pipeline_layout, NULL);
-    vkDestroyDescriptorSetLayout(context->device, layout->vk_descriptor_set_layout, NULL);
-    free(layout->descriptor_layout.bindings);
 }
 
 GpuPipeline gpu_create_graphics_pipeline(GpuContext *context, GpuGraphicsPipelineCreateInfo *create_info)
@@ -1818,11 +1824,18 @@ void gpu_cmd_bind_index_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *inde
     vkCmdBindIndexBuffer(command_buffer->vk_command_buffer, index_buffer->vk_buffer, 0, VK_INDEX_TYPE_UINT32);
 }
 
-void gpu_cmd_bind_descriptor_set(GpuCommandBuffer *command_buffer, GpuPipelineLayout *layout,
-                                 GpuDescriptorSet *descriptor_set)
+void gpu_cmd_bind_descriptor_set(GpuCommandBuffer *command_buffer, GpuPipelineLayout *layout, GpuDescriptorSet *descriptor_set)
 {
-    vkCmdBindDescriptorSets(command_buffer->vk_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            layout->vk_pipeline_layout, 0, 1, &descriptor_set->vk_descriptor_set, 0, NULL);
+    vkCmdBindDescriptorSets(
+		command_buffer->vk_command_buffer,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		layout->vk_pipeline_layout, 
+		descriptor_set->set_number, 
+		1, 
+		&descriptor_set->vk_descriptor_set, 
+		0,
+		NULL
+	);
 }
 
 void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer *command_buffer, GpuBuffer *vertex_buffer)
@@ -1983,4 +1996,48 @@ GpuSemaphore gpu_create_semaphore(GpuContext *context)
 void gpu_destroy_semaphore(GpuContext *context, GpuSemaphore *semaphore)
 {
     vkDestroySemaphore(context->device, semaphore->vk_semaphore, NULL);
+}
+
+static bool gpu_read_file(const char *filename, size_t *out_file_size, u32 **out_data)
+{
+    FILE *file = fopen(filename, "rb");
+    if (!file)
+	{
+        return false;
+	}
+	
+    fseek(file, 0L, SEEK_END);
+    const size_t file_size = *out_file_size = ftell(file);
+    rewind(file);
+
+    *out_data = calloc(1, file_size + 1);
+    if (!*out_data)
+    {
+        fclose(file);
+        return false;
+    }
+
+    if (fread(*out_data, 1, file_size, file) != file_size)
+    {
+        fclose(file);
+        free(*out_data);
+        return false;
+    }
+
+    fclose(file);
+    return true;
+}
+
+GpuShaderModule gpu_create_shader_module_from_file(GpuContext *gpu_context, const char *filename)
+{
+    size_t shader_size = 0;
+    u32 *shader_code = NULL;
+    if (!gpu_read_file(filename, &shader_size, &shader_code))
+    {
+        exit(1);
+    }
+
+    GpuShaderModule module = gpu_create_shader_module(gpu_context, shader_size, shader_code);
+    free(shader_code);
+    return module;
 }
