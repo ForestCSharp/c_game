@@ -874,6 +874,18 @@ void gpu_destroy_buffer(GpuContext *context, GpuBuffer *buffer)
     }
 }
 
+void* gpu_map_buffer(GpuContext* context, GpuBuffer* buffer)
+{
+	void *pData;
+	gpu_map_memory(context, buffer->memory, 0, buffer->memory->memory_region->size, &pData);
+	return pData;
+}
+
+void gpu_unmap_buffer(GpuContext* context, GpuBuffer* buffer)
+{
+	gpu_unmap_memory(context, buffer->memory);
+}
+
 void gpu_memcpy(GpuContext *context, GpuMemory *memory, u64 upload_size, void *upload_data)
 {
     void *pData;
@@ -1254,13 +1266,35 @@ void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_
 
 void gpu_map_memory(GpuContext *context, GpuMemory *memory, u64 offset, u64 size, void **ppData)
 {
-    VK_CHECK(vkMapMemory(context->device, memory->memory_region->owning_block->vk_memory,
-                         memory->memory_region->offset + offset, size, 0, ppData));
+	const bool is_unmapped = memory->memory_region->owning_block->mapped_ref_count == 0;
+
+	if (is_unmapped)
+	{
+		VK_CHECK(vkMapMemory(
+			context->device, 
+			memory->memory_region->owning_block->vk_memory,
+			0, 
+			memory->memory_region->owning_block->size, 
+			0, 
+			&memory->memory_region->owning_block->mapped_ptr
+		));
+	}
+
+	memory->memory_region->owning_block->mapped_ref_count++;
+	*ppData = (char*) memory->memory_region->owning_block->mapped_ptr + memory->memory_region->offset + offset;
 }
 
 void gpu_unmap_memory(GpuContext *context, GpuMemory *memory)
 {
-    vkUnmapMemory(context->device, memory->memory_region->owning_block->vk_memory);
+	assert(memory->memory_region->owning_block->mapped_ref_count > 0);
+
+	memory->memory_region->owning_block->mapped_ref_count--;
+
+	const bool needs_unmap = memory->memory_region->owning_block->mapped_ref_count == 0;
+	if (needs_unmap)
+	{
+    	vkUnmapMemory(context->device, memory->memory_region->owning_block->vk_memory);
+	}
 }
 
 GpuShaderModule gpu_create_shader_module(GpuContext *context, u64 code_size, const u32 *code)

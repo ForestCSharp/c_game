@@ -148,7 +148,7 @@ typedef enum GpuPolygonMode
 
 typedef struct GpuMemoryType
 {
-    struct GpuMemoryBlock* memory_blocks;
+    sbuffer(struct GpuMemoryBlock) memory_blocks;
 } GpuMemoryType;
 
 typedef struct GpuMemoryBlock
@@ -158,6 +158,9 @@ typedef struct GpuMemoryBlock
     sbuffer(struct GpuMemoryRegion) used_list;
     struct GpuMemoryType* owning_type;
     VkDeviceMemory vk_memory;
+
+	i32 mapped_ref_count;
+	void* mapped_ptr;
 } GpuMemoryBlock;
 
 typedef struct GpuMemoryRegion
@@ -172,8 +175,6 @@ typedef struct GpuMemoryRegion
 typedef struct GpuMemory
 {
     GpuMemoryRegion* memory_region;
-    // FIXME: if we make above a reference, reallocing can break. Instead our external handles can be 3 indices:
-    // mem_type, mem_block, used_list_index
     GpuMemoryPropertyFlags memory_properties;
 } GpuMemory;
 
@@ -462,6 +463,8 @@ u32 gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore);
 
 GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage, GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char* debug_name);
 void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer);
+void* gpu_map_buffer(GpuContext* context, GpuBuffer* buffer);
+void gpu_unmap_buffer(GpuContext* context, GpuBuffer* buffer);
 void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, u64 upload_size, void* upload_data);
 
 GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, const char* debug_name);

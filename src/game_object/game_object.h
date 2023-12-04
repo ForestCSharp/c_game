@@ -108,6 +108,7 @@ typedef struct StaticModelComponent
 typedef struct ObjectRenderDataComponent
 {
 	sbuffer(GpuBuffer) uniform_buffers;
+	sbuffer(ObjectUniformStruct*) uniform_data;
 	sbuffer(GpuDescriptorSet) descriptor_sets;
 } ObjectRenderDataComponent;
 

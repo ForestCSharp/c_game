@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "timer.h"
+#include "uniforms.h"
 
 // #define DISABLE_LOG
 #ifdef DISABLE_LOG
@@ -32,22 +33,6 @@
 #include "truetype.h"
 
 //FCS TODO: Helper to create and write a descriptor set in one operation (optional descriptor write field in create info?)
-
-typedef struct GlobalUniformStruct
-{
-	Mat4 model;
-	Mat4 view;
-	Mat4 projection;
-	Mat4 mvp;
-	Vec4 eye;
-	Vec4 light_dir;
-	bool is_colliding;
-} GlobalUniformStruct;
-
-typedef struct ObjectUniformStruct
-{
-	Mat4 model;
-} ObjectUniformStruct;
 
 #define DESCRIPTOR_BINDING_UNIFORM_BUFFER(idx, flags) { .binding = idx, .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .stage_flags = flags }
 #define DESCRIPTOR_BINDING_STORAGE_BUFFER(idx, flags) { .binding = idx, .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .stage_flags = flags }
@@ -152,16 +137,24 @@ int main()
 		//For each backbuffer...
 		for (i32 swapchain_idx = 0; swapchain_idx < gpu_context.swapchain_image_count; ++swapchain_idx)
 		{
+			GpuBuffer uniform_buffer = gpu_create_buffer(
+									&gpu_context, 
+									GPU_BUFFER_USAGE_UNIFORM_BUFFER,
+									GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+									sizeof(ObjectUniformStruct), 
+									"object_uniform_buffer"
+								);
+
 			// Create Uniform Buffer
 			sb_push(
 				object_render_data.uniform_buffers,
-				gpu_create_buffer(
-					&gpu_context, 
-					GPU_BUFFER_USAGE_UNIFORM_BUFFER,
-					GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-					sizeof(ObjectUniformStruct), 
-					"object_uniform_buffer"
-				)
+				uniform_buffer
+			);
+
+			// Map Uniform Buffer
+			sb_push(
+				object_render_data.uniform_data,
+		   		(ObjectUniformStruct*) gpu_map_buffer(&gpu_context, &uniform_buffer)
 			);
 
 			// Create Descriptor Set
@@ -174,7 +167,7 @@ int main()
 			GpuDescriptorWrite descriptor_writes[1] = {{
 				.binding_desc = &per_object_descriptor_layout.bindings[0],
 				.buffer_write = &(GpuDescriptorWriteBuffer) {
-					.buffer = &object_render_data.uniform_buffers[swapchain_idx],
+					.buffer = &uniform_buffer,
 					.offset = 0,
 					.range = sizeof(ObjectUniformStruct),
 				},
@@ -184,7 +177,6 @@ int main()
 		ObjectRenderDataComponent* render_data_component = CREATE_COMPONENT(ObjectRenderDataComponent, game_object_manager_ptr, object_render_data);
 		OBJECT_SET_COMPONENT(ObjectRenderDataComponent, game_object_manager_ptr, new_object, render_data_component);
 	}
-
     // BEGIN GUI SETUP
 
     GuiContext gui_context;
@@ -897,13 +889,9 @@ int main()
 				StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, &game_object_manager, object);
 				if (transform_component && render_data_component && static_model_component)
 				{
-					ObjectUniformStruct object_uniform_data = {
-						.model = trs_to_mat4(transform_component->trs),
-					};
-
-					//FCS TODO This is costly. 
-					gpu_upload_buffer(&gpu_context, &render_data_component->uniform_buffers[current_frame], sizeof(object_uniform_data), &object_uniform_data);
-					
+					//Assign to our persistently mapped storage
+					render_data_component->uniform_data[current_frame]->model = trs_to_mat4(transform_component->trs);
+	
 					gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &static_model_component->static_model.index_buffer);
 					gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &static_model_component->static_model.vertex_buffer);
 					gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &render_data_component->descriptor_sets[current_frame]);
