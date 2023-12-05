@@ -529,24 +529,3 @@ Quat collider_get_orientation(const Collider* in_collider)
 // FCS TODO: primitive collision penetration depth
 // FCS TODO: MPR collision penetration depth
 
-
-//FCS TODO: Rewrite (better) tests in test.c
-void test_collision()
-{
-	Collider collider_c = {
-		.type = COLLIDER_TYPE_OBB,
-		.obb = {
-			.center = vec3_new(5,0,0),
-			.orientation = quat_new(vec3_new(0,1,0), 3.14159f),
-			.halfwidths = {3.f, 2.f, 5.f},
-		},
-	};
-
-	Vec3 axes[3];
-	obb_make_axes(collider_c.obb, axes);
-	for (i32 i = 0; i < 3; ++i)
-	{
-		vec3_print(axes[i]);
-	}
-}
-

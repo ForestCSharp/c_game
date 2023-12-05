@@ -213,7 +213,7 @@ Mat4 compute_node_transform(GltfNode* target_node, GltfNode* nodes_array, NodeAn
 		if (optional_is_set(anim_data->rotation))
 		{
 			assert(local_transform.type = GLTF_TRANSFORM_TYPE_TRS);
-			local_transform.rotation = optional_get(anim_data->rotation);
+			local_transform.rotation = quat_normalize(optional_get(anim_data->rotation));
 		}
 		if (optional_is_set(anim_data->translation))
 		{
@@ -227,18 +227,6 @@ Mat4 compute_node_transform(GltfNode* target_node, GltfNode* nodes_array, NodeAn
 		optional_set(anim_data->cached_transform, computed_transform);
 		return computed_transform;
 	}
-}
-
-//FCS TODO: REMOVE: TESTING
-Mat4 compute_node_transform2(GltfNode* in_node)
-{
-	Mat4 local_transform_matrix = gltf_transform_to_mat4(&in_node->transform); 
-	if (in_node->parent)
-	{
-		Mat4 parent_transform = compute_node_transform2(in_node->parent);
-		return mat4_mul_mat4(local_transform_matrix, parent_transform);
-	}
-	return local_transform_matrix;
 }
 
 bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, AnimatedModel* out_model)
@@ -510,38 +498,42 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
 
     // GPU Data Setup
     {
-        size_t vertices_size = sizeof(SkinnedVertex) * out_model->num_vertices;
-        GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->vertex_buffer = gpu_create_buffer(gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
-        gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertices_size, out_model->vertices);
+		{
+			GpuBufferCreateInfo vertex_buffer_create_info = {
+				.size = sizeof(SkinnedVertex) * out_model->num_vertices,
+				.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+				.debug_name = "animated model vertex buffer",
+			};
+			out_model->vertex_buffer = gpu_create_buffer(gpu_context, &vertex_buffer_create_info);
+			gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertex_buffer_create_info.size, out_model->vertices);
+		}
 
-        size_t indices_size = sizeof(u32) * out_model->num_indices;
-        GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->index_buffer = gpu_create_buffer(gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
-        gpu_upload_buffer(gpu_context, &out_model->index_buffer, indices_size, out_model->indices);
+		{
+			GpuBufferCreateInfo index_buffer_create_info = {
+				.size = sizeof(u32) * out_model->num_indices,
+				.usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+				.debug_name = "animated model index buffer",
+			};
+			out_model->index_buffer = gpu_create_buffer(gpu_context, &index_buffer_create_info);
+			gpu_upload_buffer(gpu_context, &out_model->index_buffer, index_buffer_create_info.size, out_model->indices);
+		}
 
+		{
+			// Size of our joint related matrices buffers
+			out_model->joints_buffer_size = out_model->num_joints * sizeof(Mat4);
 
-		// Size of our joint related matrices buffers
-		out_model->joints_buffer_size = out_model->num_joints * sizeof(Mat4);
-
-		// Create GpuBuffer for joint matrices, will be uploaded after anim eval
-		out_model->joint_matrices_buffer  = gpu_create_buffer(
-			gpu_context, 
-			GPU_BUFFER_USAGE_STORAGE_BUFFER,
-			GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-			out_model->joints_buffer_size, 
-			"joint_matrices_buffer"
-		);
-
-		// Create GpuBuffer and upload inverse bind matrices 
-		out_model->inverse_bind_matrices_buffer = gpu_create_buffer(
-			gpu_context, 
-			GPU_BUFFER_USAGE_STORAGE_BUFFER,
-			GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-			out_model->joints_buffer_size, 
-			"inverse_bind_matrices_buffer"
-		);
-		gpu_upload_buffer(gpu_context, &out_model->inverse_bind_matrices_buffer, out_model->joints_buffer_size, out_model->inverse_bind_matrices);
+			GpuBufferCreateInfo joint_buffers_create_info = {
+				.size = out_model->joints_buffer_size,
+				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
+				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+				.debug_name = "animated model joint buffer",
+			};
+			out_model->joint_matrices_buffer  = gpu_create_buffer(gpu_context, &joint_buffers_create_info);
+			out_model->inverse_bind_matrices_buffer = gpu_create_buffer(gpu_context, &joint_buffers_create_info);
+			gpu_upload_buffer(gpu_context, &out_model->inverse_bind_matrices_buffer, out_model->joints_buffer_size, out_model->inverse_bind_matrices);
+		}
 
     }
 

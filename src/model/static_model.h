@@ -134,15 +134,27 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
 
     // GPU Data Setup
     {
-        size_t vertices_size = sizeof(StaticVertex) * out_model->num_vertices;
-        GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->vertex_buffer = gpu_create_buffer(gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "mesh vertex buffer");
-        gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertices_size, out_model->vertices);
+		{
+			GpuBufferCreateInfo vertex_buffer_create_info = {
+				.size = sizeof(StaticVertex) * out_model->num_vertices,
+				.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+				.debug_name = "static model vertex buffer",
+			};
+			out_model->vertex_buffer = gpu_create_buffer(gpu_context, &vertex_buffer_create_info);
+			gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertex_buffer_create_info.size, out_model->vertices);
+		}
 
-        size_t indices_size = sizeof(u32) * out_model->num_indices;
-        GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-        out_model->index_buffer = gpu_create_buffer(gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "mesh index buffer");
-        gpu_upload_buffer(gpu_context, &out_model->index_buffer, indices_size, out_model->indices);
+		{
+			GpuBufferCreateInfo index_buffer_create_info = {
+				.size = sizeof(u32) * out_model->num_indices,
+				.usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+				.debug_name = "static model index buffer",
+			};
+			out_model->index_buffer = gpu_create_buffer(gpu_context, &index_buffer_create_info);
+			gpu_upload_buffer(gpu_context, &out_model->index_buffer, index_buffer_create_info.size, out_model->indices);
+		}
     }
 
 

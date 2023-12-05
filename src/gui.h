@@ -208,10 +208,6 @@ bool gui_load_font(const char* filename, GuiFont* out_font)
             return false;
         }
 
-        printf("Font Image Width: %i Height: %i\n", out_font->image_width, out_font->image_height);
-        printf("Cell Width: %i Height: %i\n", out_font->cell_width, out_font->cell_height);
-        printf("Font Type: %i First Char: %i\n", out_font->font_type, out_font->first_char);
-
         return true;
     }
 

@@ -176,7 +176,16 @@ typedef struct GpuMemory
 {
     GpuMemoryRegion* memory_region;
     GpuMemoryPropertyFlags memory_properties;
+	bool is_mapped;
 } GpuMemory;
+
+typedef struct GpuBufferCreateInfo
+{
+	u64 size;
+	GpuBufferUsageFlags usage;
+	GpuMemoryPropertyFlags memory_properties;
+	const char* debug_name;
+} GpuBufferCreateInfo;
 
 typedef struct GpuBuffer
 {
@@ -191,6 +200,7 @@ typedef struct GpuImageCreateInfo
     u32 mip_levels;
     GpuImageUsageFlags usage;
     GpuMemoryPropertyFlags memory_properties;
+	const char* debug_name;
 } GpuImageCreateInfo;
 
 typedef struct GpuImage
@@ -461,13 +471,13 @@ void gpu_wait_idle(GpuContext* context);
 void gpu_resize_swapchain(GpuContext* context, const Window* const window);
 u32 gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore);
 
-GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferUsageFlags buffer_usage, GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char* debug_name);
+GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferCreateInfo* create_info);
 void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer);
 void* gpu_map_buffer(GpuContext* context, GpuBuffer* buffer);
 void gpu_unmap_buffer(GpuContext* context, GpuBuffer* buffer);
 void gpu_upload_buffer(GpuContext* context, GpuBuffer* buffer, u64 upload_size, void* upload_data);
 
-GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info, const char* debug_name);
+GpuImage gpu_create_image(GpuContext* context, GpuImageCreateInfo* create_info);
 void gpu_destroy_image(GpuContext* context, GpuImage* image);
 void gpu_upload_image(GpuContext* context, GpuImage* image, u64 upload_width, u64 upload_height, void* upload_data);
 

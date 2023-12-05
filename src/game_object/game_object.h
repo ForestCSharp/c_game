@@ -75,7 +75,6 @@ struct {\
 				}\
 			}\
 			if (new_idx != INVALID_INDEX) { manager->COMPONENT_DATA_VAR_NAME(type).component_array[new_idx].ref_count++; }\
-			printf("old_idx: %lli, new_idx: %lli\n", old_idx, new_idx);\
 			object->component_ids[COMPONENT_TYPE(type)] = new_idx;\
 		}\
 	}\

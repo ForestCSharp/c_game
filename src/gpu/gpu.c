@@ -580,36 +580,33 @@ GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPr
 
     GpuMemoryType *memory_type = &context->memory_types[memory_type_index];
     assert(memory_type);
-    printf("memory type index: %i\n", memory_type_index);
 
     // Search Blocks of Memory Type for free list entry of sufficient size
     for (u32 block_index = 0; block_index < sb_count(memory_type->memory_blocks); ++block_index)
     {
-        printf("\tblock index: %i \n", block_index);
         GpuMemoryBlock *block = &memory_type->memory_blocks[block_index];
         assert(block);
 
         for (u32 free_list_index = 0; free_list_index < sb_count(block->free_list); ++free_list_index)
         {
-            printf("\t\tfree_list_index: %i\n", free_list_index);
             GpuMemoryRegion *free_list_region = &block->free_list[free_list_index];
             assert(free_list_region);
 
             u64 padding = alignment - free_list_region->offset % alignment;
             u64 new_region_size = alloc_size + padding;
 
-            printf("Alignment: %llu Offset: %llu Padding: %llu\n", alignment, free_list_region->offset, padding);
-
             if (free_list_region->size >= new_region_size)
             {
-
-                sb_push(block->used_list, ((GpuMemoryRegion){
-                                              .padding = padding,
-                                              .offset = free_list_region->offset + padding,
-                                              .size = alloc_size,
-                                              .owning_block = block,
-                                              .alloc_ref = calloc(1, sizeof(GpuMemory)),
-                                          }));
+                sb_push(
+					block->used_list, 
+					((GpuMemoryRegion){
+					  .padding = padding,
+					  .offset = free_list_region->offset + padding,
+					  .size = alloc_size,
+					  .owning_block = block,
+					  .alloc_ref = calloc(1, sizeof(GpuMemory)),
+					})
+				);
 
                 GpuMemoryRegion *out_region = &block->used_list[sb_count(block->used_list) - 1];
                 out_region->alloc_ref->memory_properties = memory_properties;
@@ -632,7 +629,6 @@ GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPr
                 }
 
                 // return memory region we allocated
-                printf("\t\t\tSUB ALLOCATION\n");
                 return out_region->alloc_ref;
             }
         }
@@ -648,11 +644,6 @@ GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPr
     // FIXME: Need to get heap budget information, which is what we should use for heap_size above
     //           this is why our GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
     //           GPU_MEMORY_PROPERTY_HOST_COHERENT allocation was failing
-
-    printf("\nMEM USED %llu", gpu_memory_used);
-    printf("\nNEW ALLOCATION: MEMORY TYPE INDEX: %i HEAP INDEX: %i GPU BLOCK SIZE: %llu HEAP SIZE: %llu ALLOC SIZE "
-           "%llu \n\n",
-           memory_type_index, heap_index, GPU_BLOCK_SIZE, heap_size, allocation_size);
 
     VkMemoryAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -675,8 +666,6 @@ GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPr
                                             .owning_type = memory_type,
                                             .vk_memory = vk_memory,
                                         }));
-
-    printf("ALLOC: NUM BLOCKS: %i\n", sb_count(memory_type->memory_blocks));
 
     // fix backwards-references in free/used lists of old blocks
     for (u32 block_idx = 0; block_idx < sb_count(memory_type->memory_blocks) - 1; ++block_idx)
@@ -715,14 +704,11 @@ GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPr
         .memory_properties = memory_properties,
     };
 
-    printf("New block free list count = %i\n", sb_count(new_block->free_list));
-
     return new_block->used_list[0].alloc_ref;
 }
 
 void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
 {
-
     // Add this memory's region as a new free list entry
     assert(gpu_memory);
     GpuMemoryRegion *memory_region = gpu_memory->memory_region;
@@ -730,12 +716,14 @@ void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
     GpuMemoryBlock *owning_block = memory_region->owning_block;
     assert(owning_block);
 
+	if (gpu_memory->is_mapped)
+	{
+		gpu_unmap_memory(context, gpu_memory);
+	}
+
     // 1. Find where our element lies in used_list
     u32 used_list_index = memory_region - owning_block->used_list;
-    printf("used_list_index: %u count: %u \n", used_list_index, sb_count(owning_block->used_list));
     assert(used_list_index < sb_count(owning_block->used_list));
-
-    // FIXME: if free_list count is 0, just add a new entry, otherwise do the search below
 
     // 2. Find insertion point in free list (used_region->offset > current_free_region->offset)
     for (u32 free_list_index = 0; free_list_index < sb_count(owning_block->free_list); ++free_list_index)
@@ -743,8 +731,6 @@ void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
         GpuMemoryRegion *free_entry = &owning_block->free_list[free_list_index];
         if (memory_region->offset < free_entry->offset)
         {
-            printf("free_list_index: %u \n", free_list_index);
-
             // Padding info isn't used once freed
             memory_region->offset -= memory_region->padding;
             memory_region->size += memory_region->padding;
@@ -765,27 +751,23 @@ void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
             {
                 // Our newly freed region fits perfectly between two existing regions
                 // Resize preceding entry's size and remove next free entry
-                printf("\nMERGE WITH BOTH\n");
                 preceding_entry->size += memory_region->size + free_entry->size;
                 sb_del(owning_block->free_list, free_list_index);
             }
             else if (merge_with_preceding)
             {
                 // We can merge with the preceding entry, just add to size
-                printf("\nMERGE WITH PRECEDING\n");
                 preceding_entry->size += memory_region->size;
             }
             else if (merge_with_current)
             {
                 // We can merge with the next entry, change next region's offset and size
-                printf("\nMERGE WITH CURRENT\n");
                 free_entry->offset = memory_region->offset;
                 free_entry->size += memory_region->size;
             }
             else
             {
                 // We aren't directly adjacent to any existing free entries, create a new one
-                printf("\nNEW FREE LIST ENTRY\n");
                 sb_ins(owning_block->free_list, free_list_index, *memory_region);
             }
 
@@ -797,8 +779,6 @@ void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
             {
                 owning_block->used_list[i].alloc_ref->memory_region = &owning_block->used_list[i];
             }
-
-            printf("USED LIST COUNT AFTER FREE: %i\n", sb_count(owning_block->used_list));
 
             break;
         }
@@ -814,55 +794,47 @@ void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
         GpuMemoryType *owning_type = owning_block->owning_type;
         assert(owning_type);
         u32 owning_block_index = owning_block - owning_type->memory_blocks;
-        printf("BLOCK INDEX TO REMOVE: %u \n", owning_block_index);
         sb_del(owning_type->memory_blocks, owning_block_index);
-
-        printf("FREE: NUM BLOCKS: %i\n", sb_count(owning_type->memory_blocks));
     }
 }
 
-// TODO: GPU ALLOC TESTS
-// 1. Test all 4 free-list merge cases
-// 2. Ensure that the loop in gpu_free_memory is always able to succeed (should be true as memory is allocated from the
-// front of the block)
-
-GpuBuffer gpu_create_buffer(GpuContext *context, GpuBufferUsageFlags buffer_usage,
-                            GpuMemoryPropertyFlags memory_properties, u64 buffer_size, const char *debug_name)
+GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferCreateInfo* create_info)
 {
-    VkBufferCreateInfo buffer_create_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = buffer_size,
-        .usage = buffer_usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
+	VkBufferCreateInfo buffer_create_info = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = create_info->size,
+		.usage = create_info->usage,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+	};
 
-    VkBuffer vk_buffer;
-    VK_CHECK(vkCreateBuffer(context->device, &buffer_create_info, NULL, &vk_buffer));
+	VkBuffer vk_buffer;
+	VK_CHECK(vkCreateBuffer(context->device, &buffer_create_info, NULL, &vk_buffer));
 
-    VkMemoryRequirements memory_reqs;
-    vkGetBufferMemoryRequirements(context->device, vk_buffer, &memory_reqs);
-    GpuMemory *memory = gpu_allocate_memory(context, memory_reqs.memoryTypeBits, memory_properties, memory_reqs.size,
-                                            memory_reqs.alignment);
+	VkMemoryRequirements memory_reqs;
+	vkGetBufferMemoryRequirements(context->device, vk_buffer, &memory_reqs);
+	GpuMemory *memory = gpu_allocate_memory(context, memory_reqs.memoryTypeBits, create_info->memory_properties, memory_reqs.size,
+	memory_reqs.alignment);
 
-    VK_CHECK(vkBindBufferMemory(context->device, vk_buffer, memory->memory_region->owning_block->vk_memory,
-                                memory->memory_region->offset));
+	VK_CHECK(vkBindBufferMemory(context->device, vk_buffer, memory->memory_region->owning_block->vk_memory,
+	memory->memory_region->offset));
 
-    // set the name
-    if (context->pfn_set_object_name != NULL)
-    {
-        VkDebugUtilsObjectNameInfoEXT vk_name_info = {
-            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-            .objectType = VK_OBJECT_TYPE_BUFFER,
-            .objectHandle = (u64)vk_buffer, // this cast may vary by platform/compiler
-            .pObjectName = debug_name,
-        };
-        context->pfn_set_object_name(context->device, &vk_name_info);
-    }
+	// set the name
+	if (context->pfn_set_object_name != NULL)
+	{
+		VkDebugUtilsObjectNameInfoEXT vk_name_info = {
+			.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+			.objectType = VK_OBJECT_TYPE_BUFFER,
+			.objectHandle = (u64)vk_buffer, // this cast may vary by platform/compiler
+			.pObjectName = create_info->debug_name,
+		};
+		context->pfn_set_object_name(context->device, &vk_name_info);
+	}
 
-    return (GpuBuffer){
-        .vk_buffer = vk_buffer,
-        .memory = memory,
-    };
+	return (GpuBuffer){
+		.vk_buffer = vk_buffer,
+		.memory = memory,
+	};
+
 }
 
 void gpu_destroy_buffer(GpuContext *context, GpuBuffer *buffer)
@@ -903,11 +875,16 @@ void gpu_upload_buffer(GpuContext *context, GpuBuffer *buffer, u64 upload_size, 
     }
     else
     {
-        // Need staging buffer //TODO: reuse staging buffer, command buffer
-        GpuBuffer staging_buffer =
-            gpu_create_buffer(context, GPU_BUFFER_USAGE_TRANSFER_SRC,
-                              GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, upload_size,
-                              "staging buffer: gpu_upload_buffer");
+		GpuBufferCreateInfo staging_buffer_create_info = {
+			.size = upload_size,
+			.usage = GPU_BUFFER_USAGE_TRANSFER_SRC,
+			.memory_properties = GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+			.debug_name = "gpu_upload_buffer staging buffer",
+		};
+
+		//TODO: reuse staging buffer, command buffer
+        // Need staging buffer 
+        GpuBuffer staging_buffer = gpu_create_buffer(context, &staging_buffer_create_info);
         gpu_memcpy(context, staging_buffer.memory, upload_size, upload_data);
         GpuCommandBuffer command_buffer = gpu_create_command_buffer(context);
         gpu_begin_command_buffer(&command_buffer);
@@ -992,7 +969,7 @@ void gpu_cmd_image_barrier(GpuCommandBuffer *command_buffer, GpuImageBarrier *im
 #endif
 }
 
-GpuImage gpu_create_image(GpuContext *context, GpuImageCreateInfo *create_info, const char *debug_name)
+GpuImage gpu_create_image(GpuContext *context, GpuImageCreateInfo *create_info)
 {
 
     VkImageType vk_image_type = VK_IMAGE_TYPE_1D;
@@ -1046,7 +1023,7 @@ GpuImage gpu_create_image(GpuContext *context, GpuImageCreateInfo *create_info, 
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             .objectType = VK_OBJECT_TYPE_IMAGE,
             .objectHandle = (u64)vk_image, // this cast may vary by platform/compiler
-            .pObjectName = debug_name,
+            .pObjectName = create_info->debug_name,
         };
         context->pfn_set_object_name(context->device, &vk_name_info);
     }
@@ -1076,11 +1053,15 @@ void gpu_upload_image(GpuContext *context, GpuImage *image, u64 upload_width, u6
     }
     else
     {
+		GpuBufferCreateInfo staging_buffer_create_info = {
+			.size = upload_size,
+			.usage = GPU_BUFFER_USAGE_TRANSFER_SRC,
+			.memory_properties = GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+			.debug_name = "gpu_upload_image staging buffer",
+		};
+
         // Need staging buffer
-        GpuBuffer staging_buffer =
-            gpu_create_buffer(context, GPU_BUFFER_USAGE_TRANSFER_SRC,
-                              GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT, upload_size,
-                              "staging buffer: gpu_upload_image");
+        GpuBuffer staging_buffer = gpu_create_buffer(context, &staging_buffer_create_info);
         gpu_memcpy(context, staging_buffer.memory, upload_size, upload_data);
         GpuCommandBuffer command_buffer = gpu_create_command_buffer(context);
         gpu_begin_command_buffer(&command_buffer);
@@ -1266,9 +1247,10 @@ void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_
 
 void gpu_map_memory(GpuContext *context, GpuMemory *memory, u64 offset, u64 size, void **ppData)
 {
-	const bool is_unmapped = memory->memory_region->owning_block->mapped_ref_count == 0;
+	assert(!memory->is_mapped);
 
-	if (is_unmapped)
+	const bool is_block_unmapped = memory->memory_region->owning_block->mapped_ref_count == 0;
+	if (is_block_unmapped)
 	{
 		VK_CHECK(vkMapMemory(
 			context->device, 
@@ -1280,14 +1262,17 @@ void gpu_map_memory(GpuContext *context, GpuMemory *memory, u64 offset, u64 size
 		));
 	}
 
+	memory->is_mapped = true;
 	memory->memory_region->owning_block->mapped_ref_count++;
 	*ppData = (char*) memory->memory_region->owning_block->mapped_ptr + memory->memory_region->offset + offset;
 }
 
 void gpu_unmap_memory(GpuContext *context, GpuMemory *memory)
 {
+	assert(memory->is_mapped);
 	assert(memory->memory_region->owning_block->mapped_ref_count > 0);
 
+	memory->is_mapped = false;
 	memory->memory_region->owning_block->mapped_ref_count--;
 
 	const bool needs_unmap = memory->memory_region->owning_block->mapped_ref_count == 0;

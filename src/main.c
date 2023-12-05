@@ -137,15 +137,14 @@ int main()
 		//For each backbuffer...
 		for (i32 swapchain_idx = 0; swapchain_idx < gpu_context.swapchain_image_count; ++swapchain_idx)
 		{
-			GpuBuffer uniform_buffer = gpu_create_buffer(
-									&gpu_context, 
-									GPU_BUFFER_USAGE_UNIFORM_BUFFER,
-									GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-									sizeof(ObjectUniformStruct), 
-									"object_uniform_buffer"
-								);
-
 			// Create Uniform Buffer
+			GpuBufferCreateInfo uniform_buffer_create_info = {
+				.size = sizeof(ObjectUniformStruct),
+				.usage = GPU_BUFFER_USAGE_UNIFORM_BUFFER,
+				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+				.debug_name = "object_uniform_buffer",
+			};
+			GpuBuffer uniform_buffer = gpu_create_buffer(&gpu_context, &uniform_buffer_create_info);	
 			sb_push(
 				object_render_data.uniform_buffers,
 				uniform_buffer
@@ -177,8 +176,8 @@ int main()
 		ObjectRenderDataComponent* render_data_component = CREATE_COMPONENT(ObjectRenderDataComponent, game_object_manager_ptr, object_render_data);
 		OBJECT_SET_COMPONENT(ObjectRenderDataComponent, game_object_manager_ptr, new_object, render_data_component);
 	}
-    // BEGIN GUI SETUP
 
+    // BEGIN GUI SETUP
     GuiContext gui_context;
     gui_init(&gui_context);
 
@@ -194,8 +193,9 @@ int main()
             .mip_levels = 1,
             .usage = GPU_IMAGE_USAGE_SAMPLED | GPU_IMAGE_USAGE_TRANSFER_DST,
             .memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-        },
-        "font_image");
+			.debug_name = "font_image",
+        }
+	);
 
     gpu_upload_image(&gpu_context, &font_image, gui_context.default_font.image_width,
                      gui_context.default_font.image_height, gui_context.default_font.image_data);
@@ -279,16 +279,22 @@ int main()
     gpu_destroy_shader_module(&gpu_context, &gui_fragment_module);
 
     size_t max_gui_vertices_size = sizeof(GuiVert) * 10000; // TODO: need to support gpu buffer resizing
-    GpuBuffer gui_vertex_buffer = gpu_create_buffer(
-        &gpu_context, GPU_BUFFER_USAGE_VERTEX_BUFFER,
-        GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-        max_gui_vertices_size, "gui vertex buffer");
+	GpuBufferCreateInfo gui_vertex_buffer_create_info = {
+		.size = max_gui_vertices_size,
+		.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER,
+		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+		.debug_name = "gui vertex buffer",
+	};
+    GpuBuffer gui_vertex_buffer = gpu_create_buffer(&gpu_context, &gui_vertex_buffer_create_info);
 
-    size_t max_gui_indices = sizeof(u32) * 30000; // TODO: need to support gpu buffer resizing
-    GpuBuffer gui_index_buffer = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_INDEX_BUFFER,
-                                                   GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
-                                                       GPU_MEMORY_PROPERTY_HOST_COHERENT,
-                                                   max_gui_indices, "gui index buffer");
+    size_t max_gui_indices_size = sizeof(u32) * 30000; // TODO: need to support gpu buffer resizing
+	GpuBufferCreateInfo gui_index_buffer_create_info = {
+		.size = max_gui_indices_size,
+		.usage = GPU_BUFFER_USAGE_INDEX_BUFFER,
+		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+		.debug_name = "gui index buffer",
+	};
+    GpuBuffer gui_index_buffer = gpu_create_buffer(&gpu_context, &gui_index_buffer_create_info);
 
     // END GUI SETUP
 
@@ -300,11 +306,13 @@ int main()
     GpuBuffer uniform_buffers[gpu_context.swapchain_image_count];
     for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
     {
-        uniform_buffers[i] = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_UNIFORM_BUFFER,
-			GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
-			GPU_MEMORY_PROPERTY_HOST_COHERENT,
-			sizeof(GlobalUniformStruct), "global_uniform_buffer"
-		);
+		GpuBufferCreateInfo global_uniform_buffer_create_info = {
+			.size = sizeof(GlobalUniformStruct),
+			.usage = GPU_BUFFER_USAGE_UNIFORM_BUFFER,
+			.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+			.debug_name = "global_uniform_buffer",
+		};
+        uniform_buffers[i] = gpu_create_buffer(&gpu_context, &global_uniform_buffer_create_info); 
     }
 
     GpuShaderModule static_vertex_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/vertex/static.vert.spv");
@@ -360,9 +368,6 @@ int main()
 
 
 	//BEGIN TEST COLLISION
-
-	test_collision(); // FCS TODO: See Collision.h
-
 	Collider colliders[] = 
 	{
 		{
@@ -408,11 +413,13 @@ int main()
     {
 		collider_render_data_create(&gpu_context, &colliders[collider_idx], &collider_render_datas[collider_idx]);
 
-        collider_uniform_buffers[collider_idx] = gpu_create_buffer(&gpu_context, GPU_BUFFER_USAGE_UNIFORM_BUFFER,
-		   GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE |
-		   GPU_MEMORY_PROPERTY_HOST_COHERENT,
-		   sizeof(GlobalUniformStruct), "collider_uniform_buffer"
-		);
+		GpuBufferCreateInfo collider_uniform_buffer_create_info = {
+			.size = sizeof(GlobalUniformStruct),
+			.usage = GPU_BUFFER_USAGE_UNIFORM_BUFFER,
+			.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+			.debug_name = "collider_uniform_buffer",
+		};
+        collider_uniform_buffers[collider_idx] = gpu_create_buffer(&gpu_context, &collider_uniform_buffer_create_info);
 
 		collider_descriptor_sets[collider_idx] = gpu_create_descriptor_set(&gpu_context, &global_descriptor_layout);
 
@@ -429,7 +436,6 @@ int main()
 
         gpu_write_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx], 1, collider_descriptor_writes);
     }
-
 	//END TEST COLLISION
 
 	//JOINT VIS DATA
@@ -462,11 +468,14 @@ int main()
 		};
 	}
 
-    size_t cube_vertices_size = sizeof(StaticVertex) * cube_vertices_count;
-	GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-    GpuBuffer cube_vertex_buffer = gpu_create_buffer(
-        &gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, cube_vertices_size, "cube vertex buffer");
-    gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertices_size, cube_vertices);
+	GpuBufferCreateInfo cube_vertex_buffer_create_info = {
+		.size = sizeof(StaticVertex) * cube_vertices_count,
+		.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+		.debug_name = "cube vertex buffer",
+	};
+    GpuBuffer cube_vertex_buffer = gpu_create_buffer(&gpu_context, &cube_vertex_buffer_create_info);
+    gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertex_buffer_create_info.size, cube_vertices);
 
     GpuFormat static_attribute_formats[] = {
         GPU_FORMAT_RGB32_SFLOAT,
@@ -612,15 +621,17 @@ int main()
             gpu_destroy_image_view(&gpu_context, &depth_view);
             gpu_destroy_image(&gpu_context, &depth_image);
 
-            depth_image = gpu_create_image(&gpu_context,
-                                           &(GpuImageCreateInfo){
-                                               .dimensions = {width, height, 1},
-                                               .format = GPU_FORMAT_D32_SFLOAT,
-                                               .mip_levels = 1,
-                                               .usage = GPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
-                                               .memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-                                           },
-                                           "depth_image");
+			depth_image = gpu_create_image(
+				&gpu_context,
+				&(GpuImageCreateInfo){
+				  .dimensions = {width, height, 1},
+				  .format = GPU_FORMAT_D32_SFLOAT,
+				  .mip_levels = 1,
+				  .usage = GPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
+				  .memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+				  .debug_name = "depth_image",
+				}
+			);
 
             depth_view = gpu_create_image_view(&gpu_context, &(GpuImageViewCreateInfo){
                                                                  .image = &depth_image,

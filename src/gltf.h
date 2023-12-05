@@ -812,8 +812,7 @@ void print_gltf_asset(GltfAsset* in_asset)
 bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 {
 	printf("gltf_load_asset: %s\n", filename);
-    // TODO: check extension, add functions for GLB and GLTF (only GLB is
-    // currently supported)
+    // TODO: check extension, add functions for GLB and GLTF (only GLB is currently supported)
 
     FILE* file = fopen(filename, "rb");
 
@@ -821,31 +820,37 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
     {
         // HEADER
         {
-            u32 magic, version, length;
-            if (fread(&magic, 4, 1, file) == 1 && magic == GLTF_MAGIC_NUMBER)
+            u32 magic;
+            if (!(fread(&magic, 4, 1, file) == 1 && magic == GLTF_MAGIC_NUMBER))
             {
-                printf("We have GLTF Binary!\n");
+            	return false;
+			}
+
+			u32 version;
+            if (!(fread(&version, 4, 1, file) == 1))
+            {
+            	return false;
             }
-            if (fread(&version, 4, 1, file) == 1)
+
+			u32 length;
+            if (!(fread(&length, 4, 1, file) == 1))
             {
-                printf("Version: %i\n", version);
-            }
-            if (fread(&length, 4, 1, file) == 1)
-            {
-                printf("Length: %i\n", length);
+            	return false;
             }
         }
 
         // JSON
         {
-            i32 json_length, json_type;
-            if (fread(&json_length, 4, 1, file) == 1)
+            i32 json_length;
+            if (!(fread(&json_length, 4, 1, file) == 1))
             {
-                printf("Json Length: %i\n", json_length);
+				return false;
             }
-            if (fread(&json_type, 4, 1, file) == 1 && json_type == GLTF_CHUNK_TYPE_JSON)
+
+			i32 json_type;
+            if (!(fread(&json_type, 4, 1, file) == 1 && json_type == GLTF_CHUNK_TYPE_JSON))
             {
-                printf("Found Json Chunk\n");
+				return false;
             }
 
             char* json_string = (char*) malloc(json_length + 1);
@@ -875,8 +880,6 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                 // Increment num_buffers and realloc
                 out_asset->num_buffers++;
                 out_asset->buffers = (GltfBuffer*) realloc(out_asset->buffers, sizeof(GltfBuffer) * out_asset->num_buffers);
-
-                printf("Buffer Length: %i\n", buffer_length);
 
                 i32 buffer_type = 0;
                 if (fread(&buffer_type, 4, 1, file) != 1 || buffer_type != GLTF_CHUNK_TYPE_BUFFER)
@@ -1148,7 +1151,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                         {
                             json_copy_float_array((float*)&rotation, json_rotation, 4);
                         }
-						node->transform.rotation = rotation;
+						node->transform.rotation = quat_normalize(rotation);
 
 						Vec3 translation = vec3_new(0.f, 0.f, 0.f);
                         const JsonArray* json_translation = json_object_get_array(json_node, "translation");
@@ -1164,7 +1167,6 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_value_as_i32(json_object_get_value(json_node, "mesh"), &node_mesh_index))
                     {
                         node->mesh = &out_asset->meshes[node_mesh_index];
-                        printf("\tNode references mesh: %s\n", node->mesh->name);
                     }
 
                     // Optional Node Skin
@@ -1173,7 +1175,6 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     {
                         // Skins are already allocated so just point directly to the correct skin here
                         node->skin = &out_asset->skins[skin_index];
-                        printf("\tNode references skin index: %i which has %i joints\n", skin_index, node->skin->num_joints);
                     }
                 }
             }

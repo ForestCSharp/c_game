@@ -111,6 +111,7 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
     u8* file_data = NULL;
     if (truetype_read_file(filename, &file_size, &file_data))
     {
+		printf("\n\ntruetype_load_file\n");
         printf("Font File Size: %zu\n", file_size);
 
         u8* font_directory_start = file_data;

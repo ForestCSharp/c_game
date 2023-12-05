@@ -267,15 +267,23 @@ void collider_render_data_create(GpuContext* gpu_context, const Collider* in_col
 	}
 
 	// GPU Data Setup
-	size_t vertices_size = sizeof(StaticVertex) * sb_count(vertices);
-	GpuBufferUsageFlags vertex_buffer_usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-	GpuBuffer vertex_buffer = gpu_create_buffer(gpu_context, vertex_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, vertices_size, "collision vertex buffer");
-	gpu_upload_buffer(gpu_context, &vertex_buffer, vertices_size, vertices);
+	GpuBufferCreateInfo vertex_buffer_create_info = {
+		.size = sizeof(StaticVertex) * sb_count(vertices),
+		.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+		.debug_name = "collision vertex buffer",
+	};
+	GpuBuffer vertex_buffer = gpu_create_buffer(gpu_context, &vertex_buffer_create_info);
+	gpu_upload_buffer(gpu_context, &vertex_buffer, vertex_buffer_create_info.size, vertices);
 
-	size_t indices_size = sizeof(u32) * sb_count(indices);
-	GpuBufferUsageFlags index_buffer_usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST;
-	GpuBuffer index_buffer = gpu_create_buffer(gpu_context, index_buffer_usage, GPU_MEMORY_PROPERTY_DEVICE_LOCAL, indices_size, "collision index buffer");
-	gpu_upload_buffer(gpu_context, &index_buffer, indices_size, indices);
+	GpuBufferCreateInfo index_buffer_create_info = {
+		.size = sizeof(u32) * sb_count(indices),
+		.usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
+		.debug_name = "collision index buffer",
+	};
+	GpuBuffer index_buffer = gpu_create_buffer(gpu_context, &index_buffer_create_info);
+	gpu_upload_buffer(gpu_context, &index_buffer, index_buffer_create_info.size, indices);
 
 	*out_render_data = (ColliderRenderData) {
 		.num_vertices = sb_count(vertices),
