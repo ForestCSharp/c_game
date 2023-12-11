@@ -47,31 +47,7 @@ int main()
     }
 
     Window window = window_create("C Game", 1920, 1080);
-
     GpuContext gpu_context = gpu_create_context(&window);
-
-	AnimatedModel animated_model;
-	//if (!animated_model_load("data/meshes/simple_skin.glb", &gpu_context, &animated_model))
-	//if (!animated_model_load("data/meshes/blender_simple.glb", &gpu_context, &animated_model))
-	//if (!animated_model_load("data/meshes/running.glb", &gpu_context, &animated_model))
-	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu_context, &animated_model))
-	{
-		printf("Failed to Load Animated Model\n");
-		return 1;
-	}
-
-	//FCS TODO: BEGIN Move this logic to AnimatedModel as well?
-	float animation_start = animated_model.baked_animation.start_time;
-	float animation_end = animated_model.baked_animation.end_time;
-	float current_anim_time = animation_start;
-	//FCS TODO: END
-
-	StaticModel static_model;
-	if (!static_model_load("data/meshes/monkey.glb", &gpu_context, &static_model))
-	{
-		printf("Failed to Load Static Model\n");
-		return 1;
-	}
 
 	const GpuDescriptorLayoutCreateInfo global_descriptor_layout_create_info = {
 		.set_number = 0,
@@ -103,27 +79,67 @@ int main()
 	GameObjectManager* game_object_manager_ptr = &game_object_manager;
 	game_object_manager_init(game_object_manager_ptr);
 
+	// Set up Static Model
+	StaticModel static_model;
+	if (!static_model_load("data/meshes/monkey.glb", &gpu_context, &static_model))
+	{
+		printf("Failed to Load Static Model\n");
+		return 1;
+	}
 	StaticModelComponent static_model_component_data = {
 		.static_model = static_model,
 	};
 	StaticModelComponent* static_model_component = CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, static_model_component_data);
 
-	const i32 OBJECTS_TO_ADD = 1000;
-	for (i32 i = 0; i < OBJECTS_TO_ADD; ++i)
+	// Set up Animated Model
+	AnimatedModel animated_model;
+	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu_context, &animated_model))
+	{
+		printf("Failed to Load Animated Model\n");
+		return 1;
+	}
+	AnimatedModelComponent animated_model_component_data = {
+		.animated_model = animated_model,
+	};
+	AnimatedModelComponent* animated_model_component = CREATE_COMPONENT(AnimatedModelComponent, game_object_manager_ptr, animated_model_component_data);
+
+	//FCS TODO: need to separate animated model's Vertex and Index buffers from its skeleton data
+	//			allows for multiple models to animate at once
+
+	const i32 OBJECTS_TO_CREATE = 2000;
+	for (i32 i = 0; i < OBJECTS_TO_CREATE; ++i)
 	{
 		GameObject* new_object = ADD_OBJECT(game_object_manager_ptr);
 
-		//All of these objects share the same model data
-		OBJECT_SET_COMPONENT(StaticModelComponent, game_object_manager_ptr, new_object, static_model_component);
+		if ((i % 2) == 0)
+		{
+			OBJECT_SET_COMPONENT(AnimatedModelComponent, game_object_manager_ptr, new_object, animated_model_component);
+		}
+		else
+		{
+			OBJECT_SET_COMPONENT(StaticModelComponent, game_object_manager_ptr, new_object, static_model_component);
+		}
+
+		const float spawn_scale = OBJECTS_TO_CREATE / 100.0f;
+		const float spawn_span = OBJECTS_TO_CREATE / 2.0f;
 
 		TransformComponent t = {
 			.trs = {
-				.scale = vec3_new(10,10,10),
-				.rotation = quat_new(vec3_new(0,1,0), 180.0 * DEGREES_TO_RADIANS),
+				.scale = vec3_new(spawn_scale, spawn_scale, spawn_scale),
+				.rotation = quat_new(
+					vec3_normalize(
+						vec3_new(
+							rand_f32(-1, 1),
+							rand_f32(-1, 1),
+							rand_f32(-1,1)
+						)
+					), 
+					rand_f32(-180.0f, 180.0f) * DEGREES_TO_RADIANS
+				),
 				.translation = vec3_new(
-					rand_f32(-OBJECTS_TO_ADD, OBJECTS_TO_ADD),
-					rand_f32(-OBJECTS_TO_ADD, OBJECTS_TO_ADD),
-					rand_f32(-OBJECTS_TO_ADD, OBJECTS_TO_ADD)
+					rand_f32(-spawn_span, spawn_span),
+					rand_f32(-spawn_span, spawn_span),
+					rand_f32(-spawn_span, spawn_span)
 				),
 			}	
 		};
@@ -633,25 +649,31 @@ int main()
 				}
 			);
 
-            depth_view = gpu_create_image_view(&gpu_context, &(GpuImageViewCreateInfo){
-                                                                 .image = &depth_image,
-                                                                 .type = GPU_IMAGE_VIEW_2D,
-                                                                 .format = GPU_FORMAT_D32_SFLOAT,
-                                                                 .aspect = GPU_IMAGE_ASPECT_DEPTH,
-                                                             });
+            depth_view = gpu_create_image_view(
+				&gpu_context, 
+				&(GpuImageViewCreateInfo){
+					.image = &depth_image,
+					.type = GPU_IMAGE_VIEW_2D,
+					.format = GPU_FORMAT_D32_SFLOAT,
+					.aspect = GPU_IMAGE_ASPECT_DEPTH,
+				}
+			);
         }
 
         // BEGIN Gui Test
-
         i32 mouse_x, mouse_y;
         window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
         // FCS TODO: open_windows memory leak here
-        GuiFrameState gui_frame_state = {.screen_size = vec2_new(width, height),
-                                         .mouse_pos = vec2_new(mouse_x, mouse_y),
-                                         .mouse_buttons = {input_pressed(KEY_LEFT_MOUSE),
-                                                           input_pressed(KEY_RIGHT_MOUSE),
-                                                           input_pressed(KEY_MIDDLE_MOUSE)}};
+        GuiFrameState gui_frame_state = {
+			.screen_size = vec2_new(width, height),
+			.mouse_pos = vec2_new(mouse_x, mouse_y),
+			.mouse_buttons = {
+				input_pressed(KEY_LEFT_MOUSE),
+				input_pressed(KEY_RIGHT_MOUSE),
+				input_pressed(KEY_MIDDLE_MOUSE)
+			},
+		};
 
         gui_begin_frame(&gui_context, gui_frame_state);
 
@@ -871,25 +893,8 @@ int main()
 			.max_depth = 1.0,
 		});
 
-		{	// Draw Our Animated Model
-			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &skinned_pipeline);
-			
-			gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &animated_model.index_buffer);
-			gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &animated_model.vertex_buffer);
-			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &global_descriptor_sets[current_frame]);
-			gpu_cmd_draw_indexed(&command_buffers[current_frame], animated_model.num_indices, 1);
-		}
-
-		{	// Joint Visualization
-			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &joint_vis_pipeline);
-			gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
-			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &global_descriptor_sets[current_frame]);
-			gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count, animated_model.num_joints);
-		}
-
-		
 		{	//Draw Our Game Objects with Static Models
-			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
+			//gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
 			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &global_descriptor_sets[current_frame]);
 
 			for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
@@ -897,28 +902,41 @@ int main()
 				GameObject* object = &game_object_manager.game_object_array[obj_idx];
 				TransformComponent* transform_component = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, object);
 				ObjectRenderDataComponent* render_data_component = OBJECT_GET_COMPONENT(ObjectRenderDataComponent, &game_object_manager, object);
-				StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, &game_object_manager, object);
-				if (transform_component && render_data_component && static_model_component)
+				if (transform_component && render_data_component)
 				{
 					//Assign to our persistently mapped storage
 					render_data_component->uniform_data[current_frame]->model = trs_to_mat4(transform_component->trs);
-	
-					gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &static_model_component->static_model.index_buffer);
-					gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &static_model_component->static_model.vertex_buffer);
 					gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &render_data_component->descriptor_sets[current_frame]);
-					gpu_cmd_draw_indexed(&command_buffers[current_frame], static_model_component->static_model.num_indices, 1);
+
+					StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, &game_object_manager, object);
+					if (static_model_component)
+					{
+						//FCS TODO: Avoid all these pipeline binds
+						gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
+
+						gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &static_model_component->static_model.index_buffer);
+						gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &static_model_component->static_model.vertex_buffer);
+						gpu_cmd_draw_indexed(&command_buffers[current_frame], static_model_component->static_model.num_indices, 1);
+					}
+
+					AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, object);
+					if (animated_model_component)
+					{
+						//FCS TODO: Avoid all these pipeline binds
+						gpu_cmd_bind_pipeline(&command_buffers[current_frame], &skinned_pipeline);
+						
+						// Draw Our Animated Model
+						gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &animated_model_component->animated_model.index_buffer);
+						gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &animated_model_component->animated_model.vertex_buffer);
+						gpu_cmd_draw_indexed(&command_buffers[current_frame], animated_model_component->animated_model.num_indices, 1);
+
+						// Joint Visualization
+						//gpu_cmd_bind_pipeline(&command_buffers[current_frame], &joint_vis_pipeline);
+						//gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
+						//gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count, animated_model.num_joints);
+					}
 				}
 			}
-		}
-
-		{	// Draw Our Static Geometry
-			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
-
-			// Static Model	
-			//gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &static_model.index_buffer);
-			//gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &static_model.vertex_buffer);
-			//gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &global_descriptor_sets[current_frame]);
-			//gpu_cmd_draw_indexed(&command_buffers[current_frame], static_model.num_indices, 1);
 		}
 
 		{	// Draw our colliders
@@ -1010,16 +1028,10 @@ int main()
         }
 
 		{	//Anim Update
+			static float current_anim_time = 0.0f;
 			current_anim_time += (delta_time * animation_rate);
-			if (current_anim_time <= animation_start)
-			{
-				current_anim_time = animation_end;
-			}
-			else if (current_anim_time >= animation_end)
-			{
-				current_anim_time = animation_start;
-			}
-
+			if (current_anim_time > animated_model.baked_animation.end_time)	{ current_anim_time = animated_model.baked_animation.start_time; }
+			if (current_anim_time < animated_model.baked_animation.start_time)	{ current_anim_time = animated_model.baked_animation.end_time; }
 			animated_model_update_animation(&gpu_context, &animated_model, current_anim_time);
 		}
 

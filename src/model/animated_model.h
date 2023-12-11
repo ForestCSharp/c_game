@@ -88,7 +88,7 @@ typedef struct AnimatedModel
     GpuBuffer index_buffer;
 
 	size_t joints_buffer_size;
-	GpuBuffer joint_matrices_buffer;
+	GpuBuffer joint_matrices_buffer; //FCS TODO: Move this out
 	GpuBuffer inverse_bind_matrices_buffer;
 
 } AnimatedModel;

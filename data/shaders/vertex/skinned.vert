@@ -41,7 +41,7 @@ void main() {
         skin_matrix = mat4(1.0);
     }
 
-    gl_Position = global_ubo.mvp  * skin_matrix * vec4(in_position, 1.0);
+    gl_Position = global_ubo.projection * global_ubo.view * object_ubo.model * skin_matrix * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;
 

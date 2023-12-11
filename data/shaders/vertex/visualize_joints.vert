@@ -27,7 +27,7 @@ mat4 mat4_uniform_scale(float scale)
 
 void main() {
 	mat4 joint_vis_scale = mat4_uniform_scale(0.025);
-    gl_Position = global_ubo.mvp * joint_transforms.data[gl_InstanceIndex] * joint_vis_scale * vec4(in_position, 1.0);
+    gl_Position = global_ubo.projection * global_ubo.view * object_ubo.model * joint_transforms.data[gl_InstanceIndex] * joint_vis_scale * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;
 

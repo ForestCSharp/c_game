@@ -104,6 +104,11 @@ typedef struct StaticModelComponent
 	StaticModel static_model;
 } StaticModelComponent;
 
+typedef struct AnimatedModelComponent
+{
+	AnimatedModel animated_model;
+} AnimatedModelComponent;
+
 typedef struct ObjectRenderDataComponent
 {
 	sbuffer(GpuBuffer) uniform_buffers;
@@ -119,6 +124,7 @@ typedef struct ObjectRenderDataComponent
 typedef enum ComponentType
 {
 	COMPONENT_TYPE(TransformComponent),
+	COMPONENT_TYPE(AnimatedModelComponent),
 	COMPONENT_TYPE(StaticModelComponent),
 	COMPONENT_TYPE(ObjectRenderDataComponent),
 	COMPONENT_TYPE_COUNT,
@@ -135,14 +141,15 @@ typedef struct GameObjectManager
 	
 	DEFINE_COMPONENT_STORAGE(TransformComponent);
 	DEFINE_COMPONENT_STORAGE(StaticModelComponent);
+	DEFINE_COMPONENT_STORAGE(AnimatedModelComponent);
 	DEFINE_COMPONENT_STORAGE(ObjectRenderDataComponent);
 
 } GameObjectManager;
 
 DEFINE_COMPONENT_INTERFACE(TransformComponent);
 DEFINE_COMPONENT_INTERFACE(StaticModelComponent);
+DEFINE_COMPONENT_INTERFACE(AnimatedModelComponent);
 DEFINE_COMPONENT_INTERFACE(ObjectRenderDataComponent);
-
 
 void game_object_manager_init(GameObjectManager* manager)
 {
