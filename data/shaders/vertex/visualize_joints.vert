@@ -3,7 +3,7 @@
 
 #include "../include/uniform_buffers.glsl"
 
-layout(binding = 2) readonly buffer JointBuffer {
+layout(set = 1, binding = 1) readonly buffer JointBuffer {
 	mat4 data[];
 } joint_transforms;
 

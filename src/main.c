@@ -51,20 +51,20 @@ int main()
 
 	const GpuDescriptorLayoutCreateInfo global_descriptor_layout_create_info = {
 		.set_number = 0,
-		.binding_count = 4,
-		.bindings = (GpuDescriptorBinding[4]){
+		.binding_count = 2,
+		.bindings = (GpuDescriptorBinding[2]){
 			DESCRIPTOR_BINDING_UNIFORM_BUFFER(0, GPU_SHADER_STAGE_ALL_GRAPHICS),
 			DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(1, GPU_SHADER_STAGE_FRAGMENT),
-			DESCRIPTOR_BINDING_STORAGE_BUFFER(2, GPU_SHADER_STAGE_VERTEX),
-			DESCRIPTOR_BINDING_STORAGE_BUFFER(3, GPU_SHADER_STAGE_VERTEX),	
 		},
 	};
 
 	const GpuDescriptorLayoutCreateInfo per_object_descriptor_layout_create_info = {
 		.set_number = 1,
-		.binding_count = 1,
-		.bindings = (GpuDescriptorBinding[1]) {
+		.binding_count = 3,
+		.bindings = (GpuDescriptorBinding[3]) {
 			DESCRIPTOR_BINDING_UNIFORM_BUFFER(0, GPU_SHADER_STAGE_ALL_GRAPHICS),
+			DESCRIPTOR_BINDING_STORAGE_BUFFER(1, GPU_SHADER_STAGE_VERTEX),
+			DESCRIPTOR_BINDING_STORAGE_BUFFER(2, GPU_SHADER_STAGE_VERTEX),
 		},
 	};
 
@@ -89,22 +89,17 @@ int main()
 	StaticModelComponent static_model_component_data = {
 		.static_model = static_model,
 	};
+
+	// Static Models don't contain any per-object updated data, so we can all share one component...
 	StaticModelComponent* static_model_component = CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, static_model_component_data);
 
-	// Set up Animated Model
+	// Set up Animated Model. Components will be added later as they contain animated joint data.
 	AnimatedModel animated_model;
 	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu_context, &animated_model))
 	{
 		printf("Failed to Load Animated Model\n");
 		return 1;
 	}
-	AnimatedModelComponent animated_model_component_data = {
-		.animated_model = animated_model,
-	};
-	AnimatedModelComponent* animated_model_component = CREATE_COMPONENT(AnimatedModelComponent, game_object_manager_ptr, animated_model_component_data);
-
-	//FCS TODO: need to separate animated model's Vertex and Index buffers from its skeleton data
-	//			allows for multiple models to animate at once
 
 	const i32 OBJECTS_TO_CREATE = 2000;
 	for (i32 i = 0; i < OBJECTS_TO_CREATE; ++i)
@@ -113,6 +108,24 @@ int main()
 
 		if ((i % 2) == 0)
 		{
+			GpuBufferCreateInfo joint_buffers_create_info = {
+				.size = animated_model.joints_buffer_size,
+				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
+				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+				.debug_name = "animated model joint buffer",
+			};
+
+			GpuBuffer joint_matrices_buffer = gpu_create_buffer(&gpu_context, &joint_buffers_create_info);
+
+			AnimatedModelComponent animated_model_component_data = {
+				.animated_model = animated_model,
+				.joint_matrices_buffer = joint_matrices_buffer,
+				.mapped_buffer_data = gpu_map_buffer(&gpu_context, &joint_matrices_buffer),
+				.animation_rate = rand_f32(0.1f, 5.0f),
+			};
+
+			AnimatedModelComponent* animated_model_component = CREATE_COMPONENT(AnimatedModelComponent, game_object_manager_ptr, animated_model_component_data);
+
 			OBJECT_SET_COMPONENT(AnimatedModelComponent, game_object_manager_ptr, new_object, animated_model_component);
 		}
 		else
@@ -179,15 +192,42 @@ int main()
 			);
 
 			// Write uniform buffer to descriptor set
-			GpuDescriptorWrite descriptor_writes[1] = {{
+			sbuffer(GpuDescriptorWrite) descriptor_writes = NULL;
+
+			sb_push(descriptor_writes, ((GpuDescriptorWrite){
 				.binding_desc = &per_object_descriptor_layout.bindings[0],
 				.buffer_write = &(GpuDescriptorWriteBuffer) {
 					.buffer = &uniform_buffer,
 					.offset = 0,
 					.range = sizeof(ObjectUniformStruct),
 				},
-			}};
-			gpu_write_descriptor_set(&gpu_context, &object_render_data.descriptor_sets[swapchain_idx], 1, descriptor_writes);
+			}));
+			
+			AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, new_object);
+			if(animated_model_component)
+			{
+				sb_push(descriptor_writes, ((GpuDescriptorWrite){
+					.binding_desc = &per_object_descriptor_layout.bindings[1],
+					.buffer_write = &(GpuDescriptorWriteBuffer) {
+						.buffer = &animated_model_component->joint_matrices_buffer,
+						.offset = 0,
+						.range = animated_model.joints_buffer_size,
+					},
+				}));
+
+				sb_push(descriptor_writes, ((GpuDescriptorWrite){
+					.binding_desc = &per_object_descriptor_layout.bindings[2],
+					.buffer_write = &(GpuDescriptorWriteBuffer){
+						.buffer = &animated_model.inverse_bind_matrices_buffer,
+						.offset = 0,
+						.range = animated_model.joints_buffer_size,
+					}
+				}));
+			}
+
+			gpu_write_descriptor_set(&gpu_context, &object_render_data.descriptor_sets[swapchain_idx], sb_count(descriptor_writes), descriptor_writes);
+
+			sb_free(descriptor_writes);
 		}
 		ObjectRenderDataComponent* render_data_component = CREATE_COMPONENT(ObjectRenderDataComponent, game_object_manager_ptr, object_render_data);
 		OBJECT_SET_COMPONENT(ObjectRenderDataComponent, game_object_manager_ptr, new_object, render_data_component);
@@ -344,7 +384,7 @@ int main()
     {
         global_descriptor_sets[i] = gpu_create_descriptor_set(&gpu_context, &global_descriptor_layout);
 
-        GpuDescriptorWrite descriptor_writes[4] = {
+        GpuDescriptorWrite descriptor_writes[2] = {
 			{
 				.binding_desc = &global_descriptor_layout.bindings[0],
 				.buffer_write = &(GpuDescriptorWriteBuffer) {
@@ -360,26 +400,10 @@ int main()
 					.sampler = &font_sampler,
 					.layout = GPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
 				},
-			},
-			{
-				.binding_desc = &global_descriptor_layout.bindings[2],
-				.buffer_write = &(GpuDescriptorWriteBuffer){
-					.buffer = &animated_model.joint_matrices_buffer,
-					.offset = 0,
-					.range = animated_model.joints_buffer_size,
-				}
-			},
-			{
-				.binding_desc = &global_descriptor_layout.bindings[3],
-				.buffer_write = &(GpuDescriptorWriteBuffer){
-					.buffer = &animated_model.inverse_bind_matrices_buffer,
-					.offset = 0,
-					.range = animated_model.joints_buffer_size,
-				}
-			}
+			},	
 		};
 
-        gpu_write_descriptor_set(&gpu_context, &global_descriptor_sets[i], 4, descriptor_writes);
+        gpu_write_descriptor_set(&gpu_context, &global_descriptor_sets[i], 2, descriptor_writes);
     }
 
 
@@ -660,6 +684,47 @@ int main()
 			);
         }
 
+        u64 new_time = time_now();
+        double delta_time = time_seconds(new_time - time);
+        time = new_time;
+
+        accumulated_delta_time += delta_time;
+        frames_rendered++;
+
+        const float base_move_speed = 36.0f;
+        const float move_speed = (input_pressed(KEY_SHIFT) ? base_move_speed * 3 : base_move_speed) * delta_time;
+
+        if (input_pressed('W'))
+        {
+            position.z += move_speed;
+            target.z += move_speed;
+        }
+        if (input_pressed('S'))
+        {
+            position.z -= move_speed;
+            target.z -= move_speed;
+        }
+        if (input_pressed('A'))
+        {
+            position.x -= move_speed;
+            target.x -= move_speed;
+        }
+        if (input_pressed('D'))
+        {
+            position.x += move_speed;
+            target.x += move_speed;
+        }
+        if (input_pressed('Q'))
+        {
+            position.y -= move_speed;
+            target.y -= move_speed;
+        }
+        if (input_pressed('E'))
+        {
+            position.y += move_speed;
+            target.y += move_speed;
+        }
+
         // BEGIN Gui Test
         i32 mouse_x, mouse_y;
         window_get_mouse_pos(&window, &mouse_x, &mouse_y);
@@ -769,8 +834,8 @@ int main()
             show_bezier = !show_bezier;
         }
 
-		static float animation_rate = 1.0f;
-        gui_window_slider_float(&gui_context, &gui_window_1, &animation_rate, vec2_new(-5.0, 5.0), "Anim Rate");
+		static float global_animation_rate = 1.0f;
+        gui_window_slider_float(&gui_context, &gui_window_1, &global_animation_rate, vec2_new(-5.0, 5.0), "Anim Rate");
 
         static float model_rotation = 135.0f;
         gui_window_slider_float(&gui_context, &gui_window_1, &model_rotation, vec2_new(-360, 360), "Anim Model Rotation");
@@ -922,6 +987,22 @@ int main()
 					AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, object);
 					if (animated_model_component)
 					{
+						animated_model_component->current_anim_time += (delta_time * animated_model_component->animation_rate * global_animation_rate);
+						if (animated_model_component->current_anim_time > animated_model.baked_animation.end_time)
+						{ 
+							animated_model_component->current_anim_time = animated_model.baked_animation.start_time;
+						}
+						if (animated_model_component->current_anim_time < animated_model.baked_animation.start_time)
+						{ 
+							animated_model_component->current_anim_time = animated_model.baked_animation.end_time;
+						}
+						animated_model_update_animation(
+							&gpu_context, 
+							&animated_model, 
+							animated_model_component->current_anim_time,
+							animated_model_component->mapped_buffer_data
+						);
+
 						//FCS TODO: Avoid all these pipeline binds
 						gpu_cmd_bind_pipeline(&command_buffers[current_frame], &skinned_pipeline);
 						
@@ -986,53 +1067,12 @@ int main()
 
         gpu_queue_present(&gpu_context, image_index, &render_complete_semaphores[current_frame]);
 
-        u64 new_time = time_now();
-        double delta_time = time_seconds(new_time - time);
-        time = new_time;
-
-        accumulated_delta_time += delta_time;
-        frames_rendered++;
-
-        const float base_move_speed = 36.0f;
-        const float move_speed = (input_pressed(KEY_SHIFT) ? base_move_speed * 3 : base_move_speed) * delta_time;
-
-        if (input_pressed('W'))
-        {
-            position.z += move_speed;
-            target.z += move_speed;
-        }
-        if (input_pressed('S'))
-        {
-            position.z -= move_speed;
-            target.z -= move_speed;
-        }
-        if (input_pressed('A'))
-        {
-            position.x -= move_speed;
-            target.x -= move_speed;
-        }
-        if (input_pressed('D'))
-        {
-            position.x += move_speed;
-            target.x += move_speed;
-        }
-        if (input_pressed('Q'))
-        {
-            position.y -= move_speed;
-            target.y -= move_speed;
-        }
-        if (input_pressed('E'))
-        {
-            position.y += move_speed;
-            target.y += move_speed;
-        }
-
 		{	//Anim Update
-			static float current_anim_time = 0.0f;
-			current_anim_time += (delta_time * animation_rate);
-			if (current_anim_time > animated_model.baked_animation.end_time)	{ current_anim_time = animated_model.baked_animation.start_time; }
-			if (current_anim_time < animated_model.baked_animation.start_time)	{ current_anim_time = animated_model.baked_animation.end_time; }
-			animated_model_update_animation(&gpu_context, &animated_model, current_anim_time);
+			//static float current_anim_time = 0.0f;
+			//current_anim_time += (delta_time * animation_rate);
+			//if (current_anim_time > animated_model.baked_animation.end_time)	{ current_anim_time = animated_model.baked_animation.start_time; }
+			//if (current_anim_time < animated_model.baked_animation.start_time)	{ current_anim_time = animated_model.baked_animation.end_time; }
+			//animated_model_update_animation(&gpu_context, &animated_model, current_anim_time, animated_model.baked_animation.computed_joint_matrices);
 		}
 
         {
@@ -1114,6 +1154,12 @@ int main()
 			}
 			sb_free(render_data_component->descriptor_sets);
 			sb_free(render_data_component->uniform_buffers);
+		}
+
+		AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, object);
+		if (animated_model_component)
+		{
+			gpu_destroy_buffer(&gpu_context, &animated_model_component->joint_matrices_buffer);
 		}
 	}
 

@@ -107,6 +107,10 @@ typedef struct StaticModelComponent
 typedef struct AnimatedModelComponent
 {
 	AnimatedModel animated_model;
+	GpuBuffer joint_matrices_buffer;
+	Mat4* mapped_buffer_data;
+	float animation_rate;
+	float current_anim_time;
 } AnimatedModelComponent;
 
 typedef struct ObjectRenderDataComponent

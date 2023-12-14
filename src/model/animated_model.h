@@ -52,9 +52,6 @@ typedef struct BakedAnimation
 
     i32 num_keyframes;
     BakedAnimationKeyframe* keyframes;
-
-	// Joint Data computed from last call of animated_model_sample_animation
-	Mat4* computed_joint_matrices;
 } BakedAnimation;
 
 
@@ -88,7 +85,6 @@ typedef struct AnimatedModel
     GpuBuffer index_buffer;
 
 	size_t joints_buffer_size;
-	GpuBuffer joint_matrices_buffer; //FCS TODO: Move this out
 	GpuBuffer inverse_bind_matrices_buffer;
 
 } AnimatedModel;
@@ -453,7 +449,6 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
 			.end_time = optional_get(animation_end),
 			.num_keyframes = num_keyframes,
 			.keyframes = calloc(num_keyframes, sizeof(BakedAnimationKeyframe)),
-			.computed_joint_matrices = calloc(out_model->num_joints, sizeof(Mat4)),
 		};
 
 		for (i32 keyframe_idx = 0; keyframe_idx < num_keyframes; ++keyframe_idx)
@@ -530,7 +525,6 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Animate
 				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
 				.debug_name = "animated model joint buffer",
 			};
-			out_model->joint_matrices_buffer  = gpu_create_buffer(gpu_context, &joint_buffers_create_info);
 			out_model->inverse_bind_matrices_buffer = gpu_create_buffer(gpu_context, &joint_buffers_create_info);
 			gpu_upload_buffer(gpu_context, &out_model->inverse_bind_matrices_buffer, out_model->joints_buffer_size, out_model->inverse_bind_matrices);
 		}
@@ -550,7 +544,6 @@ void animated_model_free(GpuContext* gpu_context, AnimatedModel* in_model)
 
     gpu_destroy_buffer(gpu_context, &in_model->vertex_buffer);
     gpu_destroy_buffer(gpu_context, &in_model->index_buffer);
-	gpu_destroy_buffer(gpu_context, &in_model->joint_matrices_buffer);
 	gpu_destroy_buffer(gpu_context, &in_model->inverse_bind_matrices_buffer);
 
 	for (i32 keyframe_idx = 0; keyframe_idx < in_model->baked_animation.num_keyframes; ++keyframe_idx)
@@ -559,13 +552,13 @@ void animated_model_free(GpuContext* gpu_context, AnimatedModel* in_model)
 		free(keyframe->joint_matrices);
 	}
 	free(in_model->baked_animation.keyframes);
-	free(in_model->baked_animation.computed_joint_matrices);
 }
 
-void animated_model_update_animation(GpuContext* gpu_context, AnimatedModel* in_model, float in_anim_time)
-{	
+void animated_model_update_animation(GpuContext* gpu_context, AnimatedModel* in_model, float in_anim_time, Mat4* out_joint_matrices)
+{
+	assert(out_joint_matrices); 
+
 	BakedAnimation* animation = &in_model->baked_animation;
-	Mat4* computed_joint_matrices = animation->computed_joint_matrices;
 
 	i32 last_keyframe_idx = animation->num_keyframes - 1;
 	for (i32 keyframe_idx = 0; keyframe_idx < animation->num_keyframes; ++keyframe_idx)
@@ -576,7 +569,7 @@ void animated_model_update_animation(GpuContext* gpu_context, AnimatedModel* in_
 		// If anim time is before or after all of our keyframes, clamp to first/last keyframe
 		if (in_anim_time <= keyframe->time || is_last_keyframe)
 		{
-			memcpy(computed_joint_matrices, keyframe->joint_matrices, sizeof(Mat4) * in_model->num_joints);
+			memcpy(out_joint_matrices, keyframe->joint_matrices, sizeof(Mat4) * in_model->num_joints);
 			break;
 		}
 		
@@ -590,13 +583,10 @@ void animated_model_update_animation(GpuContext* gpu_context, AnimatedModel* in_
 			// Matrix Lerp. Not ideal but should be acceptable at our sampling rate
 			for (i32 joint_idx = 0; joint_idx < in_model->num_joints; ++joint_idx)
 			{
-				computed_joint_matrices[joint_idx] = mat4_lerp(t, keyframe->joint_matrices[joint_idx], next_keyframe->joint_matrices[joint_idx]);
+				out_joint_matrices[joint_idx] = mat4_lerp(t, keyframe->joint_matrices[joint_idx], next_keyframe->joint_matrices[joint_idx]);
 			}
 
 			break;
 		}
 	}
-
-	//Upload New Joint Data
-	gpu_upload_buffer(gpu_context, &in_model->joint_matrices_buffer, in_model->joints_buffer_size, computed_joint_matrices);
 }
