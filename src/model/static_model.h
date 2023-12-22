@@ -8,10 +8,11 @@
 
 typedef struct StaticVertex
 {
-    Vec3 position;
-    Vec3 normal;
+    Vec4 position;
+    Vec4 normal;
     Vec4 color;
     Vec2 uv;
+	Vec2 padding;
 } StaticVertex;
 
 typedef struct StaticModel
@@ -104,7 +105,9 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, BindlessR
             assert(out_index < out_model->num_vertices);
 
             memcpy(&out_model->vertices[out_index].position, positions_buffer, positions_byte_stride);
+			out_model->vertices[out_index].position.w = 1.0;
             memcpy(&out_model->vertices[out_index].normal, normals_buffer, normals_byte_stride);
+			out_model->vertices[out_index].normal.w = 0.0;
             memcpy(&out_model->vertices[out_index].color, (float[4]){0.8f, 0.2f, 0.2f, 1.0f}, sizeof(float) * 4);
             memcpy(&out_model->vertices[out_index].uv, uvs_buffer, uvs_byte_stride);
 
@@ -170,10 +173,12 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, BindlessR
     return true;
 }
 
-void static_model_free(GpuContext* gpu_context, StaticModel* in_model)
+void static_model_free(GpuContext* gpu_context, BindlessResourceManager* bindless_resource_manager, StaticModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
     free(in_model->vertices);
     free(in_model->indices);
+	bindless_resource_manager_unregister_storage_buffer(gpu_context, bindless_resource_manager, in_model->vertex_buffer_handle);
+	bindless_resource_manager_unregister_storage_buffer(gpu_context, bindless_resource_manager, in_model->index_buffer_handle);
 }

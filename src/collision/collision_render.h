@@ -45,7 +45,7 @@ void append_uv_sphere(Vec3 offset, f32 radius, i32 longitudes, i32 latitudes, sb
 
 			StaticVertex vertex;
 		
-			vertex.position = offset;
+			vertex.position = vec4_from_vec3(offset, 1.0);
 			vertex.position.x += xz * cosf(longitudeAngle);	
 			vertex.position.y += y;
 			vertex.position.z += xz * sinf(longitudeAngle);	/* z = r * sin(phi) */
@@ -116,7 +116,7 @@ void append_cylinder(Vec3 offset, f32 radius, f32 half_height, i32 longitudes, i
 
 			StaticVertex vertex;
 		
-			vertex.position = offset;
+			vertex.position = vec4_from_vec3(offset, 1.0);
 			vertex.position.x += xz * cosf(longitudeAngle);	
 			vertex.position.y += y;							
 			vertex.position.z += xz * sinf(longitudeAngle);	
@@ -206,9 +206,9 @@ void append_box(const Vec3 axes[3], const float half_extents[3], sbuffer(StaticV
 		for (i32 vtx_idx = 0; vtx_idx < 8; ++vtx_idx)
 		{
 			StaticVertex vtx = {
-				.position = positions[vtx_idx], // Set up later
-				.normal = axes[axis_idx],		// Point in direction of axis	
-				.uv = uvs[vtx_idx], 			// Set Up Later
+				.position = vec4_from_vec3(positions[vtx_idx], 1.0),	// Set up later
+				.normal = vec4_from_vec3(axes[axis_idx], 0.0),			// Point in direction of axis	
+				.uv = uvs[vtx_idx], 									// Set Up Later
 			};
 			sb_push(*out_vertices, vtx);
 		}

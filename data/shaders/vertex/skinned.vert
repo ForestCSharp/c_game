@@ -4,11 +4,11 @@
 
 #include "../include/uniform_buffers.glsl"
 
-layout(set = 1, binding = 1) readonly buffer JointBuffer {
+layout(set = 2, binding = 1) readonly buffer JointBuffer {
 	mat4 data[];
 } joint_transforms;
 
-layout(set = 1, binding = 2) buffer JointTransforms {
+layout(set = 2, binding = 2) buffer JointTransforms {
 	mat4 data[];
 } inverse_bind_matrices;
 

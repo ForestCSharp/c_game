@@ -199,12 +199,12 @@ GpuContext gpu_create_context(const Window *const window)
     // FCS TODO: Clean up defines. query surface extension string from window system?
     const char *extensions[] = {
         "VK_KHR_surface",
-#if defined(_WIN32)
+		#if defined(_WIN32)
         "VK_KHR_win32_surface",
-#elif defined(__APPLE__)
+		#elif defined(__APPLE__)
         VK_EXT_METAL_SURFACE_EXTENSION_NAME,
         VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
-#endif
+		#endif
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
@@ -215,10 +215,15 @@ GpuContext gpu_create_context(const Window *const window)
         printf("\t%s\n", extensions[i]);
     }
 
+	VkInstanceCreateFlags instance_create_flags = 0;
+	#if defined(__APPLE__)
+	instance_create_flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	#endif
+
     VkInstanceCreateInfo instance_create_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = NULL,
-        .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR, // FCS TODO: Mac Only
+        .flags = instance_create_flags, 
         .pApplicationInfo = &app_info,
         .enabledLayerCount = validation_layer_count,
         .ppEnabledLayerNames = validation_layers,

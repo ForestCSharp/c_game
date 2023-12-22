@@ -24,10 +24,6 @@
 #include "model/animated_model.h"
 #include "gui.h"
 
-// FCS TODO: Testing collision
-#include "collision/collision.h"
-#include "collision/collision_render.h"
-
 #include "game_object/game_object.h"
 
 // FCS TODO: Testing truetype
@@ -47,30 +43,15 @@ int main()
         printf("Font Loaded \n");
     }
 
+	// Create our window
     Window window = window_create("C Game", 1920, 1080);
+
+	// Create our gpu context
     GpuContext gpu_context = gpu_create_context(&window);
 
-	// FCS TODO: HERE!!!
-	// BEGIN BINDLESS RESOURCES TEST/SETUP
-	//	FCS TODO: Move this all to gpu.h/.c or its own file
+	// Create bindless resource manager
 	BindlessResourceManager bindless_resource_manager = {};
 	bindless_resource_manager_create(&gpu_context, &bindless_resource_manager);
-
-	GpuBufferCreateInfo bindless_storage_buffer_create_info = {
-		.size = 1024,
-		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
-		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-		.debug_name = "bindless storage buffer",
-	};
-
-	GpuBuffer bindless_storage_buffer = gpu_create_buffer(&gpu_context, &bindless_storage_buffer_create_info);
-
-	//FCS TODO: Test UniformBuffer
-	StorageBufferHandle handle = bindless_resource_manager_register_storage_buffer(&gpu_context, &bindless_resource_manager, &bindless_storage_buffer);
-	//FCS TODO: Test Texture
-	//bindless_resource_manager_unregister_storage_buffer(&gpu_context, &bindless_resource_manager, handle);
-
-	// END BINDLESS RESOURCES TEST/SETUP
 
 	const GpuDescriptorLayoutCreateInfo global_descriptor_layout_create_info = {
 		.set_number = 1,
@@ -116,9 +97,6 @@ int main()
 	// Static Models don't contain any per-object updated data, so we can all share one component...
 	StaticModelComponent* static_model_component = CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, static_model_component_data);
 
-	//FCS TODO: handle this in StaticModel...
-
-
 	// Set up Animated Model. Components will be added later as they contain animated joint data.
 	AnimatedModel animated_model;
 	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu_context, &animated_model))
@@ -127,7 +105,7 @@ int main()
 		return 1;
 	}
 
-	const i32 OBJECTS_TO_CREATE = 2000;
+	const i32 OBJECTS_TO_CREATE = 1000;
 	for (i32 i = 0; i < OBJECTS_TO_CREATE; ++i)
 	{
 		GameObject* new_object = ADD_OBJECT(game_object_manager_ptr);
@@ -402,9 +380,7 @@ int main()
     }
 
     GpuShaderModule static_vertex_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/vertex/static.vert.spv");
-    GpuShaderModule collision_vis_vertex_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/vertex/collision_vis.vert.spv");
 	GpuShaderModule skinned_vertex_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/vertex/skinned.vert.spv");
-	GpuShaderModule joint_vis_vertex_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/vertex/visualize_joints.vert.spv");
     GpuShaderModule shaded_fragment_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/fragment/basic_shaded.frag.spv");
 	GpuShaderModule unshaded_fragment_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/fragment/basic_unshaded.frag.spv"); 
 
@@ -438,175 +414,19 @@ int main()
         gpu_update_descriptor_set(&gpu_context, &global_descriptor_sets[i], 2, descriptor_writes);
     }
 
-
-	//BEGIN TEST COLLISION
-	Collider colliders[] = 
-	{
-		{
-			.type = COLLIDER_TYPE_SPHERE,
-			.sphere = {
-				.center = vec3_new(15, 0, 0),
-				.radius = 2.0f,
-			},
-		},
-		{
-			.type = COLLIDER_TYPE_CAPSULE,
-			.capsule = {
-				.center = vec3_new(10,0,0),
-				.orientation = quat_identity,
-				.half_height = 5.0f,
-				.radius = 1.0f,
-			},
-		},
-		{
-			.type = COLLIDER_TYPE_OBB,
-			.obb = {
-				.center = vec3_new(5,0,0),
-				.orientation = quat_identity,
-				.halfwidths = {3.f, 2.f, 8.f},
-			},
-		},
-		{
-			.type = COLLIDER_TYPE_OBB,
-			.obb = {
-				.center = vec3_new(-5,0,0),
-				.orientation = quat_identity,
-				.halfwidths = {3.f, 2.f, 8.f},
-			},
-		},
-	};
-
-	static const i32 NUM_COLLIDERS = sizeof(colliders) / sizeof(colliders[0]);
-
-	ColliderRenderData collider_render_datas[NUM_COLLIDERS];
-    GpuBuffer collider_uniform_buffers[NUM_COLLIDERS];
-	GpuDescriptorSet collider_descriptor_sets[NUM_COLLIDERS];
-    for (u32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
-    {
-		collider_render_data_create(&gpu_context, &colliders[collider_idx], &collider_render_datas[collider_idx]);
-
-		GpuBufferCreateInfo collider_uniform_buffer_create_info = {
-			.size = sizeof(GlobalUniformStruct),
-			.usage = GPU_BUFFER_USAGE_UNIFORM_BUFFER,
-			.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-			.debug_name = "collider_uniform_buffer",
-		};
-        collider_uniform_buffers[collider_idx] = gpu_create_buffer(&gpu_context, &collider_uniform_buffer_create_info);
-
-		collider_descriptor_sets[collider_idx] = gpu_create_descriptor_set(&gpu_context, &global_descriptor_layout);
-
-        GpuDescriptorWrite collider_descriptor_writes[1] = {
-			{
-				.binding_desc = &global_descriptor_layout.bindings[0],
-				.index = 0,
-				.buffer_write = &(GpuDescriptorWriteBuffer) {
-						.buffer = &collider_uniform_buffers[collider_idx],
-						.offset = 0,
-						.range = sizeof(uniform_data),
-				}
-			},
-		};
-
-        gpu_update_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx], 1, collider_descriptor_writes);
-    }
-	//END TEST COLLISION
-
-	//JOINT VIS DATA
-
-	const i32 cube_vertices_count = 36;
-	Vec3 cube_vert_positions[cube_vertices_count] = 
-	{
-		vec3_new(-1,-1,-1),		vec3_new(1,-1,-1),	vec3_new(-1, 1, -1), 
-		vec3_new(-1, 1, -1),	vec3_new(1,-1,-1),	vec3_new(1,1,-1),
-		vec3_new(-1,-1,1), 		vec3_new(1,-1,1), 	vec3_new(-1, 1, 1),
-		vec3_new(-1, 1, 1), 	vec3_new(1,-1,1), 	vec3_new(1,1,1),
-		vec3_new(-1,-1,-1),		vec3_new(-1,1,-1),	vec3_new(-1, -1, 1),
-		vec3_new(-1, -1, 1),	vec3_new(-1,1,-1),	vec3_new(-1,1,1),
-		vec3_new(1,-1,-1),		vec3_new(1,1,-1),	vec3_new(1, -1, 1),
-		vec3_new(1, -1, 1),		vec3_new(1,1,-1),	vec3_new(1,1,1),	
-		vec3_new(-1,-1,-1),		vec3_new(-1,-1,1),	vec3_new(1, -1, -1),
-		vec3_new(1, -1, -1),	vec3_new(-1,-1,1),	vec3_new(1,-1,1),
-		vec3_new(-1,1,-1),		vec3_new(-1,1,1),	vec3_new(1, 1, -1),
-		vec3_new(1, 1, -1),		vec3_new(-1,1,1),	vec3_new(1,1,1),	
-	};
-
-	StaticVertex cube_vertices[cube_vertices_count];
-	for (i32 i = 0; i < cube_vertices_count; ++i)
-	{
-		cube_vertices[i] = (StaticVertex) {
-	 		.position = cube_vert_positions[i],
-	  		.normal = vec3_new(0,0,0),
-	  		.color = vec4_new(0,0,1,1),
-	  		.uv = vec2_new(0,0),
-		};
-	}
-
-	GpuBufferCreateInfo cube_vertex_buffer_create_info = {
-		.size = sizeof(StaticVertex) * cube_vertices_count,
-		.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
-		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-		.debug_name = "cube vertex buffer",
-	};
-    GpuBuffer cube_vertex_buffer = gpu_create_buffer(&gpu_context, &cube_vertex_buffer_create_info);
-    gpu_upload_buffer(&gpu_context, &cube_vertex_buffer, cube_vertex_buffer_create_info.size, cube_vertices);
-
-    GpuFormat static_attribute_formats[] = {
-        GPU_FORMAT_RGB32_SFLOAT,
-        GPU_FORMAT_RGB32_SFLOAT,
-        GPU_FORMAT_RGBA32_SFLOAT,
-        GPU_FORMAT_RG32_SFLOAT,
-    };
-
     GpuGraphicsPipelineCreateInfo static_pipeline_create_info = {
 		.vertex_module = &static_vertex_module,
 	   .fragment_module = &shaded_fragment_module,
 	   .rendering_info = &dynamic_rendering_info,
 	   .layout = &main_pipeline_layout,
-	   .num_attributes = 4,
-	   .attribute_formats = static_attribute_formats,
+	   .num_attributes = 0,
+	   .attribute_formats = NULL,
 	   .depth_stencil = {
 		   .depth_test = true,
 		   .depth_write = true,
 	}};
 
     GpuPipeline static_pipeline = gpu_create_graphics_pipeline(&gpu_context, &static_pipeline_create_info);
-
-
-    GpuGraphicsPipelineCreateInfo collision_vis_pipeline_create_info = {
-		.vertex_module = &collision_vis_vertex_module,
-	   .fragment_module = &unshaded_fragment_module,
-	   .rendering_info = &dynamic_rendering_info,
-	   .layout = &main_pipeline_layout,
-	   .num_attributes = 4,
-	   .attribute_formats = static_attribute_formats,
-	   .depth_stencil = {
-		   .depth_test = true,
-		   .depth_write = true,
-		},
-		.rasterizer = {
-			.polygon_mode = GPU_POLYGON_MODE_LINE,
-		},
-	};
-
-	GpuPipeline collision_vis_pipeline = gpu_create_graphics_pipeline(&gpu_context, &collision_vis_pipeline_create_info);
-
-	GpuGraphicsPipelineCreateInfo joint_vis_pipeline_create_info = {
-		.vertex_module = &joint_vis_vertex_module,
-	   .fragment_module = &unshaded_fragment_module,
-	   .rendering_info = &dynamic_rendering_info,
-	   .layout = &main_pipeline_layout,
-	   .num_attributes = 4,
-	   .attribute_formats = static_attribute_formats,
-	   .depth_stencil = {
-		   .depth_test = false,
-		   .depth_write = false,
-		},
-		.rasterizer = {
-			.polygon_mode = GPU_POLYGON_MODE_LINE,
-		},
-	};
-
-	GpuPipeline joint_vis_pipeline = gpu_create_graphics_pipeline(&gpu_context, &joint_vis_pipeline_create_info);
 
 	GpuFormat skinned_attribute_formats[] = 
 	{
@@ -633,9 +453,7 @@ int main()
 
     // destroy shader modules after creating pipeline
     gpu_destroy_shader_module(&gpu_context, &static_vertex_module);
-	gpu_destroy_shader_module(&gpu_context, &collision_vis_vertex_module);
     gpu_destroy_shader_module(&gpu_context, &skinned_vertex_module);
-	gpu_destroy_shader_module(&gpu_context, &joint_vis_vertex_module);
     gpu_destroy_shader_module(&gpu_context, &shaded_fragment_module);
     gpu_destroy_shader_module(&gpu_context, &unshaded_fragment_module);
 
@@ -873,9 +691,6 @@ int main()
         static float model_rotation = 135.0f;
         gui_window_slider_float(&gui_context, &gui_window_1, &model_rotation, vec2_new(-360, 360), "Anim Model Rotation");
 
-		static float collider_rotation = 0.0f;
-        gui_window_slider_float(&gui_context, &gui_window_1, &collider_rotation, vec2_new(-360, 360), "Collider Rotation");
-
         for (u32 i = 0; i < 12; ++i)
         {
             char buffer[256];
@@ -937,6 +752,37 @@ int main()
 
         // END Gui Test
 
+		{	//Update Global Uniforms...
+
+			Quat q1 = quat_new(vec3_new(0, 1, 0), model_rotation * DEGREES_TO_RADIANS);
+			Quat q2 = quat_new(vec3_new(1, 0, 0), 0 * DEGREES_TO_RADIANS);
+			Quat q3 = quat_new(vec3_new(0, 0, 1), 0 * DEGREES_TO_RADIANS);
+
+			Quat q = quat_normalize(quat_mul(quat_mul(q1, q2), q3));
+
+			orientation = quat_normalize(q);
+
+			Vec3 scale = vec3_new(15,15,15);
+			Mat4 scale_matrix = mat4_scale(scale);
+			Mat4 orientation_matrix = quat_to_mat4(orientation);
+			Mat4 translation_matrix = mat4_translation(vec3_new(0, 30, 30));
+
+			Mat4 model = mat4_mul_mat4(mat4_mul_mat4(scale_matrix, orientation_matrix), translation_matrix); 
+			Mat4 view = mat4_look_at(position, target, up);
+			Mat4 proj = mat4_perspective(60.0f, (float)width / (float)height, 0.01f, 4000.0f);
+
+			Mat4 mv = mat4_mul_mat4(model, view);
+			uniform_data.model = model;
+			uniform_data.view = view;
+			uniform_data.projection = proj;
+			uniform_data.mvp = mat4_mul_mat4(mv, proj);
+
+			memcpy(&uniform_data.eye, &position, sizeof(float) * 3);
+
+			gpu_upload_buffer(&gpu_context, &uniform_buffers[current_frame], sizeof(uniform_data), &uniform_data);
+		}
+
+
         gpu_wait_for_fence(&gpu_context, &in_flight_fences[current_frame]);
         gpu_reset_fence(&gpu_context, &in_flight_fences[current_frame]);
 
@@ -993,6 +839,7 @@ int main()
 
 		{	//Draw Our Game Objects with Static Models
 			//gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
+			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &bindless_resource_manager.descriptor_set);
 			gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &global_descriptor_sets[current_frame]);
 
 			for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
@@ -1011,14 +858,11 @@ int main()
 					{
 						//FCS TODO: Don't need to do this every frame... can do on setup once we have req. components
 						render_data_component->uniform_data[current_frame]->vertex_buffer_idx = static_model_component->static_model.vertex_buffer_handle.idx;
-						render_data_component->uniform_data[current_frame]->index_buffer_idx = static_model_component->static_model.vertex_buffer_handle.idx;
+						render_data_component->uniform_data[current_frame]->index_buffer_idx = static_model_component->static_model.index_buffer_handle.idx;
 
-						//FCS TODO: Avoid all these pipeline binds
+						//FCS TODO: Avoid all these pipeline binds draw all static models, then draw all animated models...
 						gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
-
-						gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &static_model_component->static_model.index_buffer);
-						gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &static_model_component->static_model.vertex_buffer);
-						gpu_cmd_draw_indexed(&command_buffers[current_frame], static_model_component->static_model.num_indices, 1);
+						gpu_cmd_draw(&command_buffers[current_frame], static_model_component->static_model.num_indices, 1);
 					}
 
 					AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, object);
@@ -1047,26 +891,9 @@ int main()
 						gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &animated_model_component->animated_model.index_buffer);
 						gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &animated_model_component->animated_model.vertex_buffer);
 						gpu_cmd_draw_indexed(&command_buffers[current_frame], animated_model_component->animated_model.num_indices, 1);
-
-						// Joint Visualization
-						//gpu_cmd_bind_pipeline(&command_buffers[current_frame], &joint_vis_pipeline);
-						//gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &cube_vertex_buffer);
-						//gpu_cmd_draw(&command_buffers[current_frame], cube_vertices_count, animated_model.num_joints);
 					}
 				}
 			}
-		}
-
-		{	// Draw our colliders
-			gpu_cmd_bind_pipeline(&command_buffers[current_frame], &collision_vis_pipeline);
-			
-			for (i32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
-			{
-				gpu_cmd_bind_index_buffer(&command_buffers[current_frame], &collider_render_datas[collider_idx].index_buffer);
-				gpu_cmd_bind_vertex_buffer(&command_buffers[current_frame], &collider_render_datas[collider_idx].vertex_buffer);
-				gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &collider_descriptor_sets[collider_idx]);
-				gpu_cmd_draw_indexed(&command_buffers[current_frame], collider_render_datas[collider_idx].num_indices, 1);
-			}			
 		}
 
         // BEGIN gui rendering
@@ -1104,72 +931,6 @@ int main()
 
         gpu_queue_present(&gpu_context, image_index, &render_complete_semaphores[current_frame]);
 
-		{	//Anim Update
-			//static float current_anim_time = 0.0f;
-			//current_anim_time += (delta_time * animation_rate);
-			//if (current_anim_time > animated_model.baked_animation.end_time)	{ current_anim_time = animated_model.baked_animation.start_time; }
-			//if (current_anim_time < animated_model.baked_animation.start_time)	{ current_anim_time = animated_model.baked_animation.end_time; }
-			//animated_model_update_animation(&gpu_context, &animated_model, current_anim_time, animated_model.baked_animation.computed_joint_matrices);
-		}
-
-        {
-            Quat q1 = quat_new(vec3_new(0, 1, 0), model_rotation * DEGREES_TO_RADIANS);
-            Quat q2 = quat_new(vec3_new(1, 0, 0), 0 * DEGREES_TO_RADIANS);
-			Quat q3 = quat_new(vec3_new(0, 0, 1), 0 * DEGREES_TO_RADIANS);
-
-            Quat q = quat_normalize(quat_mul(quat_mul(q1, q2), q3));
-
-            orientation = quat_normalize(q);
-
-			Vec3 scale = vec3_new(15,15,15);
-			Mat4 scale_matrix = mat4_scale(scale);
-			Mat4 orientation_matrix = quat_to_mat4(orientation);
-			Mat4 translation_matrix = mat4_translation(vec3_new(0, 30, 30));
-
-            Mat4 model = mat4_mul_mat4(mat4_mul_mat4(scale_matrix, orientation_matrix), translation_matrix); 
-            Mat4 view = mat4_look_at(position, target, up);
-            Mat4 proj = mat4_perspective(60.0f, (float)width / (float)height, 0.01f, 4000.0f);
-
-            Mat4 mv = mat4_mul_mat4(model, view);
-            uniform_data.model = model;
-			uniform_data.view = view;
-			uniform_data.projection = proj;
-            uniform_data.mvp = mat4_mul_mat4(mv, proj);
-
-            memcpy(&uniform_data.eye, &position, sizeof(float) * 3);
-
-            gpu_upload_buffer(&gpu_context, &uniform_buffers[current_frame], sizeof(uniform_data), &uniform_data);
-
-			for (i32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
-			{
-				Collider* collider = &colliders[collider_idx];
-
-				collider_set_orientation(collider, quat_new(vec3_new(0,1,0), collider_rotation * DEGREES_TO_RADIANS));
-
-				Mat4 collider_transform = collider_compute_transform(collider);
-				uniform_data.model = collider_transform; 
-				uniform_data.view = view;
-            	Mat4 mv = mat4_mul_mat4(uniform_data.model, uniform_data.view);
-				uniform_data.projection = proj;
-				uniform_data.mvp = mat4_mul_mat4(mv, proj);
-
-				uniform_data.is_colliding = false;
-				for (i32 other_idx = 0; other_idx < NUM_COLLIDERS; ++other_idx)
-				{
-					if (other_idx == collider_idx) continue;
-
-					const Collider* other_collider = &colliders[other_idx];
-
-					if (hit_test_colliders(collider, other_collider, NULL))
-					{
-						uniform_data.is_colliding = true;
-						break;
-					}
-				}
-				gpu_upload_buffer(&gpu_context, &collider_uniform_buffers[collider_idx], sizeof(uniform_data), &uniform_data);
-			}
-        }
-
         current_frame = (current_frame + 1) % gpu_context.swapchain_image_count;
 
         gpu_wait_idle(&gpu_context); // TODO: Need per-frame resources (gui vbuf,ibuf all uniform buffers)
@@ -1201,13 +962,6 @@ int main()
 	}
 	game_object_manager_destroy(&game_object_manager);
 
-    for (u32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
-	{
-		collider_render_data_free(&gpu_context, &collider_render_datas[collider_idx]);
-		gpu_destroy_buffer(&gpu_context, &collider_uniform_buffers[collider_idx]);
-		gpu_destroy_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx]);
-	}
-
     for (u32 i = 0; i < gpu_context.swapchain_image_count; ++i)
     {
         gpu_free_command_buffer(&gpu_context, &command_buffers[i]);
@@ -1218,9 +972,6 @@ int main()
 
     gpu_destroy_buffer(&gpu_context, &gui_vertex_buffer);
     gpu_destroy_buffer(&gpu_context, &gui_index_buffer);
-
-	// Bindless Cleanup
-	bindless_resource_manager_destroy(&gpu_context, &bindless_resource_manager);
 
     // BEGIN Gui Cleanup
     gpu_destroy_pipeline(&gpu_context, &gui_pipeline);
@@ -1233,8 +984,6 @@ int main()
     // END Gui Cleanup
 
     gpu_destroy_pipeline(&gpu_context, &static_pipeline);
-    gpu_destroy_pipeline(&gpu_context, &collision_vis_pipeline);
-	gpu_destroy_pipeline(&gpu_context, &joint_vis_pipeline);
 	gpu_destroy_pipeline(&gpu_context, &skinned_pipeline);
 
     gpu_destroy_pipeline_layout(&gpu_context, &main_pipeline_layout);
@@ -1249,11 +998,10 @@ int main()
         gpu_destroy_buffer(&gpu_context, &uniform_buffers[i]);
         gpu_destroy_descriptor_set(&gpu_context, &global_descriptor_sets[i]);
     }
-    gpu_destroy_buffer(&gpu_context, &cube_vertex_buffer);
-
-	static_model_free(&gpu_context, &static_model);
+	static_model_free(&gpu_context, &bindless_resource_manager, &static_model);
 	animated_model_free(&gpu_context, &animated_model);
 
+	bindless_resource_manager_destroy(&gpu_context, &bindless_resource_manager);
     gpu_destroy_context(&gpu_context);
 
     gui_shutdown(&gui_context);
