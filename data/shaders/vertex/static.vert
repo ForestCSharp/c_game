@@ -13,7 +13,8 @@ layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec4 out_color;
 layout(location = 3) out vec2 out_uv;
 
-void main() {
+void main() {		
+
     gl_Position = global_ubo.projection * global_ubo.view * object_ubo.model * vec4(in_position, 1.0);
 
     out_position = gl_Position.xyz;

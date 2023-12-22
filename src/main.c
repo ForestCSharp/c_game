@@ -16,6 +16,7 @@
 #include "stretchy_buffer.h"
 
 #include "gpu/gpu.c"
+#include "gpu/bindless.h"
 #include "app/app.h"
 
 #include "gltf.h"
@@ -34,9 +35,9 @@
 
 //FCS TODO: Helper to create and write a descriptor set in one operation (optional descriptor write field in create info?)
 
-#define DESCRIPTOR_BINDING_UNIFORM_BUFFER(idx, flags) { .binding = idx, .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .stage_flags = flags }
-#define DESCRIPTOR_BINDING_STORAGE_BUFFER(idx, flags) { .binding = idx, .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .stage_flags = flags }
-#define DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(idx, flags) { .binding = idx, .type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .stage_flags = flags }
+#define DESCRIPTOR_BINDING_UNIFORM_BUFFER(idx, in_count, flags) (GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .stage_flags = flags }
+#define DESCRIPTOR_BINDING_STORAGE_BUFFER(idx, in_count, flags) (GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .stage_flags = flags }
+#define DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(idx, in_count, flags) (GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .stage_flags = flags }
 
 int main()
 {
@@ -49,28 +50,50 @@ int main()
     Window window = window_create("C Game", 1920, 1080);
     GpuContext gpu_context = gpu_create_context(&window);
 
+	// FCS TODO: HERE!!!
+	// BEGIN BINDLESS RESOURCES TEST/SETUP
+	//	FCS TODO: Move this all to gpu.h/.c or its own file
+	BindlessResourceManager bindless_resource_manager = {};
+	bindless_resource_manager_create(&gpu_context, &bindless_resource_manager);
+
+	GpuBufferCreateInfo bindless_storage_buffer_create_info = {
+		.size = 1024,
+		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
+		.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
+		.debug_name = "bindless storage buffer",
+	};
+
+	GpuBuffer bindless_storage_buffer = gpu_create_buffer(&gpu_context, &bindless_storage_buffer_create_info);
+
+	//FCS TODO: Test UniformBuffer
+	StorageBufferHandle handle = bindless_resource_manager_register_storage_buffer(&gpu_context, &bindless_resource_manager, &bindless_storage_buffer);
+	//FCS TODO: Test Texture
+	//bindless_resource_manager_unregister_storage_buffer(&gpu_context, &bindless_resource_manager, handle);
+
+	// END BINDLESS RESOURCES TEST/SETUP
+
 	const GpuDescriptorLayoutCreateInfo global_descriptor_layout_create_info = {
-		.set_number = 0,
+		.set_number = 1,
 		.binding_count = 2,
 		.bindings = (GpuDescriptorBinding[2]){
-			DESCRIPTOR_BINDING_UNIFORM_BUFFER(0, GPU_SHADER_STAGE_ALL_GRAPHICS),
-			DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(1, GPU_SHADER_STAGE_FRAGMENT),
+			DESCRIPTOR_BINDING_UNIFORM_BUFFER(0, 1, GPU_SHADER_STAGE_ALL_GRAPHICS),
+			DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(1, 1, GPU_SHADER_STAGE_FRAGMENT),
 		},
 	};
 
 	const GpuDescriptorLayoutCreateInfo per_object_descriptor_layout_create_info = {
-		.set_number = 1,
+		.set_number = 2,
 		.binding_count = 3,
 		.bindings = (GpuDescriptorBinding[3]) {
-			DESCRIPTOR_BINDING_UNIFORM_BUFFER(0, GPU_SHADER_STAGE_ALL_GRAPHICS),
-			DESCRIPTOR_BINDING_STORAGE_BUFFER(1, GPU_SHADER_STAGE_VERTEX),
-			DESCRIPTOR_BINDING_STORAGE_BUFFER(2, GPU_SHADER_STAGE_VERTEX),
+			DESCRIPTOR_BINDING_UNIFORM_BUFFER(0, 1, GPU_SHADER_STAGE_ALL_GRAPHICS),
+			DESCRIPTOR_BINDING_STORAGE_BUFFER(1, 1, GPU_SHADER_STAGE_VERTEX),
+			DESCRIPTOR_BINDING_STORAGE_BUFFER(2, 1, GPU_SHADER_STAGE_VERTEX),
 		},
 	};
 
 	GpuDescriptorLayout global_descriptor_layout = gpu_create_descriptor_layout(&gpu_context, &global_descriptor_layout_create_info);
 	GpuDescriptorLayout per_object_descriptor_layout = gpu_create_descriptor_layout(&gpu_context, &per_object_descriptor_layout_create_info);
-	GpuDescriptorLayout main_pipeline_descriptor_layouts[] = { global_descriptor_layout, per_object_descriptor_layout };
+	GpuDescriptorLayout main_pipeline_descriptor_layouts[] = { bindless_resource_manager.descriptor_layout, global_descriptor_layout, per_object_descriptor_layout };
 	i32 main_pipeline_descriptor_layout_count = sizeof(main_pipeline_descriptor_layouts) / sizeof(main_pipeline_descriptor_layouts[0]);
 	GpuPipelineLayout main_pipeline_layout = gpu_create_pipeline_layout(&gpu_context, main_pipeline_descriptor_layout_count, main_pipeline_descriptor_layouts);
 
@@ -81,7 +104,7 @@ int main()
 
 	// Set up Static Model
 	StaticModel static_model;
-	if (!static_model_load("data/meshes/monkey.glb", &gpu_context, &static_model))
+	if (!static_model_load("data/meshes/monkey.glb", &gpu_context, &bindless_resource_manager, &static_model))
 	{
 		printf("Failed to Load Static Model\n");
 		return 1;
@@ -92,6 +115,9 @@ int main()
 
 	// Static Models don't contain any per-object updated data, so we can all share one component...
 	StaticModelComponent* static_model_component = CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, static_model_component_data);
+
+	//FCS TODO: handle this in StaticModel...
+
 
 	// Set up Animated Model. Components will be added later as they contain animated joint data.
 	AnimatedModel animated_model;
@@ -121,7 +147,7 @@ int main()
 				.animated_model = animated_model,
 				.joint_matrices_buffer = joint_matrices_buffer,
 				.mapped_buffer_data = gpu_map_buffer(&gpu_context, &joint_matrices_buffer),
-				.animation_rate = rand_f32(0.1f, 5.0f),
+				.animation_rate = rand_f32(0.01f, 10.0f),
 			};
 
 			AnimatedModelComponent* animated_model_component = CREATE_COMPONENT(AnimatedModelComponent, game_object_manager_ptr, animated_model_component_data);
@@ -196,6 +222,7 @@ int main()
 
 			sb_push(descriptor_writes, ((GpuDescriptorWrite){
 				.binding_desc = &per_object_descriptor_layout.bindings[0],
+				.index = 0,
 				.buffer_write = &(GpuDescriptorWriteBuffer) {
 					.buffer = &uniform_buffer,
 					.offset = 0,
@@ -208,6 +235,7 @@ int main()
 			{
 				sb_push(descriptor_writes, ((GpuDescriptorWrite){
 					.binding_desc = &per_object_descriptor_layout.bindings[1],
+					.index = 0,
 					.buffer_write = &(GpuDescriptorWriteBuffer) {
 						.buffer = &animated_model_component->joint_matrices_buffer,
 						.offset = 0,
@@ -217,6 +245,7 @@ int main()
 
 				sb_push(descriptor_writes, ((GpuDescriptorWrite){
 					.binding_desc = &per_object_descriptor_layout.bindings[2],
+					.index = 0,
 					.buffer_write = &(GpuDescriptorWriteBuffer){
 						.buffer = &animated_model.inverse_bind_matrices_buffer,
 						.offset = 0,
@@ -225,7 +254,7 @@ int main()
 				}));
 			}
 
-			gpu_write_descriptor_set(&gpu_context, &object_render_data.descriptor_sets[swapchain_idx], sb_count(descriptor_writes), descriptor_writes);
+			gpu_update_descriptor_set(&gpu_context, &object_render_data.descriptor_sets[swapchain_idx], sb_count(descriptor_writes), descriptor_writes);
 
 			sb_free(descriptor_writes);
 		}
@@ -276,7 +305,7 @@ int main()
 		.binding_count = 1,
 		.bindings =
 		(GpuDescriptorBinding[1]){
-			DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(0, GPU_SHADER_STAGE_ALL_GRAPHICS),	
+			DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(0, 1, GPU_SHADER_STAGE_ALL_GRAPHICS),	
 		},
 	};
 	GpuDescriptorLayout gui_descriptor_layout = gpu_create_descriptor_layout(&gpu_context, &gui_descriptor_layout_create_info);
@@ -285,6 +314,7 @@ int main()
 
     GpuDescriptorWrite gui_descriptor_writes[1] = {{
         .binding_desc = &gui_descriptor_layout.bindings[0],
+		.index = 0,
         .image_write =
             &(GpuDescriptorWriteImage){
                 .image_view = &font_image_view,
@@ -293,7 +323,7 @@ int main()
             },
     }};
 
-    gpu_write_descriptor_set(&gpu_context, &gui_descriptor_set, 1, gui_descriptor_writes);
+    gpu_update_descriptor_set(&gpu_context, &gui_descriptor_set, 1, gui_descriptor_writes);
 
     GpuShaderModule gui_vertex_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/vertex/gui.vert.spv");
     GpuShaderModule gui_fragment_module = gpu_create_shader_module_from_file(&gpu_context, "data/shaders/fragment/gui.frag.spv");
@@ -387,6 +417,7 @@ int main()
         GpuDescriptorWrite descriptor_writes[2] = {
 			{
 				.binding_desc = &global_descriptor_layout.bindings[0],
+				.index = 0,
 				.buffer_write = &(GpuDescriptorWriteBuffer) {
 						.buffer = &uniform_buffers[i],
 						.offset = 0,
@@ -395,6 +426,7 @@ int main()
 			},
 			{
 				.binding_desc = &global_descriptor_layout.bindings[1],
+				.index = 0,
 				.image_write = &(GpuDescriptorWriteImage){
 					.image_view = &font_image_view,
 					.sampler = &font_sampler,
@@ -403,7 +435,7 @@ int main()
 			},	
 		};
 
-        gpu_write_descriptor_set(&gpu_context, &global_descriptor_sets[i], 2, descriptor_writes);
+        gpu_update_descriptor_set(&gpu_context, &global_descriptor_sets[i], 2, descriptor_writes);
     }
 
 
@@ -466,6 +498,7 @@ int main()
         GpuDescriptorWrite collider_descriptor_writes[1] = {
 			{
 				.binding_desc = &global_descriptor_layout.bindings[0],
+				.index = 0,
 				.buffer_write = &(GpuDescriptorWriteBuffer) {
 						.buffer = &collider_uniform_buffers[collider_idx],
 						.offset = 0,
@@ -474,7 +507,7 @@ int main()
 			},
 		};
 
-        gpu_write_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx], 1, collider_descriptor_writes);
+        gpu_update_descriptor_set(&gpu_context, &collider_descriptor_sets[collider_idx], 1, collider_descriptor_writes);
     }
 	//END TEST COLLISION
 
@@ -976,6 +1009,10 @@ int main()
 					StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, &game_object_manager, object);
 					if (static_model_component)
 					{
+						//FCS TODO: Don't need to do this every frame... can do on setup once we have req. components
+						render_data_component->uniform_data[current_frame]->vertex_buffer_idx = static_model_component->static_model.vertex_buffer_handle.idx;
+						render_data_component->uniform_data[current_frame]->index_buffer_idx = static_model_component->static_model.vertex_buffer_handle.idx;
+
 						//FCS TODO: Avoid all these pipeline binds
 						gpu_cmd_bind_pipeline(&command_buffers[current_frame], &static_pipeline);
 
@@ -1162,6 +1199,7 @@ int main()
 			gpu_destroy_buffer(&gpu_context, &animated_model_component->joint_matrices_buffer);
 		}
 	}
+	game_object_manager_destroy(&game_object_manager);
 
     for (u32 collider_idx = 0; collider_idx < NUM_COLLIDERS; ++collider_idx)
 	{
@@ -1180,6 +1218,9 @@ int main()
 
     gpu_destroy_buffer(&gpu_context, &gui_vertex_buffer);
     gpu_destroy_buffer(&gpu_context, &gui_index_buffer);
+
+	// Bindless Cleanup
+	bindless_resource_manager_destroy(&gpu_context, &bindless_resource_manager);
 
     // BEGIN Gui Cleanup
     gpu_destroy_pipeline(&gpu_context, &gui_pipeline);

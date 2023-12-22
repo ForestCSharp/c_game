@@ -853,7 +853,8 @@ GuiClickState gui_window_button(GuiContext* const in_context, GuiWindow* const i
     GuiRect button_rect;
     if (gui_window_compute_control_rect(in_window, &button_rect))
     {
-        out_click_state = gui_make_button(in_context, in_label, &button_rect, &button_rect, &default_button_style, !in_window->is_resizing);
+		const bool should_allow_input = !in_window->is_resizing && !in_window->is_scrolling;
+        out_click_state = gui_make_button(in_context, in_label, &button_rect, &button_rect, &default_button_style, should_allow_input);
     }
 
     return out_click_state;
@@ -866,7 +867,8 @@ GuiClickState gui_window_slider_float(GuiContext* const in_context, GuiWindow* c
     GuiRect button_rect;
     if (gui_window_compute_control_rect(in_window, &button_rect))
     {
-        out_click_state = gui_make_slider_float(in_context, data_ptr, in_slider_bounds, in_label, &button_rect, !in_window->is_resizing);
+		const bool should_allow_input = !in_window->is_resizing && !in_window->is_scrolling;
+        out_click_state = gui_make_slider_float(in_context, data_ptr, in_slider_bounds, in_label, &button_rect, should_allow_input);
     }
 
     return out_click_state;

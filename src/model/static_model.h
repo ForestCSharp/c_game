@@ -2,6 +2,7 @@
 
 #include "gltf.h"
 #include "gpu/gpu.h"
+#include "gpu/bindless.h"
 #include "types.h"
 #include "assert.h"
 
@@ -25,9 +26,12 @@ typedef struct StaticModel
 
     GpuBuffer vertex_buffer;
     GpuBuffer index_buffer;
+
+	StorageBufferHandle vertex_buffer_handle;
+	StorageBufferHandle index_buffer_handle;
 } StaticModel;
 
-bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticModel* out_model)
+bool static_model_load(const char* gltf_path, GpuContext* gpu_context, BindlessResourceManager* bindless_resource_manager, StaticModel* out_model)
 {
     assert(out_model);
     memset(out_model, 0, sizeof(StaticModel));
@@ -134,10 +138,11 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
 
     // GPU Data Setup
     {
+		//FCS TODO: Remove GPU_BUFFER_USAGE_VERTEX_BUFFER & GPU_BUFFER_USAGE_INDEX_BUFFER once we've switched to bindless
 		{
 			GpuBufferCreateInfo vertex_buffer_create_info = {
 				.size = sizeof(StaticVertex) * out_model->num_vertices,
-				.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+				.usage = GPU_BUFFER_USAGE_VERTEX_BUFFER | GPU_BUFFER_USAGE_STORAGE_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
 				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
 				.debug_name = "static model vertex buffer",
 			};
@@ -148,13 +153,17 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, StaticMod
 		{
 			GpuBufferCreateInfo index_buffer_create_info = {
 				.size = sizeof(u32) * out_model->num_indices,
-				.usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
+				.usage = GPU_BUFFER_USAGE_INDEX_BUFFER | GPU_BUFFER_USAGE_STORAGE_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
 				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
 				.debug_name = "static model index buffer",
 			};
 			out_model->index_buffer = gpu_create_buffer(gpu_context, &index_buffer_create_info);
 			gpu_upload_buffer(gpu_context, &out_model->index_buffer, index_buffer_create_info.size, out_model->indices);
 		}
+
+
+		out_model->vertex_buffer_handle = bindless_resource_manager_register_storage_buffer(gpu_context, bindless_resource_manager, &out_model->vertex_buffer);
+		out_model->index_buffer_handle = bindless_resource_manager_register_storage_buffer(gpu_context, bindless_resource_manager, &out_model->index_buffer);
     }
 
 
@@ -167,7 +176,4 @@ void static_model_free(GpuContext* gpu_context, StaticModel* in_model)
     gltf_free_asset(&in_model->gltf_asset);
     free(in_model->vertices);
     free(in_model->indices);
-
-    gpu_destroy_buffer(gpu_context, &in_model->vertex_buffer);
-    gpu_destroy_buffer(gpu_context, &in_model->index_buffer);
 }

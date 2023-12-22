@@ -1,0 +1,16 @@
+
+
+
+
+- Bindless Vulkan (waiting on MoltenVK Support?)
+	- see: https://github.com/KhronosGroup/MoltenVK/commit/ff21180909f122eaaaed958f1c0b59589b10c17b
+- Make sure metal argument buffers are enabled 
+- What the hell is the difference: 
+	- shaderStorageBufferArrayDynamicIndexing in VkPhysicalDeviceFeatures
+	- shaderStorageBufferArrayNonUniformIndexing in VkPhysicalDeviceDescriptorIndexingFeatures 
+
+
+
+
+
+- Procedural Animation (IK)

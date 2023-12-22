@@ -120,6 +120,13 @@ typedef enum GpuShaderStageFlagBits
 } GpuShaderStageFlagBits;
 typedef u32 GpuShaderStageFlags;
 
+typedef enum GpuDescriptorBindingFlagBits
+{
+	GPU_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+	GPU_DESCRIPTOR_BINDING_PARTIALLY_BOUND = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+} GpuDescriptorBindingFlagBits;
+typedef u32 GpuDescriptorBindingFlags;
+
 typedef enum GpuPipelineStageFlagBits
 {
     GPU_PIPELINE_STAGE_TOP_OF_PIPE = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -259,12 +266,15 @@ typedef struct GpuDescriptorWriteBuffer
 typedef struct GpuDescriptorBinding
 {
     u32 binding;
+	u32 count;
     GpuDescriptorType type;
     GpuShaderStageFlags stage_flags;
+	GpuDescriptorBindingFlags binding_flags;
 } GpuDescriptorBinding;
 
 typedef struct GpuDescriptorWrite
 {
+	u32 index;
     GpuDescriptorBinding* binding_desc;
     GpuDescriptorWriteImage* image_write;
     GpuDescriptorWriteBuffer* buffer_write;
@@ -489,7 +499,7 @@ void gpu_destroy_sampler(GpuContext* context, GpuSampler* sampler);
 
 GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, const GpuDescriptorLayout* descriptor_layout);
 void gpu_destroy_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set);
-void gpu_write_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, u32 write_count, GpuDescriptorWrite* descriptor_writes);
+void gpu_update_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set, u32 write_count, GpuDescriptorWrite* descriptor_writes);
 
 void gpu_map_memory(GpuContext* context, GpuMemory* memory, u64 offset, u64 size, void** ppData);
 void gpu_unmap_memory(GpuContext* context, GpuMemory* memory);

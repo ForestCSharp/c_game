@@ -1,5 +1,7 @@
 
-layout(set = 0, binding = 0) uniform GlobalUniformBuffer {
+#include "bindless.glsl"
+
+layout(set = 1, binding = 0) uniform GlobalUniformBuffer {
     mat4 model;
 	mat4 view;
 	mat4 projection;
@@ -9,6 +11,8 @@ layout(set = 0, binding = 0) uniform GlobalUniformBuffer {
 	bool is_colliding;
 } global_ubo;
 
-layout(set = 1, binding = 0) uniform PerDrawUniformBuffer {
+layout(set = 2, binding = 0) uniform PerDrawUniformBuffer {
     mat4 model;
+	uint vertex_buffer_idx;
+	uint index_buffer_idx;
 } object_ubo;

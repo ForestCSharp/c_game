@@ -282,10 +282,6 @@ GpuContext gpu_create_context(const Window *const window)
                                                           .queueCount = 1,
                                                           .pQueuePriorities = &graphics_queue_priority};
 
-    VkPhysicalDeviceFeatures physical_device_features = {
-        .samplerAnisotropy = VK_TRUE,
-    };
-
     const char *device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
@@ -296,9 +292,14 @@ GpuContext gpu_create_context(const Window *const window)
     };
     u32 device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
 
+	VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+		.pNext = NULL,
+	};
+
     VkPhysicalDeviceSynchronization2Features sync_2_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
-        .pNext = NULL,
+        .pNext = &descriptor_indexing_features,
     };
 
     VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features = {
@@ -309,7 +310,7 @@ GpuContext gpu_create_context(const Window *const window)
     VkPhysicalDeviceFeatures2 features_2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &dynamic_rendering_features,
-        .features = physical_device_features,
+        .features = {},
     };
     vkGetPhysicalDeviceFeatures2(physical_device_data.physical_device, &features_2);
 
@@ -326,6 +327,16 @@ GpuContext gpu_create_context(const Window *const window)
         printf("Error: Dynamic Rendering Is Required\n");
         exit(0);
     }
+
+	assert(descriptor_indexing_features.descriptorBindingSampledImageUpdateAfterBind);
+	assert(descriptor_indexing_features.descriptorBindingUniformBufferUpdateAfterBind);
+	assert(descriptor_indexing_features.descriptorBindingStorageBufferUpdateAfterBind);
+	assert(descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing);
+	// FCS TODO: this should work in MoltenVK Main
+	//assert(descriptor_indexing_features.shaderStorageBufferArrayNonUniformIndexing);
+	//assert(descriptor_indexing_features.shaderUniformBufferArrayNonUniformIndexing);
+	assert(features_2.features.shaderStorageBufferArrayDynamicIndexing);
+	assert(features_2.features.shaderUniformBufferArrayDynamicIndexing);
 
     VkDeviceCreateInfo device_create_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -344,6 +355,7 @@ GpuContext gpu_create_context(const Window *const window)
     VK_CHECK(vkCreateDevice(physical_device_data.physical_device, &device_create_info, NULL, &device));
 
     // FCS TODO: Testing MoltenVK
+	// FCS TODO: use 1.3 core functions once MoltenVK Supports them
     pfn_begin_rendering = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR");
     pfn_end_rendering = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(device, "vkCmdEndRenderingKHR");
     assert(pfn_begin_rendering && pfn_end_rendering);
@@ -1159,17 +1171,24 @@ void gpu_destroy_sampler(GpuContext *context, GpuSampler *sampler)
 
 GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, const GpuDescriptorLayout* descriptor_layout)
 {
+	VkDescriptorPoolCreateFlagBits descriptor_pool_create_flags = 0;
+
 	VkDescriptorPoolSize vk_pool_sizes[descriptor_layout->binding_count];
 	for (u32 i = 0; i < descriptor_layout->binding_count; ++i)
 	{
 		vk_pool_sizes[i].type = (VkDescriptorType)descriptor_layout->bindings[i].type;
-		vk_pool_sizes[i].descriptorCount = 1;
+		vk_pool_sizes[i].descriptorCount = descriptor_layout->bindings[i].count;
+
+		if (descriptor_layout->bindings[i].binding_flags & GPU_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND)
+		{
+			descriptor_pool_create_flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+		}
 	}
 
 	VkDescriptorPoolCreateInfo vk_descriptor_pool_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.pNext = NULL,
-		.flags = 0,
+		.flags = descriptor_pool_create_flags,
 		.maxSets = 1,
 		.poolSizeCount = descriptor_layout->binding_count,
 		.pPoolSizes = vk_pool_sizes,
@@ -1195,14 +1214,13 @@ GpuDescriptorSet gpu_create_descriptor_set(GpuContext* context, const GpuDescrip
 	};
 }
 
-void gpu_destroy_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set)
+void gpu_destroy_descriptor_set(GpuContext* context, GpuDescriptorSet* descriptor_set)
 {
     VK_CHECK(vkResetDescriptorPool(context->device, descriptor_set->vk_descriptor_pool, 0));
     vkDestroyDescriptorPool(context->device, descriptor_set->vk_descriptor_pool, NULL);
 }
 
-void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_set, u32 write_count,
-                              GpuDescriptorWrite *descriptor_writes)
+void gpu_update_descriptor_set(GpuContext *context, GpuDescriptorSet* descriptor_set, u32 write_count, GpuDescriptorWrite* descriptor_writes)
 {
 	VkDescriptorImageInfo vk_descriptor_image_infos[write_count];
 	VkDescriptorBufferInfo vk_descriptor_buffer_infos[write_count];
@@ -1233,7 +1251,7 @@ void gpu_write_descriptor_set(GpuContext *context, GpuDescriptorSet *descriptor_
             .pNext = NULL,
             .dstSet = descriptor_set->vk_descriptor_set,
             .dstBinding = descriptor_writes[i].binding_desc->binding,
-            .dstArrayElement = 0,
+            .dstArrayElement = descriptor_writes[i].index,
             .descriptorCount = 1,
             .descriptorType = (VkDescriptorType)descriptor_writes[i].binding_desc->type,
             .pImageInfo = descriptor_writes[i].image_write ? &vk_descriptor_image_infos[i] : NULL,
@@ -1381,20 +1399,38 @@ void gpu_destroy_render_pass(GpuContext *context, GpuRenderPass *render_pass)
 
 GpuDescriptorLayout gpu_create_descriptor_layout(GpuContext* context, const GpuDescriptorLayoutCreateInfo* create_info)
 {
+	VkDescriptorSetLayoutCreateFlagBits descriptor_set_layout_create_flags = 0;
+
 	VkDescriptorSetLayoutBinding vk_bindings[create_info->binding_count];
+	VkDescriptorBindingFlags vk_binding_flags[create_info->binding_count];
 	for (int i = 0; i < create_info->binding_count; ++i)
 	{
 		vk_bindings[i].binding = create_info->bindings[i].binding;
 		vk_bindings[i].descriptorType = (VkDescriptorType)create_info->bindings[i].type;
-		vk_bindings[i].descriptorCount = 1;
+		vk_bindings[i].descriptorCount = create_info->bindings[i].count;
 		vk_bindings[i].stageFlags = create_info->bindings[i].stage_flags;
 		vk_bindings[i].pImmutableSamplers = NULL;
+		vk_binding_flags[i] = create_info->bindings[i].binding_flags;
+
+		/*	If any of our bindings has VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT, then the layout create 
+			info needs to set VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT 					*/
+		if (vk_binding_flags[i] & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT)
+		{
+			descriptor_set_layout_create_flags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+		}
 	}
+
+	VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+		.pNext = NULL,
+		.pBindingFlags = vk_binding_flags,
+		.bindingCount = create_info->binding_count,
+	};
 
 	VkDescriptorSetLayoutCreateInfo vk_desc_layout_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = NULL,
-		.flags = 0,
+		.pNext = &binding_flags_create_info,
+		.flags = descriptor_set_layout_create_flags,
 		.bindingCount = create_info->binding_count,
 		.pBindings = vk_bindings,
 	};

@@ -168,6 +168,8 @@ void game_object_manager_destroy(GameObjectManager* manager)
 	sb_free(manager->game_object_array);
 	sb_free(manager->COMPONENT_DATA_VAR_NAME(TransformComponent).component_array);
 	sb_free(manager->COMPONENT_DATA_VAR_NAME(StaticModelComponent).component_array);
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(AnimatedModelComponent).component_array);
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(ObjectRenderDataComponent).component_array);
 }
 
 GameObject* game_object_manager_add_object(GameObjectManager* manager)
