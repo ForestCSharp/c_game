@@ -31,5 +31,7 @@ clang -ObjC -g ./src/main.c ./bin/libvulkan.dylib \
 	-framework Metal \
 	-framework MetalKit \
 	-framework Quartz \
+	-rpath /usr/local/lib \
+
 
 ./bin/game
