@@ -11,10 +11,10 @@ layout(location = 3) out vec2 out_uv;
 
 void main()
 {
-	StaticVertex vertex = load_vertex();
+	StaticVertex vertex = load_static_vertex();
 	gl_Position = global_ubo.projection * global_ubo.view * object_ubo.model * vertex.position;
     out_position = gl_Position.xyz;
-    out_normal = mat3(transpose(inverse(global_ubo.model))) * vertex.normal.xyz;
+    out_normal = mat3(transpose(inverse(object_ubo.model))) * vertex.normal.xyz;
     out_color = vertex.color;
     out_uv = vertex.uv;
 }

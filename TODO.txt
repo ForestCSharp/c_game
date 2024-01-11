@@ -1,10 +1,10 @@
 
+- Arena/Linked Allocator
+- Logging Header
 
-
-
-- Bindless Vulkan (waiting on MoltenVK Support?)
-	- see: https://github.com/KhronosGroup/MoltenVK/commit/ff21180909f122eaaaed958f1c0b59589b10c17b
-	- TODO: Set up skinned for bindless
+- Bindless Vulkan 
+	- broken on MoltenVk/MacOS: see: https://github.com/KhronosGroup/MoltenVK/commit/ff21180909f122eaaaed958f1c0b59589b10c17b
+	- TODO: Set up skinned (skeleton and inverse bind matrices) for bindless
 	- TODO: Bring back collision system using components + bindless
 	- TODO: Bring back joint vis using components + bindless
 
@@ -13,6 +13,5 @@
 		- Dynamic is per-invocation? could be used with draw indirect
 	- shaderStorageBufferArrayNonUniformIndexing in VkPhysicalDeviceDescriptorIndexingFeatureso 
 		- Even finer grained? could be used with draw instanced + instanced indirect for per-instance resources...
-
 
 - Procedural Animation (IK)

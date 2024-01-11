@@ -3,4 +3,4 @@
 *.pdb
 *.ilk
 *.DS_Store
-/bin/*
+/bin/

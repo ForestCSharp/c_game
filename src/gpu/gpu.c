@@ -1529,6 +1529,8 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext *context, GpuGraphicsPipelin
         total_stride += gpu_format_stride(create_info->attribute_formats[i]);
     }
 
+	// Assuming either 1 or 0 bindings, depending on if create_info has any attributes...
+	const u32 num_binding_descriptions = create_info->num_attributes > 0 ? 1 : 0;
     VkVertexInputBindingDescription binding_descriptions[] = {
         {
             .binding = 0,
@@ -1541,8 +1543,8 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext *context, GpuGraphicsPipelin
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
-        .vertexBindingDescriptionCount = 1,
-        .pVertexBindingDescriptions = binding_descriptions,
+        .vertexBindingDescriptionCount = num_binding_descriptions,
+        .pVertexBindingDescriptions = num_binding_descriptions > 0 ? binding_descriptions : NULL,
         .vertexAttributeDescriptionCount = create_info->num_attributes,
         .pVertexAttributeDescriptions = attribute_descriptions,
     };

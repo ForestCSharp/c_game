@@ -142,3 +142,9 @@ Vec3 quat_rotate_vec3(const Quat q, const Vec3 v)
 
 	return vec3_new(result_quat.x, result_quat.y, result_quat.z);
 }
+
+Vec3 quat_to_forward_vec3(const Quat q)
+{
+	Vec3 v = vec3_new(0,0,1);
+	return quat_rotate_vec3(q, v);
+}

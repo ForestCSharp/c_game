@@ -89,3 +89,13 @@ f64 rand_f64(f64 lower_bound, f64 upper_bound)
 {
 	return lower_bound + (f64)(rand()) / ((f64)(RAND_MAX/(upper_bound-lower_bound)));
 }
+
+i32 rand_i32(i32 lower_bound, i32 upper_bound)
+{
+	return lower_bound + (i32)(rand()) / ((i32)(RAND_MAX/(upper_bound-lower_bound)));
+}
+
+i64 rand_i64(i64 lower_bound, i64 upper_bound)
+{
+	return lower_bound + (i64)(rand()) / ((i64)(RAND_MAX/(upper_bound-lower_bound)));
+}

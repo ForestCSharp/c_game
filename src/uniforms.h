@@ -6,13 +6,10 @@
 
 typedef struct GlobalUniformStruct
 {
-	Mat4 model;
 	Mat4 view;
 	Mat4 projection;
-	Mat4 mvp;
 	Vec4 eye;
 	Vec4 light_dir;
-	bool is_colliding;
 } GlobalUniformStruct;
 
 typedef struct ObjectUniformStruct
