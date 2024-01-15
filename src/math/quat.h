@@ -106,17 +106,34 @@ Quat quat_nlerp(float t, const Quat a, const Quat b)
 	return quat_add(quat_scale(a,1.0f - t), quat_scale(b, t));	
 }
 
-Quat quat_slerp(float t, const Quat a, const Quat b)
+Quat quat_slerp(float t, Quat a, Quat b)
 {
 	t = CLAMP(t, 0.0f, 1.0f);
-    float angle = acosf(quat_dot(a,b));
-    float denom = sinf(angle);
+	float dot = quat_dot(a,b);
 
-	Quat a_scaled = quat_scale(a, sin((1-t)*angle));
-	Quat b_scaled = quat_scale(b, sin(t*angle));
-	Quat result = quat_scale(quat_add(a_scaled,b_scaled), 1.0f / denom);
+	// Take the shortest path
+	if (dot < 0.0f)
+	{
+		a = quat_scale(a, -1.0f);
+		dot *= -1.0f;
+	}
+	
+	// Ensure dot is within acosf's valid range
+	dot = CLAMP(dot, -1.0f, 1.0f);
 
-	return result;
+    const float angle = acosf(dot);
+    const float denom = sinf(angle);
+	
+	if (f32_nearly_equal(denom, 0.0f))
+	{
+		return b;
+	}
+
+	Quat a_scaled = quat_scale(a, sin((1-t) * angle));
+	Quat b_scaled = quat_scale(b, sin(t * angle));
+	Quat result = quat_scale(quat_add(a_scaled, b_scaled), 1.0f / denom);
+
+	return quat_normalize(result);
 }
 
 bool quat_nearly_equal(const Quat a, const Quat b)
@@ -147,4 +164,63 @@ Vec3 quat_to_forward_vec3(const Quat q)
 {
 	Vec3 v = vec3_new(0,0,1);
 	return quat_rotate_vec3(q, v);
+}
+
+Quat quat_look_rotation(const Vec3 in_forward, const Vec3 in_up)
+{
+ 		const Vec3 forward = vec3_normalize(in_forward);
+        const Vec3 right = vec3_normalize(vec3_cross(in_up, forward));
+        const Vec3 up = vec3_cross(forward, right);
+
+        const float m00 = right.x;
+        const float m01 = right.y;
+        const float m02 = right.z;
+        const float m10 = up.x;
+        const float m11 = up.y;
+        const float m12 = up.z;
+        const float m20 = forward.x;
+        const float m21 = forward.y;
+        const float m22 = forward.z;
+
+
+        float num8 = (m00 + m11) + m22;
+		Quat quaternion = {};
+        if (num8 > 0.0f)
+        {
+            float num = sqrtf(num8 + 1.0f);
+            quaternion.w = num * 0.5f;
+            num = 0.5f / num;
+            quaternion.x = (m12 - m21) * num;
+            quaternion.y = (m20 - m02) * num;
+            quaternion.z = (m01 - m10) * num;
+            return quaternion;
+        }
+        if ((m00 >= m11) && (m00 >= m22))
+        {
+            float num7 = sqrtf(((1.0f + m00) - m11) - m22);
+            float num4 = 0.5f / num7;
+            quaternion.x = 0.5f * num7;
+            quaternion.y = (m01 + m10) * num4;
+            quaternion.z = (m02 + m20) * num4;
+            quaternion.w = (m12 - m21) * num4;
+            return quaternion;
+        }
+        if (m11 > m22)
+        {
+            float num6 = sqrtf(((1.0f + m11) - m00) - m22);
+            float num3 = 0.5f / num6;
+            quaternion.x = (m10 + m01) * num3;
+            quaternion.y = 0.5f * num6;
+            quaternion.z = (m21 + m12) * num3;
+            quaternion.w = (m20 - m02) * num3;
+            return quaternion;
+        }
+
+        float num5 = sqrtf(((1.0f + m22) - m00) - m11);
+        float num2 = 0.5f / num5;
+        quaternion.x = (m20 + m02) * num2;
+        quaternion.y = (m21 + m12) * num2;
+        quaternion.z = 0.5f * num5;
+        quaternion.w = (m01 - m10) * num2;
+        return quaternion;
 }

@@ -757,10 +757,10 @@ int main()
 		{	// Player Movement
 			CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
 			assert(cam_component);
-			TransformComponent* player_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, body_object_handle);
+			TransformComponent* body_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, body_object_handle);
 			PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, body_object_handle);
-			assert(player_transform && player_control);
-			const Vec3 old_translation = player_transform->trs.translation; 
+			assert(body_transform && player_control);
+			const Vec3 old_translation = body_transform->trs.translation; 
 			Vec3 up_vec = vec3_new(0,1,0);
 			Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
 			Vec3 right_vec = vec3_cross(up_vec, forward_vec);
@@ -791,8 +791,17 @@ int main()
 			// Finally scale everything by delta time
 			move_vec = vec3_scale(move_vec, delta_time);
 
-			player_transform->trs.translation = vec3_add(old_translation, move_vec);	
+			body_transform->trs.translation = vec3_add(old_translation, move_vec);	
 
+			TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, legs_object_handle);
+			assert(legs_transform);
+			if (!vec3_nearly_equal(vec3_zero, move_vec))
+			{
+				const float lerp_speed = 10.0 * delta_time;
+				const Quat old_rotation = legs_transform->trs.rotation;
+				const Quat desired_rotation = quat_look_rotation(vec3_normalize(move_vec), vec3_new(0,1,0));
+				legs_transform->trs.rotation = quat_slerp(lerp_speed, old_rotation, desired_rotation);
+			}
 		}
 
 		{	// Update Global Uniforms...	
