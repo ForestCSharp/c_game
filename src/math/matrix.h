@@ -125,6 +125,22 @@ Mat4 mat4_scale(const Vec3 scale)
     return result;
 }
 
+Mat4 mat4_from_axes(const Vec3 in_forward, const Vec3 in_up)
+{
+	const Vec3 right = vec3_normalize(vec3_cross(in_forward, in_up));
+	const Vec3 forward = vec3_normalize(vec3_cross(in_up, right)); 
+	const Vec3 up = vec3_normalize(vec3_cross(right, forward)); 
+
+	return (Mat4) {
+		.d = {
+			right.x,	right.y,	right.z,	0,
+			up.x, 		up.y, 		up.z, 		0,
+			-forward.x,	-forward.y,	-forward.z,	0,
+			0,			0,			0,			1,
+		},
+	};
+}
+
 Mat4 mat4_look_at(const Vec3 from, const Vec3 to, const Vec3 in_up)
 {
 	const Vec3 f = vec3_normalize(vec3_sub(to, from));
@@ -255,14 +271,47 @@ Mat4 quat_to_mat4(const Quat in_q)
 
 Quat mat4_to_quat(const Mat4 in_mat)
 {
-	float w = sqrt(1.0f + in_mat.d[0][0] + in_mat.d[1][1] + in_mat.d[2][2]) / 2.0;
-	float w4 = w * 4.0f; 
-	return (Quat) {
-		.x = (in_mat.d[1][2] - in_mat.d[2][1]) / w4,
-		.y = (in_mat.d[2][0] - in_mat.d[0][2]) / w4,
-		.z = (in_mat.d[0][1] - in_mat.d[1][0]) / w4,
-		.w = w,
-	};
+	const float tr = in_mat.d[0][0] + in_mat.d[1][1] + in_mat.d[2][2];
+	if (tr > 0)
+	{ 
+		const float S = sqrt(tr+1.0) * 2; // S=4*qw 
+		return (Quat) {
+			.x = (in_mat.d[1][2] - in_mat.d[2][1]) / S,
+			.y = (in_mat.d[2][0] - in_mat.d[0][2]) / S,
+			.z = (in_mat.d[0][1] - in_mat.d[1][0]) / S,
+			.w = 0.25 * S,
+		};
+	}
+	else if ((in_mat.d[0][0] > in_mat.d[1][1]) && (in_mat.d[0][0] > in_mat.d[2][2]))
+	{ 
+		float S = sqrt(1.0 + in_mat.d[0][0] - in_mat.d[1][1] - in_mat.d[2][2]) * 2; // S=4*qx 
+		return (Quat) {
+			.x = 0.25 * S,
+			.y = (in_mat.d[1][0] + in_mat.d[0][1]) / S,
+			.z = (in_mat.d[2][0] + in_mat.d[0][2]) / S,
+			.w = (in_mat.d[1][2] - in_mat.d[2][1]) / S,
+		};
+	}
+	else if (in_mat.d[1][1] > in_mat.d[2][2])
+	{ 
+		float S = sqrt(1.0 + in_mat.d[1][1] - in_mat.d[0][0] - in_mat.d[2][2]) * 2; // S=4*qy
+		return (Quat) {
+			.x = (in_mat.d[1][0] + in_mat.d[0][1]) / S,
+			.y = 0.25 * S,
+			.z = (in_mat.d[2][1] + in_mat.d[1][2]) / S,
+			.w = (in_mat.d[2][0] - in_mat.d[0][2]) / S,
+		};
+	}
+	else
+	{ 
+		float S = sqrt(1.0 + in_mat.d[2][2] - in_mat.d[0][0] - in_mat.d[1][1]) * 2; // S=4*qz
+		return (Quat) {
+			.x = (in_mat.d[2][0] + in_mat.d[0][2]) / S,
+			.y = (in_mat.d[2][1] + in_mat.d[1][2]) / S,
+			.z = 0.25 * S,
+			.w = (in_mat.d[0][1] - in_mat.d[1][0]) / S,
+		};
+	}
 }
 
 typedef struct TRS

@@ -1,4 +1,6 @@
 
+- Remove (or figure out why we need) vec3_negate from quat_look_rotation
+
 - Arena/Linked Allocator
 - Logging Header
 

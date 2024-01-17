@@ -799,7 +799,7 @@ int main()
 			{
 				const float lerp_speed = 10.0 * delta_time;
 				const Quat old_rotation = legs_transform->trs.rotation;
-				const Quat desired_rotation = quat_look_rotation(vec3_normalize(move_vec), vec3_new(0,1,0));
+				const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), vec3_new(0,1,0)));
 				legs_transform->trs.rotation = quat_slerp(lerp_speed, old_rotation, desired_rotation);
 			}
 		}
