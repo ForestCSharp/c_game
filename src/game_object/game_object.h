@@ -116,6 +116,9 @@ typedef struct AttachmentPoint
 {
 	GameObjectHandle object_handle;	
 	optional(String) name;
+	bool ignore_translation;
+	bool ignore_rotation;
+	bool ignore_scale;
 } AttachmentPoint;
 declare_optional_type(AttachmentPoint);
 
@@ -263,22 +266,38 @@ void game_object_manager_remove_object(GameObjectManager* manager, GameObjectHan
 }
 
 // Component Helper Functions
-
-Mat4 game_object_compute_transform(GameObjectManager* manager, GameObjectHandle object_handle)
+TRS game_object_compute_global_transform(GameObjectManager* manager, GameObjectHandle object_handle)
 {
 	TransformComponent* my_transform = OBJECT_GET_COMPONENT(TransformComponent, manager, object_handle);
 	assert(my_transform);
-	Mat4 my_matrix = trs_to_mat4(my_transform->trs);
+	TRS my_trs = my_transform->trs;
 
-	Mat4 parent_matrix = mat4_identity;
+	TRS parent_trs = trs_identity;
 	if (optional_is_set(my_transform->parent))
 	{
 		const AttachmentPoint* parent = &optional_get(my_transform->parent);
 		GameObjectHandle parent_object_handle = parent->object_handle;
-		parent_matrix = game_object_compute_transform(manager, parent_object_handle);
+
+		parent_trs = game_object_compute_global_transform(manager, parent_object_handle);
+
+		// Check ignore flags
+		if (parent->ignore_translation)
+		{
+			parent_trs.translation = vec3_zero;
+		}
+
+		if (parent->ignore_rotation)
+		{
+			parent_trs.rotation = quat_identity;
+		}
+
+		if (parent->ignore_scale)
+		{
+			parent_trs.scale = vec3_one;
+		}
 	}
 
-	return mat4_mul_mat4(my_matrix, parent_matrix);
+	return trs_combine(parent_trs, my_trs);
 }
 
 void game_object_render_data_setup(GameObjectManager* manager, GpuContext* gpu_context, GameObjectHandle object_handle, GpuDescriptorLayout per_object_descriptor_layout)

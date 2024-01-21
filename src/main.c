@@ -31,9 +31,14 @@
 
 //FCS TODO: Helper to create and write a descriptor set in one operation (optional descriptor write field in create info?)
 
-#define DESCRIPTOR_BINDING_UNIFORM_BUFFER(idx, in_count, flags) (GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .stage_flags = flags }
-#define DESCRIPTOR_BINDING_STORAGE_BUFFER(idx, in_count, flags) (GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .stage_flags = flags }
-#define DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(idx, in_count, flags) (GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .stage_flags = flags }
+#define DESCRIPTOR_BINDING_UNIFORM_BUFFER(idx, in_count, flags) (GpuDescriptorBinding)\
+	{ .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .stage_flags = flags }
+
+#define DESCRIPTOR_BINDING_STORAGE_BUFFER(idx, in_count, flags)\
+	(GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .stage_flags = flags }
+
+#define DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(idx, in_count, flags)\
+(GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .stage_flags = flags }
 
 int main()
 {
@@ -99,10 +104,12 @@ int main()
 		return 1;
 	}
 
-
 	GameObjectHandle body_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle head_object_handle = ADD_OBJECT(game_object_manager_ptr);
-	GameObjectHandle legs_object_handle = ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle legs_object_handle = ADD_OBJECT(game_object_manager_ptr);	
+	GameObjectHandle left_arm_object_handle = ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle right_arm_object_handle = ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle camera_root_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle camera_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	{	// Set up Main character hierarchy
 
@@ -124,7 +131,7 @@ int main()
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, body_object_handle, body_transform);
 
 		PlayerControlComponent player_control = {
-			.move_speed = 20.0f,
+			.move_speed = 100.0f,
 		};
 		OBJECT_CREATE_COMPONENT(PlayerControlComponent, game_object_manager_ptr, body_object_handle, player_control);
 
@@ -133,10 +140,6 @@ int main()
 		StaticModelComponent head_model_component_data = {.static_model = head_static_model, };
 		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, head_object_handle, head_model_component_data);
 
-		AttachmentPoint head_to_body_attachment = {
-			.object_handle = body_object_handle,
-			.name = optional_none(),
-		};
 		TransformComponent head_transform = {
 			.trs = {
 				.scale = vec3_new(1,1,1),
@@ -144,22 +147,62 @@ int main()
 				.translation = vec3_new(0,2.5,0),
 			},
 			.parent = {
-				.value = head_to_body_attachment,
+				.value = {
+					.object_handle = body_object_handle,
+					.name = optional_none(),
+				},
 				.is_set = true,
 			},
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, head_object_handle, head_transform);
 
+		StaticModel arm_static_model;
+		assert(static_model_load("data/meshes/StarterMech_Arm.glb", &gpu_context, &bindless_resource_manager, &arm_static_model));
+		StaticModelComponent arm_model_component_data = {.static_model = arm_static_model, };
+		
+		// Left Arm
+		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, left_arm_object_handle, arm_model_component_data);
+
+		TransformComponent left_arm_transform = {
+			.trs = {
+				.scale = vec3_new(1,1,1),
+				.rotation = quat_identity,
+				.translation = vec3_new(3.25,0,0),
+			},
+			.parent = {
+				.value = {
+					.object_handle = body_object_handle,
+					.name = optional_none(),
+				},
+				.is_set = true,
+			},
+		};
+		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, left_arm_object_handle, left_arm_transform);
+
+		// Right Arm
+		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, right_arm_object_handle, arm_model_component_data);
+
+		TransformComponent right_arm_transform = {
+			.trs = {
+				.scale = vec3_new(1,1,1),
+				.rotation = quat_identity,
+				.translation = vec3_new(-3.25,0,0),
+			},
+			.parent = {
+				.value = {
+					.object_handle = body_object_handle,
+					.name = optional_none(),
+				},
+				.is_set = true,
+			},
+		};
+		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, right_arm_object_handle, right_arm_transform);
 
 		StaticModel legs_static_model;
 		assert(static_model_load("data/meshes/StarterMech_Legs.glb", &gpu_context, &bindless_resource_manager, &legs_static_model));
 		StaticModelComponent legs_model_component_data = {.static_model = legs_static_model, };
 		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, legs_object_handle, legs_model_component_data);
 
-		AttachmentPoint legs_to_body_attachment = {
-			.object_handle = body_object_handle,
-			.name = optional_none(),
-		};
 		TransformComponent legs_transform = {
 			.trs = {
 				.scale = vec3_new(1,1,1),
@@ -167,28 +210,37 @@ int main()
 				.translation = vec3_new(0,-4.5,0),
 			},
 			.parent = {
-				.value = legs_to_body_attachment,
+				.value = {
+					.object_handle = body_object_handle,
+					.ignore_rotation = true,
+					.name = optional_none(),
+				},
 				.is_set = true,
 			},
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, legs_object_handle, legs_transform);
 
-		//FCS TODO: Left arm
-		//FCS TODO: Right arm
+		TransformComponent cam_root_transform = {
+			.trs = {
+				.scale = vec3_new(1,1,1),
+				.rotation = quat_new(vec3_new(1,0,0), -15.0f * DEGREES_TO_RADIANS),
+				.translation = vec3_new(0,0,0),
+			},
+		};
+		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, camera_root_object_handle, cam_root_transform);
 
 		// Camera Setup
-		AttachmentPoint cam_to_body_attachment = {
-			.object_handle = body_object_handle,
-			.name = optional_none(),
-		};
 		TransformComponent cam_transform = {
 			.trs = {
 				.scale = vec3_new(1,1,1),
 				.rotation = quat_identity,
-				.translation = vec3_new(0,5,15),
+				.translation = vec3_new(0,0,200),
 			},
 			.parent = {
-				.value = cam_to_body_attachment,
+				.value = {
+					.object_handle = camera_root_object_handle,
+					.name = optional_none(),
+				},
 				.is_set = true,
 			},
 		};
@@ -515,6 +567,10 @@ int main()
     int width = 0;
     int height = 0;
 
+
+    i32 mouse_x, mouse_y;
+	window_get_mouse_pos(&window, &mouse_x, &mouse_y);
+
     u32 current_frame = 0;
     while (window_handle_messages(&window))
     {
@@ -573,14 +629,20 @@ int main()
         accumulated_delta_time += delta_time;
         frames_rendered++;	
 
-        // BEGIN Gui Test
-        i32 mouse_x, mouse_y;
+		i32 old_mouse_x = mouse_x;
+		i32 old_mouse_y = mouse_y;
         window_get_mouse_pos(&window, &mouse_x, &mouse_y);
+
+		Vec2 mouse_pos = vec2_new(mouse_x, mouse_y);
+		Vec2 old_mouse_pos = vec2_new(old_mouse_x, old_mouse_y);
+		Vec2 mouse_delta = vec2_sub(mouse_pos, old_mouse_pos);
+
+        // BEGIN Gui Test
 
         // FCS TODO: open_windows memory leak here
         GuiFrameState gui_frame_state = {
 			.screen_size = vec2_new(width, height),
-			.mouse_pos = vec2_new(mouse_x, mouse_y),
+			.mouse_pos = mouse_pos,
 			.mouse_buttons = {
 				input_pressed(KEY_LEFT_MOUSE),
 				input_pressed(KEY_RIGHT_MOUSE),
@@ -729,10 +791,6 @@ int main()
                 if (gui_button(&gui_context, "", vec2_sub(bezier_points[i], vec2_scale(bezier_button_size, 0.5)),
                                bezier_button_size) == GUI_HELD)
                 {
-                    Vec2 mouse_pos = gui_context.frame_state.mouse_pos;
-                    Vec2 prev_mouse_pos = gui_context.prev_frame_state.mouse_pos;
-                    Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
-
                     bezier_points[i] = vec2_add(bezier_points[i], mouse_delta);
                 }
             }
@@ -785,29 +843,65 @@ int main()
 
 			if (input_pressed(KEY_SHIFT))
 			{
-				move_vec = vec3_scale(move_vec, 5.0f);
+				move_vec = vec3_scale(move_vec, 2.5f);
 			}
 
 			// Finally scale everything by delta time
 			move_vec = vec3_scale(move_vec, delta_time);
 
-			body_transform->trs.translation = vec3_add(old_translation, move_vec);	
+			{
+				const float body_rot_lerp_speed = 10.0 * delta_time;
+
+				body_transform->trs.translation = vec3_add(old_translation, move_vec);
+				Quat old_body_rotation = body_transform->trs.rotation;
+				Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
+				body_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
+			}
+
+			TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
+			assert(cam_root_transform);
+			//FCS TODO: Lerp for lazy cam
+			cam_root_transform->trs.translation = body_transform->trs.translation;
 
 			TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, legs_object_handle);
 			assert(legs_transform);
 			if (!vec3_nearly_equal(vec3_zero, move_vec))
 			{
-				const float lerp_speed = 10.0 * delta_time;
+				//FCS TODO: need to account for parent rotation...
+				//OR have method for transform component to ignore certain components...
+				const float legs_rot_lerp_speed = 10.0 * delta_time;
 				const Quat old_rotation = legs_transform->trs.rotation;
 				const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), vec3_new(0,1,0)));
-				legs_transform->trs.rotation = quat_slerp(lerp_speed, old_rotation, desired_rotation);
+				legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
+			}
+		}
+
+		{	// Camera Control
+			// currently assumes cam root has no parent (we manually move it into place)
+			TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
+			assert(cam_root_transform);
+
+			const float cam_rotation_speed = 1.0f;
+
+			if (!f32_nearly_zero(mouse_delta.x))
+			{
+				Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
+				cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+			}
+
+			if (!f32_nearly_zero(mouse_delta.y))
+			{
+				//FCS TODO: need to get current xform right vector
+				const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
+				Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
+				cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
 			}
 		}
 
 		{	// Update Global Uniforms...	
-			Mat4 body_transform = game_object_compute_transform(&game_object_manager, body_object_handle);
+			Mat4 body_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, body_object_handle));
 			Vec3 body_position = mat4_get_translation(body_transform);
-			Mat4 cam_transform = game_object_compute_transform(&game_object_manager, camera_object_handle);
+			Mat4 cam_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, camera_object_handle));
 			Vec3 cam_position = mat4_get_translation(cam_transform);
 
 			CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
@@ -906,7 +1000,7 @@ int main()
 				if (transform_component && render_data_component)
 				{
 					//Assign to our persistently mapped storage
-					render_data_component->uniform_data[current_frame]->model = game_object_compute_transform(&game_object_manager, object_handle); 
+					render_data_component->uniform_data[current_frame]->model = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, object_handle)); 
 					gpu_cmd_bind_descriptor_set(&command_buffers[current_frame], &main_pipeline_layout, &render_data_component->descriptor_sets[current_frame]);
 
 					StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, &game_object_manager, object_handle);

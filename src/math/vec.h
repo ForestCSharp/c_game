@@ -101,7 +101,8 @@ typedef struct Vec3
 
 declare_optional_type(Vec3);
 
-const Vec3 vec3_zero = {.x = 0, .y = 0, .z = 0};
+static const Vec3 vec3_zero = {.x = 0, .y = 0, .z = 0};
+static const Vec3 vec3_one = {.x = 1, .y = 1, .z = 1};
 
 void vec3_print(const Vec3 vec)
 {
@@ -145,6 +146,11 @@ Vec3 vec3_add(const Vec3 a, const Vec3 b)
 Vec3 vec3_sub(const Vec3 a, const Vec3 b)
 {
     return vec3_add(a, vec3_negate(b));
+}
+
+Vec3 vec3_mul_componentwise(const Vec3 a, const Vec3 b)
+{
+	return vec3_new(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
 float vec3_dot(const Vec3 a, const Vec3 b)

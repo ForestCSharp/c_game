@@ -1,5 +1,14 @@
 
-- Remove (or figure out why we need) vec3_negate from quat_look_rotation
+
+[NEXT UP]
+- method for transform component to treat its T,R,S as world-space
+- allow attaching to specific nodes in GLTF model (+ support animation)
+- procedural / IK support in animated models
+- start replacing mesh parts with animated models
+- prefabs (just functions that return a struct with some pre-setup game objects)
+- basic world setup and collision
+
+
 
 - Arena/Linked Allocator
 - Logging Header

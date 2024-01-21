@@ -311,6 +311,10 @@ Quat mat4_to_quat(const Mat4 in_mat)
 			.z = 0.25 * S,
 			.w = (in_mat.d[0][1] - in_mat.d[1][0]) / S,
 		};
+		// qx = (m02 + m20) / S;
+		// qy = (m12 + m21) / S;
+		// qz = 0.25 * S;
+		// qw = (m10 - m01) / S;
 	}
 }
 
@@ -321,14 +325,11 @@ typedef struct TRS
 	Vec3 translation;
 } TRS;
 
-TRS trs_identity()
-{
-	return (TRS) {
-		.scale = vec3_new(1,1,1),
-		.rotation = quat_identity,
-		.translation = vec3_zero,
-	};
-}
+static const TRS trs_identity = {
+	.scale = {.x = 1, .y = 1, .z = 1},
+	.rotation = quat_identity,
+	.translation = vec3_zero,
+};
 
 TRS mat4_to_trs(Mat4 in_mat)
 {
@@ -369,3 +370,19 @@ TRS trs_lerp(float t, const TRS a, const TRS b)
 		.translation = vec3_lerp(t, a.translation, b.translation),
 	};
 }
+
+TRS trs_combine(const TRS parent, const TRS child)
+{
+	TRS out_trs = {};
+	out_trs.scale = vec3_mul_componentwise(parent.scale, child.scale);
+
+	const Quat scaled_parent_rotation = quat_normalize(quat_mul(parent.rotation, mat4_to_quat(mat4_scale(parent.scale))));
+	out_trs.rotation = quat_normalize(quat_mul(scaled_parent_rotation, child.rotation));
+
+	const Vec3 scaled_translation = vec3_mul_componentwise(parent.scale, child.translation);
+	const Vec3 rotated_translation = quat_rotate_vec3(parent.rotation, scaled_translation);
+	out_trs.translation = vec3_add(parent.translation, rotated_translation);
+
+	return out_trs;
+}
+
