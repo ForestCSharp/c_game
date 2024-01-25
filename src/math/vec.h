@@ -181,6 +181,11 @@ float vec3_length(const Vec3 v)
 Vec3 vec3_normalize(const Vec3 v)
 {
     float length = vec3_length(v);
+	if (length == 0.f)
+	{
+		return v;
+	}
+
     return (Vec3){
         .x = v.x / length,
         .y = v.y / length,

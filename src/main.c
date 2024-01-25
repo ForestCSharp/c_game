@@ -840,6 +840,15 @@ int main()
 			{
 				move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
 			}
+			if (input_pressed('E'))
+			{
+				move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
+			}
+			if (input_pressed('Q'))
+			{
+				move_vec = vec3_add(move_vec, vec3_scale(up_vec, -player_control->move_speed ));
+			}
+
 
 			if (input_pressed(KEY_SHIFT))
 			{
@@ -865,14 +874,19 @@ int main()
 
 			TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, legs_object_handle);
 			assert(legs_transform);
-			if (!vec3_nearly_equal(vec3_zero, move_vec))
+
+
+			if (!vec3_nearly_equal(vec3_zero, move_vec)) 
 			{
-				//FCS TODO: need to account for parent rotation...
-				//OR have method for transform component to ignore certain components...
-				const float legs_rot_lerp_speed = 10.0 * delta_time;
-				const Quat old_rotation = legs_transform->trs.rotation;
-				const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), vec3_new(0,1,0)));
-				legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
+				const Vec3 legs_up = vec3_new(0,1,0);
+				const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
+				if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
+				{
+					const float legs_rot_lerp_speed = 10.0 * delta_time;
+					const Quat old_rotation = legs_transform->trs.rotation;
+					const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
+					legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
+				}
 			}
 		}
 

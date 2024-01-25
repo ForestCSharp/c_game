@@ -68,6 +68,8 @@ KeyCode translate_macos_key_code(unsigned short key_code)
         return KEY_ESCAPE;
     case kVK_Space:
         return KEY_SPACE;
+	case kVK_Control:
+		return KEY_LEFT_CONTROL;
         // FCS TODO: the rest of the kVK_... values
     }
 

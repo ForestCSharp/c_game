@@ -119,14 +119,6 @@ void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out
     *out_mouse_y = out_point.y;
 }
 
-// FCS TODO: per-platform keycode translation function, rather than all these constants (see mac/window.h)
-// static const int KEY_ESCAPE = VK_ESCAPE;
-// static const int KEY_SHIFT = VK_SHIFT;
-// static const int KEY_SPACE = VK_SPACE;
-// static const int KEY_LEFT_MOUSE = VK_LBUTTON;
-// static const int KEY_RIGHT_MOUSE = VK_RBUTTON;
-// static const int KEY_MIDDLE_MOUSE = VK_MBUTTON;
-// TODO: More Special Key Codes (VK_TAB, VK_CTRL, etc.)
 
 int translate_win32_key_code(int key_code)
 {
@@ -135,6 +127,7 @@ int translate_win32_key_code(int key_code)
         case KEY_ESCAPE: return VK_ESCAPE;
         case KEY_SHIFT: return VK_SHIFT;
         case KEY_SPACE: return VK_SPACE;
+		case KEY_LEFT_CONTROL: return VK_LCONTROL;
         case KEY_LEFT_MOUSE: return VK_LBUTTON;
         case KEY_RIGHT_MOUSE: return VK_RBUTTON;
         case KEY_MIDDLE_MOUSE: return VK_MBUTTON;
