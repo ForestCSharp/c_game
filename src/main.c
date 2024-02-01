@@ -567,14 +567,16 @@ int main()
     int width = 0;
     int height = 0;
 
-
     i32 mouse_x, mouse_y;
 	window_get_mouse_pos(&window, &mouse_x, &mouse_y);
+
+	bool show_mouse = false;
+	window_show_mouse_cursor(&window, show_mouse);
 
     u32 current_frame = 0;
     while (window_handle_messages(&window))
     {
-        if (input_pressed(KEY_ESCAPE))
+        if (window_input_pressed(&window, KEY_ESCAPE))
         {
             break;
         }
@@ -635,280 +637,306 @@ int main()
 
 		Vec2 mouse_pos = vec2_new(mouse_x, mouse_y);
 		Vec2 old_mouse_pos = vec2_new(old_mouse_x, old_mouse_y);
-		Vec2 mouse_delta = vec2_sub(mouse_pos, old_mouse_pos);
+		Vec2 mouse_delta;
+		window_get_mouse_delta(&window, &mouse_delta.x, &mouse_delta.y);
 
-        // BEGIN Gui Test
+		// Mouse Lock
+		static bool show_mouse_pressed_last_frame = false;
+		if (window_input_pressed(&window, 'M') && !show_mouse_pressed_last_frame)
+		{
+			show_mouse = !show_mouse;
+			window_show_mouse_cursor(&window, show_mouse);
+			show_mouse_pressed_last_frame = true;
+		}
+		else if (!window_input_pressed(&window, 'M'))
+		{
+			show_mouse_pressed_last_frame = false;
+		}
 
-        // FCS TODO: open_windows memory leak here
-        GuiFrameState gui_frame_state = {
+		if (!show_mouse) 
+		{
+			int x,y;
+			window_get_position(&window, &x, &y);
+
+			int width, height;
+			window_get_dimensions(&window, &width, &height);
+
+			window_set_mouse_pos(&window, x + width/2, y + height/2);
+		}
+
+        // BEGIN Gui
+		static float global_animation_rate = 1.0f;
+
+		GuiFrameState gui_frame_state = {
 			.screen_size = vec2_new(width, height),
 			.mouse_pos = mouse_pos,
 			.mouse_buttons = {
-				input_pressed(KEY_LEFT_MOUSE),
-				input_pressed(KEY_RIGHT_MOUSE),
-				input_pressed(KEY_MIDDLE_MOUSE)
+				window_input_pressed(&window, KEY_LEFT_MOUSE),
+				window_input_pressed(&window, KEY_RIGHT_MOUSE),
+				window_input_pressed(&window, KEY_MIDDLE_MOUSE)
 			},
 		};
-
-        gui_begin_frame(&gui_context, gui_frame_state);
-
-        if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
-        {
-            printf("Clicked First Button\n");
-        }
-
-        if (gui_button(&gui_context, "too much text to display", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
-        {
-            printf("Holding Second Button\n");
-        }
-
-        if (gui_button(&gui_context, "this is way too much text to display", vec2_new(15, 150), vec2_new(270, 50)) ==
-            GUI_HOVERED)
-        {
-            printf("Hovering Third Button\n");
-        }
-
-        static float f = 0.25f;
-        gui_slider_float(&gui_context, &f, vec2_new(0, 2), "My Slider", vec2_new(15, 0), vec2_new(270, 50));
-
-        { // Rolling FPS, resets on click
-            double average_delta_time = accumulated_delta_time / (double)frames_rendered;
-            float average_fps = 1.0 / average_delta_time;
-
-            char buffer[128];
-            snprintf(buffer, sizeof(buffer), "FPS: %.1f", round(average_fps));
-            const float padding = 5.f;
-            const float fps_button_size = 155.f;
-            if (gui_button(&gui_context, buffer, vec2_new(width - fps_button_size - padding, padding),
-                           vec2_new(fps_button_size, 30)) == GUI_CLICKED)
-            {
-                accumulated_delta_time = 0.0f;
-                frames_rendered = 0;
-            }
-        }
-
-        static GuiWindow gui_window_1 = {
-            .name = "Window 1",
-            .window_rect =
-                {
-                    .position =
-                        {
-                            .x = 15,
-                            .y = 250,
-                        },
-                    .size =
-                        {
-                            .x = 400,
-                            .y = 400,
-                        },
-                    .z_order = 1,
-                },
-            .is_expanded = true,
-            .is_open = true,
-            .is_resizable = true,
-            .is_movable = true,
-        };
-
-        static GuiWindow gui_window_2 = {
-            .name = "Window 2",
-            .window_rect =
-                {
-                    .position =
-                        {
-                            .x = 430,
-                            .y = 250,
-                        },
-                    .size =
-                        {
-                            .x = 400,
-                            .y = 400,
-                        },
-                    .z_order = 2,
-                },
-            .is_expanded = true,
-            .is_open = false,
-            .is_resizable = true,
-            .is_movable = true,
-        };
-
-        gui_window_begin(&gui_context, &gui_window_1);
-        if (gui_window_button(&gui_context, &gui_window_1, gui_window_2.is_open ? "Hide Window 2" : "Show Window 2") ==
-            GUI_CLICKED)
-        {
-            gui_window_2.is_open = !gui_window_2.is_open;
-        }
-
-        static bool show_bezier = false;
-        if (gui_window_button(&gui_context, &gui_window_1, show_bezier ? "Hide Bezier" : "Show Bezier") == GUI_CLICKED)
-        {
-            show_bezier = !show_bezier;
-        }
-
-		static float global_animation_rate = 1.0f;
-        gui_window_slider_float(&gui_context, &gui_window_1, &global_animation_rate, vec2_new(-5.0, 5.0), "Anim Rate");
-
-        for (u32 i = 0; i < 12; ++i)
-        {
-            char buffer[256];
-            snprintf(buffer, sizeof(buffer), "Btn %u", i);
-            if (gui_window_button(&gui_context, &gui_window_1, buffer) == GUI_CLICKED)
-            {
-                printf("Clicked %s\n", buffer);
-            }
-        }
-        gui_window_end(&gui_context, &gui_window_1);
-
-        gui_window_begin(&gui_context, &gui_window_2);
-        if (gui_window_button(&gui_context, &gui_window_2, "Toggle Movable") == GUI_CLICKED)
-        {
-            gui_window_2.is_movable = !gui_window_2.is_movable;
-        }
-        if (gui_window_button(&gui_context, &gui_window_2, "Toggle Resizable") == GUI_CLICKED)
-        {
-            gui_window_2.is_resizable = !gui_window_2.is_resizable;
-        }
-        gui_window_end(&gui_context, &gui_window_2);
-
-        if (show_bezier)
-        {
-            static Vec2 bezier_points[] = {
-                {.x = 400, .y = 200},
-                {.x = 600, .y = 200},
-                {.x = 800, .y = 600},
-                {.x = 1000, .y = 600},
-            };
-            gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0.6, 0, 0, 1), 0.01);
-
-            // Bezier Controls
-            for (u32 i = 0; i < 4; ++i)
-            {
-                const Vec2 window_size = gui_context.frame_state.screen_size;
-                const Vec2 point_pos_screen_space = {
-                    .x = bezier_points[i].x * window_size.x,
-                    .y = bezier_points[i].y * window_size.y,
-                };
-                const Vec2 bezier_button_size = vec2_new(25, 25);
-                if (gui_button(&gui_context, "", vec2_sub(bezier_points[i], vec2_scale(bezier_button_size, 0.5)),
-                               bezier_button_size) == GUI_HELD)
-                {
-                    bezier_points[i] = vec2_add(bezier_points[i], mouse_delta);
-                }
-            }
-        }
-
-        // TODO: should be per-frame resources
-        gpu_upload_buffer(
-			&gpu_context, 
-			&gui_vertex_buffer, 
-			sizeof(GuiVert) * sb_count(gui_context.draw_data.vertices),
-            gui_context.draw_data.vertices
-		);
-        gpu_upload_buffer(
-			&gpu_context, 
-			&gui_index_buffer, 
-			sizeof(u32) * sb_count(gui_context.draw_data.indices),
-            gui_context.draw_data.indices
-		);
-
-        // END Gui Test
-
-		{	// Player Movement
-			CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
-			assert(cam_component);
-			TransformComponent* body_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, body_object_handle);
-			PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, body_object_handle);
-			assert(body_transform && player_control);
-			const Vec3 old_translation = body_transform->trs.translation; 
-			Vec3 up_vec = vec3_new(0,1,0);
-			Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
-			Vec3 right_vec = vec3_cross(up_vec, forward_vec);
-
-			Vec3 move_vec = vec3_zero;
-			if (input_pressed('W'))
+		gui_begin_frame(&gui_context, gui_frame_state);
+		if (show_mouse)
+		{
+			if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
 			{
-				move_vec = vec3_add(move_vec, vec3_scale(forward_vec, player_control->move_speed ));
-			}
-			if (input_pressed('S'))
-			{
-				move_vec = vec3_add(move_vec, vec3_scale(forward_vec, -player_control->move_speed ));
-			}
-			if (input_pressed('A'))
-			{
-				move_vec = vec3_add(move_vec, vec3_scale(right_vec, player_control->move_speed ));
-			}
-			if (input_pressed('D'))
-			{
-				move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
-			}
-			if (input_pressed('E'))
-			{
-				move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
-			}
-			if (input_pressed('Q'))
-			{
-				move_vec = vec3_add(move_vec, vec3_scale(up_vec, -player_control->move_speed ));
+				printf("Clicked First Button\n");
 			}
 
-
-			if (input_pressed(KEY_SHIFT))
+			if (gui_button(&gui_context, "too much text to display", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
 			{
-				move_vec = vec3_scale(move_vec, 2.5f);
+				printf("Holding Second Button\n");
 			}
 
-			// Finally scale everything by delta time
-			move_vec = vec3_scale(move_vec, delta_time);
-
+			if (gui_button(&gui_context, "this is way too much text to display", vec2_new(15, 150), vec2_new(270, 50)) ==
+				GUI_HOVERED)
 			{
-				const float body_rot_lerp_speed = 10.0 * delta_time;
-
-				body_transform->trs.translation = vec3_add(old_translation, move_vec);
-				Quat old_body_rotation = body_transform->trs.rotation;
-				Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
-				body_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
+				printf("Hovering Third Button\n");
 			}
 
-			TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
-			assert(cam_root_transform);
-			//FCS TODO: Lerp for lazy cam
-			cam_root_transform->trs.translation = body_transform->trs.translation;
+			static float f = 0.25f;
+			gui_slider_float(&gui_context, &f, vec2_new(0, 2), "My Slider", vec2_new(15, 0), vec2_new(270, 50));
 
-			TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, legs_object_handle);
-			assert(legs_transform);
+			{ // Rolling FPS, resets on click
+				double average_delta_time = accumulated_delta_time / (double)frames_rendered;
+				float average_fps = 1.0 / average_delta_time;
 
-
-			if (!vec3_nearly_equal(vec3_zero, move_vec)) 
-			{
-				const Vec3 legs_up = vec3_new(0,1,0);
-				const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
-				if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
+				char buffer[128];
+				snprintf(buffer, sizeof(buffer), "FPS: %.1f", round(average_fps));
+				const float padding = 5.f;
+				const float fps_button_size = 155.f;
+				if (gui_button(&gui_context, buffer, vec2_new(width - fps_button_size - padding, padding),
+				   vec2_new(fps_button_size, 30)) == GUI_CLICKED)
 				{
-					const float legs_rot_lerp_speed = 10.0 * delta_time;
-					const Quat old_rotation = legs_transform->trs.rotation;
-					const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
-					legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
+					accumulated_delta_time = 0.0f;
+					frames_rendered = 0;
 				}
 			}
-		}
 
-		{	// Camera Control
-			// currently assumes cam root has no parent (we manually move it into place)
-			TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
-			assert(cam_root_transform);
+			static GuiWindow gui_window_1 = {
+				.name = "Window 1",
+				.window_rect =
+				{
+					.position =
+					{
+						.x = 15,
+						.y = 250,
+					},
+					.size =
+					{
+						.x = 400,
+						.y = 400,
+					},
+					.z_order = 1,
+				},
+				.is_expanded = true,
+				.is_open = true,
+				.is_resizable = true,
+				.is_movable = true,
+			};
 
-			const float cam_rotation_speed = 1.0f;
+			static GuiWindow gui_window_2 = {
+				.name = "Window 2",
+				.window_rect =
+				{
+					.position =
+					{
+						.x = 430,
+						.y = 250,
+					},
+					.size =
+					{
+						.x = 400,
+						.y = 400,
+					},
+					.z_order = 2,
+				},
+				.is_expanded = true,
+				.is_open = false,
+				.is_resizable = true,
+				.is_movable = true,
+			};
 
-			if (!f32_nearly_zero(mouse_delta.x))
+			gui_window_begin(&gui_context, &gui_window_1);
+			if (gui_window_button(&gui_context, &gui_window_1, gui_window_2.is_open ? "Hide Window 2" : "Show Window 2") ==
+				GUI_CLICKED)
 			{
-				Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
-				cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+				gui_window_2.is_open = !gui_window_2.is_open;
 			}
 
-			if (!f32_nearly_zero(mouse_delta.y))
+			static bool show_bezier = false;
+			if (gui_window_button(&gui_context, &gui_window_1, show_bezier ? "Hide Bezier" : "Show Bezier") == GUI_CLICKED)
 			{
-				//FCS TODO: need to get current xform right vector
-				const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
-				Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
-				cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+				show_bezier = !show_bezier;
+			}
+
+			gui_window_slider_float(&gui_context, &gui_window_1, &global_animation_rate, vec2_new(-5.0, 5.0), "Anim Rate");
+
+			for (u32 i = 0; i < 12; ++i)
+			{
+				char buffer[256];
+				snprintf(buffer, sizeof(buffer), "Btn %u", i);
+				if (gui_window_button(&gui_context, &gui_window_1, buffer) == GUI_CLICKED)
+				{
+					printf("Clicked %s\n", buffer);
+				}
+			}
+			gui_window_end(&gui_context, &gui_window_1);
+
+			gui_window_begin(&gui_context, &gui_window_2);
+			if (gui_window_button(&gui_context, &gui_window_2, "Toggle Movable") == GUI_CLICKED)
+			{
+				gui_window_2.is_movable = !gui_window_2.is_movable;
+			}
+			if (gui_window_button(&gui_context, &gui_window_2, "Toggle Resizable") == GUI_CLICKED)
+			{
+				gui_window_2.is_resizable = !gui_window_2.is_resizable;
+			}
+			gui_window_end(&gui_context, &gui_window_2);
+
+			if (show_bezier)
+			{
+				static Vec2 bezier_points[] = {
+					{.x = 400, .y = 200},
+					{.x = 600, .y = 200},
+					{.x = 800, .y = 600},
+					{.x = 1000, .y = 600},
+				};
+				gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0.6, 0, 0, 1), 0.01);
+
+				// Bezier Controls
+				for (u32 i = 0; i < 4; ++i)
+				{
+					const Vec2 window_size = gui_context.frame_state.screen_size;
+					const Vec2 point_pos_screen_space = {
+						.x = bezier_points[i].x * window_size.x,
+						.y = bezier_points[i].y * window_size.y,
+					};
+					const Vec2 bezier_button_size = vec2_new(25, 25);
+					if (gui_button(&gui_context, "", vec2_sub(bezier_points[i], vec2_scale(bezier_button_size, 0.5)),
+					bezier_button_size) == GUI_HELD)
+					{
+						bezier_points[i] = vec2_add(bezier_points[i], mouse_delta);
+					}
+				}
+			}
+
+			// TODO: should be per-frame resources
+			gpu_upload_buffer(
+				&gpu_context, 
+				&gui_vertex_buffer, 
+				sizeof(GuiVert) * sb_count(gui_context.draw_data.vertices),
+				gui_context.draw_data.vertices
+			);
+			gpu_upload_buffer(
+				&gpu_context, 
+				&gui_index_buffer, 
+				sizeof(u32) * sb_count(gui_context.draw_data.indices),
+				gui_context.draw_data.indices
+			);
+
+		}
+	
+		if (!show_mouse)
+		{
+			{   // Player Movement
+				CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
+				assert(cam_component);
+				TransformComponent* body_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, body_object_handle);
+				PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, body_object_handle);
+				assert(body_transform && player_control);
+				const Vec3 old_translation = body_transform->trs.translation; 
+				Vec3 up_vec = vec3_new(0,1,0);
+				Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
+				Vec3 right_vec = vec3_cross(up_vec, forward_vec);
+
+				Vec3 move_vec = vec3_zero;
+				if (window_input_pressed(&window, 'W'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'S'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, -player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'A'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(right_vec, player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'D'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'E') || window_input_pressed(&window, VK_SPACE))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'Q'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(up_vec, -player_control->move_speed ));
+				}
+
+				if (window_input_pressed(&window, KEY_SHIFT))
+				{
+					move_vec = vec3_scale(move_vec, 2.5f);
+				}
+
+				// Finally scale everything by delta time
+				move_vec = vec3_scale(move_vec, delta_time);
+
+				{
+					const float body_rot_lerp_speed = 10.0 * delta_time;
+
+					body_transform->trs.translation = vec3_add(old_translation, move_vec);
+					Quat old_body_rotation = body_transform->trs.rotation;
+					Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
+					body_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
+				}
+
+				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
+				assert(cam_root_transform);
+				//FCS TODO: Lerp for lazy cam
+				cam_root_transform->trs.translation = body_transform->trs.translation;
+
+				TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, legs_object_handle);
+				assert(legs_transform);
+
+
+				if (!vec3_nearly_equal(vec3_zero, move_vec)) 
+				{
+					const Vec3 legs_up = vec3_new(0,1,0);
+					const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
+					if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
+					{
+						const float legs_rot_lerp_speed = 10.0 * delta_time;
+						const Quat old_rotation = legs_transform->trs.rotation;
+						const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
+						legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
+					}
+				}
+			}
+
+			{	// Camera Control
+				// currently assumes cam root has no parent (we manually move it into place)
+				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
+				assert(cam_root_transform);
+
+				const float cam_rotation_speed = 1.0f;
+
+				if (!f32_nearly_zero(mouse_delta.x))
+				{
+					Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
+					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+				}
+
+				if (!f32_nearly_zero(mouse_delta.y))
+				{
+					//FCS TODO: need to get current xform right vector
+					const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
+					Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
+					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+				}
 			}
 		}
 

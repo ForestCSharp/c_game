@@ -4,7 +4,7 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
 
-// FCS TODO: make per-window
+// FCS TODO: make per-window (move into window struct)
 bool global_key_states[KEY_MAX_VALUE];
 
 KeyCode translate_macos_key_code(unsigned short key_code)
@@ -238,7 +238,7 @@ Window window_create(const char* name, int width, int height)
     }
 }
 
-bool window_handle_messages(const Window* const window)
+bool window_handle_messages(Window* window)
 {
     @autoreleasepool
     {
@@ -272,7 +272,7 @@ void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out
     *out_mouse_y = window->ns_view->cached_mouse_y;
 }
 
-bool input_pressed(int key_code)
+bool window_input_pressed(const Window* const window, int key_code)
 {
     return global_key_states[key_code];
 }

@@ -283,7 +283,7 @@ bool hit_test_obb_obb(const OBB a, const OBB b, HitResult* out_hit_result)
 	{
 		for (i32 j = 0; j < 3; ++j)
 		{
-			r.d[i][j] = vec3_dot(a_axes[i], b_axes[j]); //FCS TODO: Verify this isn't transposed...
+			r.d[i][j] = vec3_dot(a_axes[i], b_axes[j]); 
 		}
 	}
 
@@ -385,7 +385,6 @@ bool hit_test_sphere_obb(const Sphere sphere, const OBB obb, HitResult* out_hit_
 		const Vec3 sphere_to_closest_point = vec3_normalize(vec3_sub(closest_point_on_obb, sphere.center));
 		const Vec3 sphere_to_obb_center = vec3_normalize(vec3_sub(obb.center, sphere.center));
 
-		//FCS TODO: Can we just check if inside or outside OBB... (hit test point obb)
 		const bool flip_sign = vec3_dot(sphere_to_closest_point, sphere_to_obb_center) < 0.0f;	
 		const Vec3 direction = flip_sign ? vec3_negate(sphere_to_closest_point) : sphere_to_closest_point;	
 
@@ -524,8 +523,4 @@ Quat collider_get_orientation(const Collider* in_collider)
 		default: assert(false);
 	}
 }
-
-// FCS TODO: Capsule character moving through collider world
-// FCS TODO: primitive collision penetration depth
-// FCS TODO: MPR collision penetration depth
 

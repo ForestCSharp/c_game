@@ -1,5 +1,7 @@
 #pragma once
 
+#include "collision/collision.h"
+#include "collision/collision_render.h"
 #include "gpu/gpu.h"
 #include "math/matrix.h"
 #include "model/static_model.h"
@@ -157,11 +159,16 @@ typedef struct PlayerControlComponent
 
 typedef struct CameraComponent
 {
-	//FCS TODO: Should cam_forward and cam_up just come from cam_transform...?
 	Vec3 camera_up;
 	Vec3 camera_forward;
 	float fov;
 } CameraComponent;
+
+typedef struct ColliderComponent
+{
+	Collider collider;
+	ColliderRenderData render_data;
+} ColliderComponent;
 
 typedef enum ComponentType
 {
@@ -171,6 +178,7 @@ typedef enum ComponentType
 	COMPONENT_TYPE(ObjectRenderDataComponent),
 	COMPONENT_TYPE(PlayerControlComponent),
 	COMPONENT_TYPE(CameraComponent),
+	COMPONENT_TYPE(ColliderComponent),
 	COMPONENT_TYPE_COUNT,
 } ComponentType;
 
@@ -191,6 +199,7 @@ typedef struct GameObjectManager
 	DEFINE_COMPONENT_STORAGE(ObjectRenderDataComponent);
 	DEFINE_COMPONENT_STORAGE(PlayerControlComponent);
 	DEFINE_COMPONENT_STORAGE(CameraComponent);
+	DEFINE_COMPONENT_STORAGE(ColliderComponent);
 
 } GameObjectManager;
 
@@ -200,6 +209,7 @@ DEFINE_COMPONENT_INTERFACE(AnimatedModelComponent);
 DEFINE_COMPONENT_INTERFACE(ObjectRenderDataComponent);
 DEFINE_COMPONENT_INTERFACE(PlayerControlComponent);
 DEFINE_COMPONENT_INTERFACE(CameraComponent);
+DEFINE_COMPONENT_INTERFACE(ColliderComponent);
 
 void game_object_manager_init(GameObjectManager* manager)
 {
