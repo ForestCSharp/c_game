@@ -815,7 +815,7 @@ void gpu_free_memory(GpuContext *context, GpuMemory *gpu_memory)
     }
 }
 
-GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferCreateInfo* create_info)
+GpuBuffer gpu_create_buffer(GpuContext* context, const GpuBufferCreateInfo* create_info)
 {
 	VkBufferCreateInfo buffer_create_info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,

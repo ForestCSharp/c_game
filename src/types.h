@@ -21,6 +21,10 @@ typedef int8_t i8;
 typedef float f32;
 typedef double f64;
 
+// ---- Static Block  ---- //
+
+#define static_block(...) { static bool has_run = false; if (!has_run) { has_run = true, __VA_ARGS__ } }
+
 // ---- Optional Type ---- //
 
 #define declare_optional_type(type) \
@@ -32,6 +36,8 @@ typedef double f64;
 
 
 #define optional(type) optional_##type
+
+#define optional_init(...) { .value = __VA_ARGS__, .is_set = true,}
 
 #define optional_set(in_opt, in_value) \
     {                                  \
@@ -87,3 +93,4 @@ void string_free(String* in_string)
 	free(in_string->data);
 	*in_string = (String){};
 }
+

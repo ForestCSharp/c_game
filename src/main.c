@@ -17,6 +17,7 @@
 
 #include "gpu/gpu.c"
 #include "gpu/bindless.h"
+#include "gpu/debug_draw.h"
 #include "app/app.h"
 
 #include "gltf.h"
@@ -30,15 +31,6 @@
 #include "truetype.h"
 
 //FCS TODO: Helper to create and write a descriptor set in one operation (optional descriptor write field in create info?)
-
-#define DESCRIPTOR_BINDING_UNIFORM_BUFFER(idx, in_count, flags) (GpuDescriptorBinding)\
-	{ .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .stage_flags = flags }
-
-#define DESCRIPTOR_BINDING_STORAGE_BUFFER(idx, in_count, flags)\
-	(GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .stage_flags = flags }
-
-#define DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(idx, in_count, flags)\
-(GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .stage_flags = flags }
 
 int main()
 {
@@ -104,6 +96,8 @@ int main()
 		return 1;
 	}
 
+	//FCS TODO: Wrap these in a "Character" struct
+	GameObjectHandle root_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle body_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle head_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle legs_object_handle = ADD_OBJECT(game_object_manager_ptr);	
@@ -112,15 +106,7 @@ int main()
 	GameObjectHandle camera_root_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle camera_object_handle = ADD_OBJECT(game_object_manager_ptr);
 	{	// Set up Main character hierarchy
-
-		//FCS TODO: Main controllable collider object
-		//FCS TODO: Set Body's parent to capsule collider game object
-		StaticModel body_static_model;
-		assert(static_model_load("data/meshes/StarterMech_Body.glb", &gpu_context, &bindless_resource_manager, &body_static_model));
-		StaticModelComponent body_model_component_data = {.static_model = body_static_model, };
-		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, body_object_handle, body_model_component_data);
-
-		TransformComponent body_transform = {
+		TransformComponent root_transform = {
 			.trs = {
 				.scale = vec3_new(5,5,5),
 				.rotation = quat_identity,
@@ -128,12 +114,43 @@ int main()
 			},
 			.parent = {},
 		};
-		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, body_object_handle, body_transform);
+		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, root_object_handle, root_transform);
 
 		PlayerControlComponent player_control = {
 			.move_speed = 100.0f,
 		};
-		OBJECT_CREATE_COMPONENT(PlayerControlComponent, game_object_manager_ptr, body_object_handle, player_control);
+		OBJECT_CREATE_COMPONENT(PlayerControlComponent, game_object_manager_ptr, root_object_handle, player_control);
+
+		ColliderComponent collider_comp = {
+			.collider = {
+				.type = COLLIDER_TYPE_CAPSULE,
+				.capsule = {
+					.center = vec3_zero,
+					.orientation = quat_identity,
+					.half_height = 5.0f,
+				},
+			},
+		};
+		//FCS TODO: Collision Routines will need to handle xforms...
+		OBJECT_CREATE_COMPONENT(ColliderComponent, game_object_manager_ptr, root_object_handle, collider_comp);
+
+		StaticModel body_static_model;
+		assert(static_model_load("data/meshes/StarterMech_Body.glb", &gpu_context, &bindless_resource_manager, &body_static_model));
+		StaticModelComponent body_model_component_data = {.static_model = body_static_model, };
+		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, body_object_handle, body_model_component_data);
+
+		TransformComponent body_transform = {
+			.trs = {
+				.scale = vec3_new(1,1,1),
+				.rotation = quat_identity,
+				.translation = vec3_new(0,0,0),
+			},
+			.parent = optional_init({
+				.object_handle = root_object_handle,
+				.name = optional_none(),	
+			}),
+		};
+		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, body_object_handle, body_transform);
 
 		StaticModel head_static_model;
 		assert(static_model_load("data/meshes/StarterMech_Head.glb", &gpu_context, &bindless_resource_manager, &head_static_model));
@@ -146,13 +163,10 @@ int main()
 				.rotation = quat_identity,
 				.translation = vec3_new(0,2.5,0),
 			},
-			.parent = {
-				.value = {
-					.object_handle = body_object_handle,
-					.name = optional_none(),
-				},
-				.is_set = true,
-			},
+			.parent = optional_init({
+				.object_handle = body_object_handle,
+				.name = optional_none(),
+			}),
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, head_object_handle, head_transform);
 
@@ -169,13 +183,10 @@ int main()
 				.rotation = quat_identity,
 				.translation = vec3_new(3.25,0,0),
 			},
-			.parent = {
-				.value = {
-					.object_handle = body_object_handle,
-					.name = optional_none(),
-				},
-				.is_set = true,
-			},
+			.parent = optional_init({
+				.object_handle = body_object_handle,
+				.name = optional_none(),
+			}),
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, left_arm_object_handle, left_arm_transform);
 
@@ -188,13 +199,10 @@ int main()
 				.rotation = quat_identity,
 				.translation = vec3_new(-3.25,0,0),
 			},
-			.parent = {
-				.value = {
-					.object_handle = body_object_handle,
-					.name = optional_none(),
-				},
-				.is_set = true,
-			},
+			.parent = optional_init({
+				.object_handle = body_object_handle,
+				.name = optional_none(),
+			}),
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, right_arm_object_handle, right_arm_transform);
 
@@ -209,14 +217,11 @@ int main()
 				.rotation = quat_identity,
 				.translation = vec3_new(0,-4.5,0),
 			},
-			.parent = {
-				.value = {
-					.object_handle = body_object_handle,
-					.ignore_rotation = true,
-					.name = optional_none(),
-				},
-				.is_set = true,
-			},
+			.parent = optional_init({
+				.object_handle = body_object_handle,
+				.ignore_rotation = true,
+				.name = optional_none(),
+			}),
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, legs_object_handle, legs_transform);
 
@@ -236,13 +241,10 @@ int main()
 				.rotation = quat_identity,
 				.translation = vec3_new(0,0,200),
 			},
-			.parent = {
-				.value = {
-					.object_handle = camera_root_object_handle,
-					.name = optional_none(),
-				},
-				.is_set = true,
-			},
+			.parent = optional_init({
+				.object_handle = camera_root_object_handle,
+				.name = optional_none(),
+			}),
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, camera_object_handle, cam_transform);
 		CameraComponent cam_component_data = {
@@ -326,7 +328,7 @@ int main()
 		if (!OBJECT_IS_VALID(&game_object_manager, object_handle)) 
 		{
 			continue;
-		}		
+		}
 
 		game_object_render_data_setup(
 			&game_object_manager, 
@@ -335,6 +337,10 @@ int main()
 			per_object_descriptor_layout
 		);
 	}
+
+	// BEGIN DEBUG DRAW SETUP
+	DebugDrawContext debug_draw_context;
+	debug_draw_init(&gpu_context, &debug_draw_context);
 
     // BEGIN GUI SETUP
     GuiContext gui_context;
@@ -347,8 +353,7 @@ int main()
         &gpu_context,
         &(GpuImageCreateInfo){
             .dimensions = {gui_context.default_font.image_width, gui_context.default_font.image_height, 1},
-            .format = GPU_FORMAT_RGBA8_UNORM, // FCS TODO: Check from gui_context.default_font (remove assert on font
-                                              // type above)
+            .format = GPU_FORMAT_RGBA8_UNORM, 
             .mip_levels = 1,
             .usage = GPU_IMAGE_USAGE_SAMPLED | GPU_IMAGE_USAGE_TRANSFER_DST,
             .memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
@@ -637,8 +642,12 @@ int main()
 
 		Vec2 mouse_pos = vec2_new(mouse_x, mouse_y);
 		Vec2 old_mouse_pos = vec2_new(old_mouse_x, old_mouse_y);
-		Vec2 mouse_delta;
-		window_get_mouse_delta(&window, &mouse_delta.x, &mouse_delta.y);
+		i32 mouse_delta_x, mouse_delta_y;
+		window_get_mouse_delta(&window, &mouse_delta_x, &mouse_delta_y);
+		Vec2 mouse_delta = {
+			.x = mouse_delta_x,
+			.y = mouse_delta_y,
+		};
 
 		// Mouse Lock
 		static bool show_mouse_pressed_last_frame = false;
@@ -822,7 +831,6 @@ int main()
 				}
 			}
 
-			// TODO: should be per-frame resources
 			gpu_upload_buffer(
 				&gpu_context, 
 				&gui_vertex_buffer, 
@@ -835,7 +843,6 @@ int main()
 				sizeof(u32) * sb_count(gui_context.draw_data.indices),
 				gui_context.draw_data.indices
 			);
-
 		}
 	
 		if (!show_mouse)
@@ -843,10 +850,10 @@ int main()
 			{   // Player Movement
 				CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
 				assert(cam_component);
-				TransformComponent* body_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, body_object_handle);
-				PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, body_object_handle);
-				assert(body_transform && player_control);
-				const Vec3 old_translation = body_transform->trs.translation; 
+				TransformComponent* root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, root_object_handle);
+				PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, root_object_handle);
+				assert(root_transform && player_control);
+				const Vec3 old_translation = root_transform->trs.translation; 
 				Vec3 up_vec = vec3_new(0,1,0);
 				Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
 				Vec3 right_vec = vec3_cross(up_vec, forward_vec);
@@ -888,16 +895,16 @@ int main()
 				{
 					const float body_rot_lerp_speed = 10.0 * delta_time;
 
-					body_transform->trs.translation = vec3_add(old_translation, move_vec);
-					Quat old_body_rotation = body_transform->trs.rotation;
+					root_transform->trs.translation = vec3_add(old_translation, move_vec);
+					Quat old_body_rotation = root_transform->trs.rotation;
 					Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
-					body_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
+					root_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
 				}
 
 				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
 				assert(cam_root_transform);
 				//FCS TODO: Lerp for lazy cam
-				cam_root_transform->trs.translation = body_transform->trs.translation;
+				cam_root_transform->trs.translation = root_transform->trs.translation;
 
 				TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, legs_object_handle);
 				assert(legs_transform);
@@ -941,14 +948,14 @@ int main()
 		}
 
 		{	// Update Global Uniforms...	
-			Mat4 body_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, body_object_handle));
-			Vec3 body_position = mat4_get_translation(body_transform);
+			Mat4 root_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, root_object_handle));
+			Vec3 root_position = mat4_get_translation(root_transform);
 			Mat4 cam_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, camera_object_handle));
 			Vec3 cam_position = mat4_get_translation(cam_transform);
 
 			CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
 			assert(cam_component);
-			cam_component->camera_forward = vec3_normalize(vec3_sub(body_position, cam_position));
+			cam_component->camera_forward = vec3_normalize(vec3_sub(root_position, cam_position));
 			const Vec3 cam_target = vec3_add(cam_position, cam_component->camera_forward);
 			Mat4 view = mat4_look_at(cam_position, cam_target, cam_component->camera_up);
 			Mat4 proj = mat4_perspective(cam_component->fov, (float)width / (float)height, 0.01f, 4000.0f);
@@ -1086,9 +1093,29 @@ int main()
 						gpu_cmd_bind_pipeline(&command_buffers[current_frame], &skinned_pipeline);
 						gpu_cmd_draw(&command_buffers[current_frame], animated_model_component->animated_model.num_indices, 1);
 					}
+
+					ColliderComponent* collider_component = OBJECT_GET_COMPONENT(ColliderComponent, &game_object_manager, object_handle);
+					if (collider_component)
+					{
+
+					}
 				}
 			}
 		}
+
+		//FCS TODO: Move to top of main loop 
+		debug_draw_begin_frame(&debug_draw_context, current_frame);
+
+		debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
+			.center = vec3_new(0,0,0),
+			.radius = 10,
+			.latitudes = 12,
+			.longitudes = 12,
+			.color = vec4_new(1,0,0,1),
+		});
+
+		debug_draw_end_frame(&debug_draw_context, &gpu_context, &uniform_data.view, &uniform_data.projection);
+		debug_draw_record_commands(&debug_draw_context, &command_buffers[current_frame]);
 
         // BEGIN gui rendering
         gpu_cmd_bind_pipeline(&command_buffers[current_frame], &gui_pipeline);
@@ -1204,10 +1231,11 @@ int main()
 	static_model_free(&gpu_context, &bindless_resource_manager, &static_model);
 	animated_model_free(&gpu_context, &bindless_resource_manager, &animated_model);
 
+    gui_shutdown(&gui_context);
+	debug_draw_shutdown(&gpu_context, &debug_draw_context);
+
 	bindless_resource_manager_destroy(&gpu_context, &bindless_resource_manager);
     gpu_destroy_context(&gpu_context);
-
-    gui_shutdown(&gui_context);
 
     return 0;
 }

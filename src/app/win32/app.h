@@ -20,8 +20,8 @@ typedef struct Window
 
 	bool is_mouse_in_window;
 	bool show_mouse_cursor;
-	float mouse_delta_x;
-	float mouse_delta_y;
+	i32 mouse_delta_x;
+	i32 mouse_delta_y;
 } Window;
 
 const char g_WindowClassName[] = "c_game";
@@ -235,7 +235,7 @@ void window_set_mouse_pos(const Window* const window, i32 in_mouse_x, i32 in_mou
 	SetCursorPos(p.x, p.y);
 }
 
-void window_get_mouse_delta(const Window* const window, float* out_mouse_delta_x, float* out_mouse_delta_y)
+void window_get_mouse_delta(const Window* const window, i32* out_mouse_delta_x, i32* out_mouse_delta_y)
 {
 	*out_mouse_delta_x = window->mouse_delta_x;
 	*out_mouse_delta_y = window->mouse_delta_y;

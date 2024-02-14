@@ -99,7 +99,7 @@ typedef struct GuiContext
 {
     GuiFrameState frame_state;
     GuiFrameState prev_frame_state;
-    GuiDrawData draw_data;
+    GuiDrawData draw_data; //FCS TODO: we need one of these per frame-in-flight...
     GuiFont default_font;
 } GuiContext;
 
@@ -115,7 +115,6 @@ typedef enum GuiAlignment
 {
     GUI_ALIGN_LEFT,
     GUI_ALIGN_CENTER,
-    // GUI_ALIGN_RIGHT, //TODO:
 } GuiAlignment;
 
 typedef struct GuiButtonStyleArgs
@@ -308,7 +307,6 @@ void gui_shutdown(GuiContext* in_context)
 
 void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state)
 {
-
     // Clean up previous frame state before reassign
     sb_free(in_context->prev_frame_state.open_windows);
     in_context->prev_frame_state = in_context->frame_state;

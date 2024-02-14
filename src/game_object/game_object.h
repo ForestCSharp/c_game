@@ -110,7 +110,6 @@ struct {\
 #define OBJECT_GET_COMPONENT(type, manager_ptr, object_handle) game_object_manager_get_##type##_from_object(manager_ptr, object_handle)
 
 //FCS TODO: Function to compact GameObject and Component arrays (properly fixes up references...)
-//FCS TODO: Automatically DESTROY_COMPONENT when its ref_count reaches zero as a result of OBJECT_SET_COMPONENT calls...
 
 typedef struct {i64 idx; } GameObjectHandle;
 
@@ -167,7 +166,6 @@ typedef struct CameraComponent
 typedef struct ColliderComponent
 {
 	Collider collider;
-	ColliderRenderData render_data;
 } ColliderComponent;
 
 typedef enum ComponentType
@@ -355,6 +353,7 @@ void game_object_render_data_setup(GameObjectManager* manager, GpuContext* gpu_c
 			},
 		}));
 
+		//FCS TODO: Move these buffers to be referenced bindlessly
 		AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, manager, object_handle);
 		if(animated_model_component)
 		{

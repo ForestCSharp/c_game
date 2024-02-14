@@ -24,7 +24,7 @@ void window_get_position(const Window* const window, int* out_x, int* out_y); //
 void window_get_dimensions(const Window* const window, int* out_width, int* out_height);
 void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y);
 void window_set_mouse_pos(const Window* const window, i32 in_mouse_x, i32 in_mouse_y);
-void window_get_mouse_delta(const Window* const window, float* out_mouse_delta_x, float* out_mouse_delta_y);
+void window_get_mouse_delta(const Window* const window, i32* out_mouse_delta_x, i32* out_mouse_delta_y);
 bool window_input_pressed(const Window* const window, int key_code);
 
 #if defined(_WIN32)

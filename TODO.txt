@@ -1,17 +1,16 @@
 
 
 [NEXT UP]
-- method for transform component to treat its T,R,S as world-space
+- Debug Drawing Header
 - allow attaching to specific nodes in GLTF model (+ support animation)
 - procedural / IK support in animated models
 - start replacing mesh parts with animated models
 - prefabs (just functions that return a struct with some pre-setup game objects)
 - basic world setup and collision
 
-
-
 - Arena/Linked Allocator
 - Logging Header
+- TTF Fonts
 
 - Bindless Vulkan 
 	- broken on MoltenVk/MacOS: see: https://github.com/KhronosGroup/MoltenVK/commit/ff21180909f122eaaaed958f1c0b59589b10c17b

@@ -272,6 +272,15 @@ typedef struct GpuDescriptorBinding
 	GpuDescriptorBindingFlags binding_flags;
 } GpuDescriptorBinding;
 
+#define DESCRIPTOR_BINDING_UNIFORM_BUFFER(idx, in_count, flags) (GpuDescriptorBinding)\
+	(GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .stage_flags = flags }
+
+#define DESCRIPTOR_BINDING_STORAGE_BUFFER(idx, in_count, flags)\
+	(GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .stage_flags = flags }
+
+#define DESCRIPTOR_BINDING_COMBINED_IMAGE_SAMPLER(idx, in_count, flags)\
+	(GpuDescriptorBinding) { .binding = idx, .count = in_count, .type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .stage_flags = flags }
+
 typedef struct GpuDescriptorWrite
 {
 	u32 index;
@@ -444,7 +453,7 @@ typedef struct GpuImageBarrier
     GpuImageLayout new_layout;
 } GpuImageBarrier;
 
-typedef struct
+typedef struct GpuContext
 {
     // Main Vulkan Objects
     VkInstance instance;
@@ -481,7 +490,7 @@ void gpu_wait_idle(GpuContext* context);
 void gpu_resize_swapchain(GpuContext* context, const Window* const window);
 u32 gpu_acquire_next_image(GpuContext* context, GpuSemaphore* semaphore);
 
-GpuBuffer gpu_create_buffer(GpuContext* context, GpuBufferCreateInfo* create_info);
+GpuBuffer gpu_create_buffer(GpuContext* context, const GpuBufferCreateInfo* create_info);
 void gpu_destroy_buffer(GpuContext* context, GpuBuffer* buffer);
 void* gpu_map_buffer(GpuContext* context, GpuBuffer* buffer);
 void gpu_unmap_buffer(GpuContext* context, GpuBuffer* buffer);
@@ -566,3 +575,4 @@ GpuSemaphore gpu_create_semaphore(GpuContext* context);
 void gpu_destroy_semaphore(GpuContext* context, GpuSemaphore* semaphore);
 
 GpuShaderModule gpu_create_shader_module_from_file(GpuContext *gpu_context, const char *filename);
+
