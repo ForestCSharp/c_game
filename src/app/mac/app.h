@@ -256,6 +256,25 @@ bool window_handle_messages(Window* window)
     return true; // FCS TODO: return false on quit event
 }
 
+void window_show_mouse_cursor(Window* window, bool in_show_mouse_cursor)
+{
+	if (in_show_mouse_cursor)
+	{
+		CGDisplayShowCursor(CGMainDisplayID());
+	}
+	else
+	{
+		CGDisplayHideCursor(CGMainDisplayID());
+	}
+}
+
+
+void window_get_position(const Window* const window, int* out_x, int* out_y)
+{
+	*out_x = (int) window->ns_view.frame.origin.x;
+	*out_y = (int) window->ns_view.frame.origin.y;
+}
+
 void window_get_dimensions(const Window* const window, int* out_width, int* out_height)
 {
     @autoreleasepool
@@ -272,7 +291,18 @@ void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out
     *out_mouse_y = window->ns_view->cached_mouse_y;
 }
 
+void window_set_mouse_pos(const Window* const window, i32 in_mouse_x, i32 in_mouse_y)
+{
+	CGDisplayMoveCursorToPoint(CGMainDisplayID(), CGPointMake(in_mouse_x, in_mouse_y));
+}
+
+void window_get_mouse_delta(const Window* const window, i32* out_mouse_delta_x, i32* out_mouse_delta_y)
+{
+	CGGetLastMouseDelta(out_mouse_delta_x, out_mouse_delta_y);
+}
+
 bool window_input_pressed(const Window* const window, int key_code)
 {
     return global_key_states[key_code];
 }
+

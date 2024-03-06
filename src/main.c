@@ -875,7 +875,7 @@ int main()
 				{
 					move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
 				}
-				if (window_input_pressed(&window, 'E') || window_input_pressed(&window, VK_SPACE))
+				if (window_input_pressed(&window, 'E') || window_input_pressed(&window, KEY_SPACE))
 				{
 					move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
 				}

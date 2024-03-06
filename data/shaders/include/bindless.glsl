@@ -40,6 +40,7 @@ RegisterUniform(DummyUniform, { uint ignore; });
 RegisterBuffer(std430, readonly, DummyBuffer, { uint ignore; });
 
 // Register textures
-layout(set = BindlessDescriptorSet, binding = BindlessSamplerBinding) uniform sampler2D uGlobalTextures2D[];
-layout(set = BindlessDescriptorSet, binding = BindlessSamplerBinding) uniform samplerCube uGlobalTexturesCube[];
+// FCS TODO: MSL Conversion error...
+//layout(set = BindlessDescriptorSet, binding = BindlessSamplerBinding) uniform sampler2D uGlobalTextures2D[];
+//layout(set = BindlessDescriptorSet, binding = BindlessSamplerBinding) uniform samplerCube uGlobalTexturesCube[];
 
