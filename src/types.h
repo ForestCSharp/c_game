@@ -94,3 +94,7 @@ void string_free(String* in_string)
 	*in_string = (String){};
 }
 
+// FCS TODO: replace these with proper tracked allocations, report leaks at end of execution
+#define MALLOC(size) malloc(size); printf("malloc: %s line %d\n", __FILE__, __LINE__);
+#define CALLOC(num, size) calloc(num, size); printf("calloc: %s line %d\n", __FILE__, __LINE__);
+#define REALLOC(ptr, size) realloc(ptr, size); printf("realloc: %s line %d\n", __FILE__, __LINE__);

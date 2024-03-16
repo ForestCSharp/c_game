@@ -4,8 +4,6 @@
 // that use bindless resources
 #extension GL_EXT_nonuniform_qualifier : enable
 
-#define Bindless 1
-
 // We always bind the bindless descriptor set
 // to set = 0
 #define BindlessDescriptorSet 0
@@ -25,8 +23,7 @@
 
 // Register storage buffer
 #define RegisterBuffer(Layout, BufferAccess, Name, Struct) \
-  layout(Layout, set = BindlessDescriptorSet, \
-		          binding = BindlessStorageBinding) \
+  layout(Layout, set = BindlessDescriptorSet, binding = BindlessStorageBinding) \
     BufferAccess buffer Name Struct GetLayoutVariableName(Name)[]
 
 // Access a specific resource

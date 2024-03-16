@@ -337,9 +337,8 @@ GpuContext gpu_create_context(const Window *const window)
 	assert(descriptor_indexing_features.descriptorBindingUniformBufferUpdateAfterBind);
 	assert(descriptor_indexing_features.descriptorBindingStorageBufferUpdateAfterBind);
 	assert(descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing);
-	// FCS TODO: this should work in MoltenVK Main
-	//assert(descriptor_indexing_features.shaderStorageBufferArrayNonUniformIndexing);
-	//assert(descriptor_indexing_features.shaderUniformBufferArrayNonUniformIndexing);
+	assert(descriptor_indexing_features.shaderStorageBufferArrayNonUniformIndexing);
+	assert(descriptor_indexing_features.shaderUniformBufferArrayNonUniformIndexing);
 	assert(features_2.features.shaderStorageBufferArrayDynamicIndexing);
 	assert(features_2.features.shaderUniformBufferArrayDynamicIndexing);
 
@@ -455,8 +454,7 @@ void gpu_resize_swapchain(GpuContext *context, const Window *const window)
     window_get_dimensions(window, &swapchain_width, &swapchain_height);
 
     VkSurfaceCapabilitiesKHR surface_capabilities;
-    VK_CHECK(
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->surface, &surface_capabilities));
+    VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->surface, &surface_capabilities));
     VkExtent2D swapchain_extent = {
         .width = CLAMP(swapchain_width, surface_capabilities.minImageExtent.width,
                        surface_capabilities.maxImageExtent.width),
@@ -1623,15 +1621,16 @@ GpuPipeline gpu_create_graphics_pipeline(GpuContext *context, GpuGraphicsPipelin
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
     }};
 
-    VkPipelineColorBlendStateCreateInfo color_blending = {.sType =
-                                                              VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-                                                          .pNext = NULL,
-                                                          .flags = 0,
-                                                          .logicOpEnable = VK_FALSE,
-                                                          .logicOp = VK_LOGIC_OP_COPY,
-                                                          .attachmentCount = 1, // TODO: based on num color attachments
-                                                          .pAttachments = color_blending_attachments,
-                                                          .blendConstants = {0.0f, 0.0f, 0.0f, 0.0f}};
+    VkPipelineColorBlendStateCreateInfo color_blending = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.logicOpEnable = VK_FALSE,
+		.logicOp = VK_LOGIC_OP_COPY,
+		.attachmentCount = 1, // TODO: based on num color attachments
+		.pAttachments = color_blending_attachments,
+		.blendConstants = {0.0f, 0.0f, 0.0f, 0.0f}
+	};
 
     VkDynamicState dynamic_states[] = {
         VK_DYNAMIC_STATE_VIEWPORT,

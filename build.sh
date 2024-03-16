@@ -13,12 +13,9 @@ case $platform_name in
 	Darwin*)  ;;
 esac
 
-echo $VULKAN_SDK_DIR
-
-#TODO: Windows cmd line
-#call clang -g -gcodeview src/main.c -o game.exe -l user32.lib %VULKAN_SDK%/Lib/vulkan-1.lib -I %VULKAN_SDK%/Include
-
 export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1
+#export MVK_CONFIG_LOG_LEVEL=3
+#export MVK_DEBUG=1
 
 rm -r ./bin/
 mkdir ./bin/
