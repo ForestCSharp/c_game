@@ -1093,12 +1093,6 @@ int main()
 						gpu_cmd_bind_pipeline(&command_buffers[current_frame], &skinned_pipeline);
 						gpu_cmd_draw(&command_buffers[current_frame], animated_model_component->animated_model.num_indices, 1);
 					}
-
-					ColliderComponent* collider_component = OBJECT_GET_COMPONENT(ColliderComponent, &game_object_manager, object_handle);
-					if (collider_component)
-					{
-
-					}
 				}
 			}
 		}

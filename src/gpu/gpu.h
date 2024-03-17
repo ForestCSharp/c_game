@@ -545,7 +545,6 @@ void gpu_cmd_end_render_pass(GpuCommandBuffer* command_buffer);
 void gpu_cmd_bind_pipeline(GpuCommandBuffer* command_buffer, GpuPipeline* pipeline);
 
 void gpu_cmd_bind_index_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* index_buffer);
-// TODO: multiple vertex buffer bindings
 void gpu_cmd_bind_vertex_buffer(GpuCommandBuffer* command_buffer, GpuBuffer* vertex_buffer);
 void gpu_cmd_bind_descriptor_set(GpuCommandBuffer* command_buffer, GpuPipelineLayout* layout, GpuDescriptorSet* descriptor_set);
 

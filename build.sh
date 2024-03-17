@@ -14,8 +14,8 @@ case $platform_name in
 esac
 
 export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1
-#export MVK_CONFIG_LOG_LEVEL=3
-#export MVK_DEBUG=1
+export MVK_CONFIG_LOG_LEVEL=3
+export MVK_DEBUG=1
 
 rm -r ./bin/
 mkdir ./bin/

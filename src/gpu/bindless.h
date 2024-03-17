@@ -54,7 +54,7 @@ void bindless_resource_manager_create(GpuContext* in_gpu_context, BindlessResour
 {
 	*out_manager = (BindlessResourceManager){};
 
-	static const GpuDescriptorBindingFlags BINDING_FLAGS = GPU_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND | GPU_DESCRIPTOR_BINDING_PARTIALLY_BOUND;
+	static const GpuDescriptorBindingFlags binding_flags = GPU_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND | GPU_DESCRIPTOR_BINDING_PARTIALLY_BOUND;
 
 	const GpuDescriptorLayoutCreateInfo bindless_descriptor_layout_create_info = {
 		.set_number = 0,
@@ -65,21 +65,21 @@ void bindless_resource_manager_create(GpuContext* in_gpu_context, BindlessResour
 				.count = BINDLESS_COUNT, 
 				.type = GPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
 				.stage_flags = GPU_SHADER_STAGE_ALL_GRAPHICS, 
-				.binding_flags = BINDING_FLAGS, 
+				.binding_flags = binding_flags, 
 			},
 			{ 
 				.binding = STORAGE_BINDING, 
 				.count = BINDLESS_COUNT, 
 				.type = GPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
 				.stage_flags = GPU_SHADER_STAGE_ALL_GRAPHICS, 
-				.binding_flags = BINDING_FLAGS, 
+				.binding_flags = binding_flags, 
 			},
 			{ 
 				.binding = TEXTURE_BINDING, 
 				.count = BINDLESS_COUNT, 
 				.type = GPU_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
 				.stage_flags = GPU_SHADER_STAGE_ALL_GRAPHICS, 
-				.binding_flags = BINDING_FLAGS, 
+				.binding_flags = binding_flags, 
 			},
 		},
 	};
