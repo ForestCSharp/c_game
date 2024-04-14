@@ -11,13 +11,13 @@ platform_name="$(uname -s)"
 echo $platform_name
 
 export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1
-#export MVK_CONFIG_LOG_LEVEL=3
-#export MVK_DEBUG=1
+export MVK_CONFIG_LOG_LEVEL=3
+export MVK_DEBUG=1
 
 
-if [ "$1" = "metal" ]; then 
+if [ "$1" = "metal" ] || [ "$1" = "mtl" ]; then 
 	render_backend_define=GPU2_IMPLEMENTATION_METAL
-elif [ "$1" = "vulkan" ]; then
+elif [ "$1" = "vulkan" ] || [ "$1" = "vk" ]; then
 	render_backend_define=GPU2_IMPLEMENTATION_VULKAN
 else
 	render_backend_define=GPU2_IMPLEMENTATION_VULKAN

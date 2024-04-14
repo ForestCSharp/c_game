@@ -277,7 +277,17 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 	out_render_pass->metal_render_command_encoder = [in_create_info->command_buffer->metal_command_buffer renderCommandEncoderWithDescriptor:metal_render_pass_descriptor];	
 }
 
-void gpu2_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)
+void gpu2_end_render_pass(Gpu2RenderPass* in_render_pass)
+{
+	[in_render_pass->metal_render_command_encoder endEncoding];
+}
+
+void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline)
+{
+	[in_render_pass->metal_render_command_encoder setRenderPipelineState:in_render_pipeline->metal_render_pipeline_state];
+}
+
+void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)
 {
 	assert(in_render_pass);
 	assert(in_bind_group);
@@ -305,16 +315,6 @@ void gpu2_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_
 
 	[in_render_pass->metal_render_command_encoder setVertexBuffer:in_bind_group->metal_argument_buffer offset:0 atIndex:in_bind_group->create_info.index];
 	[in_render_pass->metal_render_command_encoder setFragmentBuffer:in_bind_group->metal_argument_buffer offset:0 atIndex:in_bind_group->create_info.index];	
-}
-
-void gpu2_end_render_pass(Gpu2RenderPass* in_render_pass)
-{
-	[in_render_pass->metal_render_command_encoder endEncoding];
-}
-
-void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline)
-{
-	[in_render_pass->metal_render_command_encoder setRenderPipelineState:in_render_pipeline->metal_render_pipeline_state];
 }
 
 void gpu2_render_pass_draw(Gpu2RenderPass* in_render_pass, u32 vertex_start, u32 vertex_count)

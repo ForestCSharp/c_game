@@ -160,7 +160,7 @@ int main()
 		gpu2_begin_render_pass(&gpu2_device, &render_pass_create_info, &render_pass);
 		{
 			gpu2_render_pass_set_render_pipeline(&render_pass, &gpu2_render_pipeline);
-			gpu2_set_bind_group(&render_pass, &gpu2_render_pipeline, &bind_group);
+			gpu2_render_pass_set_bind_group(&render_pass, &gpu2_render_pipeline, &bind_group);
 			gpu2_render_pass_draw(&render_pass, 0, 3);
 		}
 		gpu2_end_render_pass(&render_pass);

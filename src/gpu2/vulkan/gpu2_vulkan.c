@@ -1397,7 +1397,17 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 	);
 }
 
-void gpu2_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)
+void gpu2_end_render_pass(Gpu2RenderPass* in_render_pass)
+{
+    pfn_vk_end_rendering(in_render_pass->vk_command_buffer);
+}
+
+void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline)
+{
+    vkCmdBindPipeline(in_render_pass->vk_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, in_render_pipeline->vk_pipeline);
+}
+
+void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)
 {
 	const u32 descriptor_set_count = 1;
 
@@ -1411,16 +1421,6 @@ void gpu2_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_
 		0,		// dynamic offset count
 		NULL	// pDynamicOffsets
 	);
-}
-
-void gpu2_end_render_pass(Gpu2RenderPass* in_render_pass)
-{
-    pfn_vk_end_rendering(in_render_pass->vk_command_buffer);
-}
-
-void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline)
-{
-    vkCmdBindPipeline(in_render_pass->vk_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, in_render_pipeline->vk_pipeline);
 }
 
 void gpu2_render_pass_draw(Gpu2RenderPass* in_render_pass, u32 vertex_start, u32 vertex_count)
