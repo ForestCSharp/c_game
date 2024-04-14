@@ -2043,8 +2043,10 @@ void gpu_reset_fence(GpuContext *context, GpuFence *fence)
 GpuSemaphore gpu_create_semaphore(GpuContext *context)
 {
     VkSemaphoreCreateInfo vk_create_info = {
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = NULL, .flags = 0};
-
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, 
+		.pNext = NULL, 
+		.flags = 0
+	};
     VkSemaphore vk_semaphore;
     VK_CHECK(vkCreateSemaphore(context->device, &vk_create_info, NULL, &vk_semaphore));
 

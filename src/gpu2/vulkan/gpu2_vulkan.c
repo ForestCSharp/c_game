@@ -565,7 +565,8 @@ void gpu2_vk_resize_swapchain(Gpu2Device* in_device, const Window* const in_wind
     VK_CHECK(vkGetSwapchainImagesKHR(in_device->vk_device, in_device->swapchain, &swapchain_image_count, swapchain_images));
 	
 	// Clean up old image views here before freeing swapchain_images
-    for (i32 i = 0; i < in_device->swapchain_image_count; ++i)
+	u32 old_swapchain_image_count = in_device->swapchain_image_count;
+    for (i32 i = 0; i < old_swapchain_image_count; ++i)
     {
 		vkDestroyImageView(in_device->vk_device, in_device->swapchain_images[i].vk_image_view, NULL);
 	}
@@ -1290,10 +1291,32 @@ bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_co
 
 bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2Drawable* out_drawable)
 {
-	const u32 current_image_idx = in_device->current_image_index;
+	//FCS TODO: Actual Synchronization... array of image acquired semaphores that we pass to queue submission later 
+
+	VkFenceCreateInfo vk_fence_create_info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+	};
+
+	VkFence vk_fence;
+	VK_CHECK(vkCreateFence(in_device->vk_device, &vk_fence_create_info, NULL, &vk_fence));
+
+    vkAcquireNextImageKHR(
+		in_device->vk_device, 
+		in_device->swapchain, 
+		UINT64_MAX, 
+		VK_NULL_HANDLE,
+		vk_fence, //FCS TODO: TEMP
+		&in_device->current_image_index
+	);
+
+	//FCS TODO: TEMP
+	vkWaitForFences(in_device->vk_device, 1, &vk_fence, VK_TRUE, UINT64_MAX);
+	vkDestroyFence(in_device->vk_device, vk_fence, NULL);
 
 	*out_drawable = (Gpu2Drawable) {
-		.texture = in_device->swapchain_images[current_image_idx],
+		.texture = in_device->swapchain_images[in_device->current_image_index],
 	};
 
 	return true;
@@ -1303,6 +1326,27 @@ bool gpu2_drawable_get_texture(Gpu2Drawable* in_drawable, Gpu2Texture* out_textu
 {
 	*out_texture = in_drawable->texture;
 	return true;
+}
+
+VkAttachmentLoadOp gpu2_load_action_to_vulkan_load_op(Gpu2LoadAction in_load_action)
+{
+	switch (in_load_action)
+	{
+		case GPU2_LOAD_ACTION_DONT_CARE:	return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		case GPU2_LOAD_ACTION_LOAD: 		return VK_ATTACHMENT_LOAD_OP_LOAD;
+		case GPU2_LOAD_ACTION_CLEAR:		return VK_ATTACHMENT_LOAD_OP_CLEAR;
+	}
+	assert(false);
+}
+
+VkAttachmentStoreOp gpu2_store_action_to_vulkan_store_op(Gpu2StoreAction in_store_action)
+{
+	switch (in_store_action)
+	{
+		case GPU2_STORE_ACTION_DONT_CARE: 	return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		case GPU2_STORE_ACTION_STORE:		return VK_ATTACHMENT_STORE_OP_STORE;
+	}
+	assert(false);
 }
 
 void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_create_info, Gpu2RenderPass* out_render_pass)
@@ -1323,8 +1367,8 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 			.resolveMode = VK_RESOLVE_MODE_NONE,
 			.resolveImageView = VK_NULL_HANDLE,
 			.resolveImageLayout = 0,
-			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, 		//FCS TODO: 
-			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,	//FCS TODO:
+			.loadOp = gpu2_load_action_to_vulkan_load_op(color_attachment_desc->load_action),
+			.storeOp = gpu2_store_action_to_vulkan_store_op(color_attachment_desc->store_action),
 			.clearValue = {
 				.color = {
 					.float32 = { 
@@ -1438,7 +1482,7 @@ void gpu2_present_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_
     in_device->pending_vk_present_info = (VkPresentInfoKHR) {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = NULL,
-        .waitSemaphoreCount = NULL, //wait_semaphore ? 1 : 0,
+        .waitSemaphoreCount = 0, //wait_semaphore ? 1 : 0,
         .pWaitSemaphores = NULL, //wait_semaphore ? &wait_semaphore->vk_semaphore : NULL,
         .swapchainCount = 1,
         .pSwapchains = &in_device->swapchain,
@@ -1486,4 +1530,5 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
 }
 
 //FCS TODO: Need to handle barriers because of dynamic rendering
-
+//FCS TODO: Track previous layout (from previous image barrier call...)
+//FCS TODO: No triangle... coordinate space problem?
