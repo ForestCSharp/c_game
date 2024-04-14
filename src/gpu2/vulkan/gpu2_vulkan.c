@@ -833,7 +833,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 
 	VkPipelineDynamicStateCreateInfo dynamic_state = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = sizeof(dynamic_states) / sizeof(dynamic_states[0]),
+		.dynamicStateCount = ARRAY_LENGTH(dynamic_states),
 		.pDynamicStates = dynamic_states,
 	};
 
@@ -1399,15 +1399,17 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 
 void gpu2_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)
 {
+	const u32 descriptor_set_count = 1;
+
     vkCmdBindDescriptorSets(
 		in_render_pass->vk_command_buffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		in_render_pipeline->vk_pipeline_layout, 
 		in_bind_group->layout.index, 
-		1, 
+		descriptor_set_count,
 		&in_bind_group->vk_descriptor_set, 
-		0,
-		NULL
+		0,		// dynamic offset count
+		NULL	// pDynamicOffsets
 	);
 }
 

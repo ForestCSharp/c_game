@@ -22,7 +22,7 @@ typedef float f32;
 typedef double f64;
 
 // ---- Array Size ---- //
-#define ARRAY_SIZE(in_array) (sizeof(in_array) / sizeof(in_array[0]))
+#define ARRAY_LENGTH(in_array) (sizeof(in_array) / sizeof(in_array[0]))
 
 // ---- Bit Comparisons ---- //
 #define BIT_COMPARE(bits, single_bit) ((bits & single_bit) == single_bit)
