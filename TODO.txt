@@ -1,4 +1,11 @@
 
+[We're Back! -> Gpu Abstraction Purgatory Part N]
+- get metal and vulkan backends propped up
+- start porting over old graphics code
+- evaluate API design
+- ???
+- Profit/Satisfaction
+
 
 [NEXT UP]
 - Debug Drawing Header

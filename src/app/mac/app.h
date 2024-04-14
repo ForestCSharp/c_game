@@ -221,9 +221,9 @@ Window window_create(const char* name, int width, int height)
         WindowView* view = [[[WindowView alloc] init] autorelease];
         [window setContentView:view];
 
-        CAMetalLayer* layer = [[CAMetalLayer alloc] init];
+        CAMetalLayer* metal_layer = [[CAMetalLayer alloc] init];
         [view setWantsLayer:YES];
-        [view setLayer:layer];
+        [view setLayer:metal_layer];
 
         [NSApp activateIgnoringOtherApps:YES];
 
@@ -233,7 +233,7 @@ Window window_create(const char* name, int width, int height)
         return (Window){
             .ns_window = window,
             .ns_view = view,
-            .metal_layer = layer,
+            .metal_layer = metal_layer,
         };
     }
 }

@@ -586,8 +586,7 @@ u32 vulkan_find_memory_type(VkPhysicalDevice *physical_device, u32 type_filter, 
 
 VkDeviceSize gpu_memory_used = 0;
 
-GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPropertyFlags memory_properties,
-                               u64 alloc_size, u64 alignment)
+GpuMemory *gpu_allocate_memory(GpuContext *context, u32 type_filter, GpuMemoryPropertyFlags memory_properties, u64 alloc_size, u64 alignment)
 {
 
     u32 memory_type_index = vulkan_find_memory_type(&context->physical_device, type_filter, memory_properties);

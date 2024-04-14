@@ -34,3 +34,4 @@ bool window_input_pressed(const Window* const window, int key_code);
 #if defined(__APPLE__)
 #include "mac/app.h"
 #endif
+

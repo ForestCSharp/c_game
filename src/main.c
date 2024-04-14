@@ -10,6 +10,9 @@
 #define printf(...)
 #endif
 
+// GPU2_IMPLEMENTATION_<BACKEND> set up in build.sh	
+#include "gpu2/gpu2.c"
+
 #include "math/matrix.h"
 #include "math/quat.h"
 #include "math/vec.h"
@@ -42,6 +45,139 @@ int main()
 
 	// Create our window
     Window window = window_create("C Game", 1280, 720);
+
+	Gpu2Device gpu2_device;
+	assert(gpu2_create_device(&window, &gpu2_device));
+
+	Gpu2ShaderCreateInfo vertex_shader_create_info = {
+		.filename = "bin/shaders/gpu2_test.vert",
+	};
+	Gpu2Shader gpu2_vertex_shader;
+	assert(gpu2_create_shader(&gpu2_device, &vertex_shader_create_info, &gpu2_vertex_shader));
+
+	Gpu2ShaderCreateInfo fragment_shader_create_info = {
+		.filename = "bin/shaders/gpu2_test.frag",
+	};
+	Gpu2Shader gpu2_fragment_shader;
+	assert(gpu2_create_shader(&gpu2_device, &fragment_shader_create_info, &gpu2_fragment_shader));
+
+	typedef struct Vertex
+	{
+		float x,y,z;
+	} Vertex;
+
+	Vertex vertices[] = {
+		{.x = -0.5f, .y= -0.5f, .z= 0.0f},
+		{.x =  0.5f, .y= -0.5f, .z= 0.0f},
+		{.x =  0.5f, .y=  0.5f, .z= 0.0f},
+	};
+
+	Gpu2BufferCreateInfo vertex_buffer_create_info = {
+		.size = sizeof(vertices),
+		.data = vertices,
+	};
+	Gpu2Buffer vertex_buffer;
+	assert(gpu2_create_buffer(&gpu2_device, &vertex_buffer_create_info, &vertex_buffer));
+
+	Gpu2ResourceBinding bindings[] = 
+	{
+		{
+			.type = GPU2_BINDING_TYPE_BUFFER,
+			.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+		}
+	};
+	const u32 num_bindings = sizeof(bindings) / sizeof(bindings[0]);
+
+	Gpu2BindGroupLayoutCreateInfo bind_group_layout_create_info = {
+		.index = 0,
+		.num_bindings = num_bindings,
+		.bindings = bindings,
+	};
+
+	Gpu2BindGroupLayout bind_group_layout;
+	assert(gpu2_create_bind_group_layout(&gpu2_device, &bind_group_layout_create_info, &bind_group_layout));
+
+	Gpu2ResourceWrite writes[] = {
+		{
+			.type = GPU2_BINDING_TYPE_BUFFER,
+			.buffer_binding = {
+				.buffer = &vertex_buffer,
+			},
+		}
+	};
+	const u32 num_writes = sizeof(writes) / sizeof(writes[0]);
+
+	Gpu2BindGroupCreateInfo bind_group_create_info = {
+		.layout = &bind_group_layout,
+		.num_writes = num_writes,
+		.writes = writes,
+	};
+
+	Gpu2BindGroup bind_group;
+	assert(gpu2_create_bind_group(&gpu2_device, &bind_group_create_info, &bind_group));		
+
+	Gpu2BindGroup* pipeline_bind_groups[] = { &bind_group };
+
+	Gpu2RenderPipelineCreateInfo render_pipeline_create_info = {
+		.vertex_shader = &gpu2_vertex_shader,
+		.fragment_shader = &gpu2_fragment_shader,
+		.num_bind_groups = sizeof(pipeline_bind_groups) / sizeof(pipeline_bind_groups[0]),
+		.bind_groups = pipeline_bind_groups,
+	};
+	Gpu2RenderPipeline gpu2_render_pipeline;
+	assert(gpu2_create_render_pipeline(&gpu2_device, &render_pipeline_create_info, &gpu2_render_pipeline));	
+
+	while (window_handle_messages(&window))
+	{
+		if (window_input_pressed(&window, KEY_ESCAPE))
+		{
+			break;
+		}
+
+		Gpu2CommandBuffer command_buffer;
+		assert(gpu2_create_command_buffer(&gpu2_device, &command_buffer));
+
+		Gpu2Drawable drawable;
+		assert(gpu2_get_next_drawable(&gpu2_device, &drawable));
+		Gpu2Texture drawable_texture;
+		assert(gpu2_drawable_get_texture(&drawable, &drawable_texture));
+
+		Gpu2ColorAttachmentDescriptor color_attachments[] = {
+			{
+				.texture = &drawable_texture, 
+				.clear_color = {0.392f, 0.584f, 0.929f, 0},
+				.load_action = GPU2_LOAD_ACTION_CLEAR,
+				.store_action = GPU2_STORE_ACTION_STORE,
+			},
+		};
+
+		Gpu2RenderPassCreateInfo render_pass_create_info = {
+			.num_color_attachments = ARRAY_SIZE(color_attachments), 
+			.color_attachments = color_attachments,
+			.command_buffer = &command_buffer,
+		};
+		Gpu2RenderPass render_pass;
+		gpu2_begin_render_pass(&gpu2_device, &render_pass_create_info, &render_pass);
+		{
+			gpu2_render_pass_set_render_pipeline(&render_pass, &gpu2_render_pipeline);
+			gpu2_set_bind_group(&render_pass, &gpu2_render_pipeline, &bind_group);
+			gpu2_render_pass_draw(&render_pass, 0, 3);
+		}
+		gpu2_end_render_pass(&render_pass);
+
+		//4. request present 
+		gpu2_present_drawable(&gpu2_device, &command_buffer, &drawable);
+
+		assert(gpu2_commit_command_buffer(&gpu2_device, &command_buffer));
+	}
+
+	return 0;
+
+	//
+    //
+	//BEGIN OLD GPU CODE
+	//
+	//
 
 	// Create our gpu context
     GpuContext gpu_context = gpu_create_context(&window);

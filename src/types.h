@@ -21,6 +21,12 @@ typedef int8_t i8;
 typedef float f32;
 typedef double f64;
 
+// ---- Array Size ---- //
+#define ARRAY_SIZE(in_array) (sizeof(in_array) / sizeof(in_array[0]))
+
+// ---- Bit Comparisons ---- //
+#define BIT_COMPARE(bits, single_bit) ((bits & single_bit) == single_bit)
+
 // ---- Static Block  ---- //
 
 #define static_block(...) { static bool has_run = false; if (!has_run) { has_run = true, __VA_ARGS__ } }
@@ -52,9 +58,9 @@ declare_optional_type(f32);
 
 // ---- String Type ---- //
 typedef struct String
-{
-	char* data;
-	u64 length;
+{	
+	char* data; // String data (with null-terminator)
+	u64 length; // Length (excluding null-terminator)
 } String;
 
 declare_optional_type(String);
@@ -67,12 +73,25 @@ static const String empty_string = {
 String string_new(const char* in_c_string)
 {
 	size_t length = strlen(in_c_string);
-	char* data = malloc(length);
+	char* data = malloc(length + 1);
 	memcpy(data, in_c_string, length);
+	data[length] = '\0';
 	return (String) {
 		.data = data,
 		.length = length,
 	};
+}
+
+void string_append(String* in_string, const char* in_c_string_to_append)
+{
+	const u64 new_length = in_string->length + strlen(in_c_string_to_append);
+	assert(new_length > in_string->length);
+
+	in_string->data = realloc(in_string->data, new_length + 1);
+	in_string->length = new_length;
+
+	strcat(in_string->data, in_c_string_to_append);
+	in_string->data[in_string->length] = '\0';
 }
 
 void string_print(String* in_string)
@@ -92,6 +111,37 @@ void string_free(String* in_string)
 	assert(in_string->data != NULL && in_string->length > 0);
 	free(in_string->data);
 	*in_string = (String){};
+}
+
+
+static bool read_binary_file(const String* filename, size_t *out_file_size, void **out_data)
+{
+    FILE *file = fopen(filename->data, "rb");
+    if (!file)
+	{
+        return false;
+	}
+	
+    fseek(file, 0L, SEEK_END);
+    const size_t file_size = *out_file_size = ftell(file);
+    rewind(file);
+
+    *out_data = calloc(1, file_size + 1);
+    if (!*out_data)
+    {
+        fclose(file);
+        return false;
+    }
+
+    if (fread(*out_data, 1, file_size, file) != file_size)
+    {
+        fclose(file);
+        free(*out_data);
+        return false;
+    }
+
+    fclose(file);
+    return true;
 }
 
 // FCS TODO: replace these with proper tracked allocations, report leaks at end of execution
