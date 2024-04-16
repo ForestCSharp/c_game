@@ -304,7 +304,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
     const char *extensions[] = {
         "VK_KHR_surface",
 		#if defined(_WIN32)
-        "VK_KHR_win32_surface",
+        VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 		#elif defined(__APPLE__)
         VK_EXT_METAL_SURFACE_EXTENSION_NAME,
         VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
@@ -366,8 +366,8 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 		.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
 		.pNext = NULL,
 		.flags = 0,
-		.hinstance = window->hinstance,
-		.hwnd = window->hwnd,
+		.hinstance = in_window->hinstance,
+		.hwnd = in_window->hwnd,
 	};
 	VK_CHECK(vkCreateWin32SurfaceKHR(vk_instance, &surface_create_info, NULL, &surface));
 	#elif defined(__APPLE__)
@@ -555,7 +555,7 @@ void gpu2_vk_resize_swapchain(Gpu2Device* in_device, const Window* const in_wind
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = in_device->present_mode,
         .clipped = VK_TRUE,
-        .oldSwapchain = VK_NULL_HANDLE, // Could be used for dyanmic res?
+        .oldSwapchain = VK_NULL_HANDLE,
     };
 
     VK_CHECK(vkCreateSwapchainKHR(in_device->vk_device, &swapchain_create_info, NULL, &in_device->swapchain));
