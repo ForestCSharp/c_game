@@ -358,11 +358,6 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
     u32 extension_count = sizeof(extensions) / sizeof(extensions[0]);
-    printf("Extensions (%u)\n", extension_count);
-    for (i32 i = 0; i < extension_count; ++i)
-    {
-        printf("\t%s\n", extensions[i]);
-    }
 
 	VkInstanceCreateFlags instance_create_flags = 0;
 	#if defined(__APPLE__)
@@ -396,10 +391,12 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
         .pfnUserCallback = gpu2_vulkan_debug_callback,
         .pUserData = NULL};
 
-    PFN_vkCreateDebugUtilsMessengerEXT CreateDebugUtilsMessenger =
-        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(vk_instance, "vkCreateDebugUtilsMessengerEXT");
-    if (CreateDebugUtilsMessenger == NULL)
-        printf("ERROR: PFN_vkCreateDebugUtilsMessengerEXT\n");
+    PFN_vkCreateDebugUtilsMessengerEXT CreateDebugUtilsMessenger = 
+		(PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
+			vk_instance, 
+			"vkCreateDebugUtilsMessengerEXT"
+	);
+	assert(CreateDebugUtilsMessenger);
 
     VkDebugUtilsMessengerEXT debug_messenger;
     VK_CHECK(CreateDebugUtilsMessenger(vk_instance, &debug_utils_create_info, NULL, &debug_messenger));
@@ -428,21 +425,22 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
     Gpu2VulkanPhysicalDeviceData physical_device_data = gpu2_vulkan_choose_physical_device(vk_instance, surface);
 
     float graphics_queue_priority = 1.0f;
-    VkDeviceQueueCreateInfo graphics_queue_create_info = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                                                          .pNext = NULL,
-                                                          .flags = 0,
-                                                          .queueFamilyIndex =
-                                                              physical_device_data.graphics_family_index,
-                                                          .queueCount = 1,
-                                                          .pQueuePriorities = &graphics_queue_priority};
+    VkDeviceQueueCreateInfo graphics_queue_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.queueFamilyIndex = physical_device_data.graphics_family_index,
+		.queueCount = 1,
+		.pQueuePriorities = &graphics_queue_priority
+	};
 
     const char *device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, // FCS TODO: MOLTEN_VK is on Vulkan 1.2, so request extension
-#if defined(__APPLE__)
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, // FCS NOTE: MOLTEN_VK is on Vulkan 1.2, so request extension for now
+		#if defined(__APPLE__)
         "VK_KHR_portability_subset",
-#endif
+		#endif
     };
     u32 device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
 
