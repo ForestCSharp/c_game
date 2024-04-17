@@ -268,6 +268,51 @@ Gpu2VulkanPhysicalDeviceData gpu2_vulkan_choose_physical_device(VkInstance vk_in
     };
 }
 
+typedef struct Gpu2VkImageBarrier
+{
+    VkImage vk_image;
+    VkPipelineStageFlags src_stage;
+    VkPipelineStageFlags dst_stage;
+    VkImageLayout old_layout;
+    VkImageLayout new_layout;
+} Gpu2VkImageBarrier;
+
+void gpu2_cmd_vk_image_barrier(Gpu2CommandBuffer* in_command_buffer, Gpu2VkImageBarrier* in_barrier)
+{
+    VkImageMemoryBarrier vk_image_memory_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .srcAccessMask = 0, 
+        .dstAccessMask = 0,
+        .oldLayout = in_barrier->old_layout,
+        .newLayout = in_barrier->new_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = in_barrier->vk_image,
+        .subresourceRange =
+		{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		},
+    };
+
+    vkCmdPipelineBarrier(
+		in_command_buffer->vk_command_buffer, 
+		in_barrier->src_stage, 
+		in_barrier->dst_stage,
+		 0,    // dependencyFlags
+		 0,    // memoryBarrierCount
+		 NULL, // pMemoryBarriers
+		 0,    // bufferMemoryBarrierCount
+		 NULL, // pBufferMemoryBarriers
+		 1,    // imageMemoryBarrierCount
+		 &vk_image_memory_barrier
+	);
+}
+
 void gpu2_vk_resize_swapchain(Gpu2Device* in_device, const Window* const window);
 
 bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
@@ -1276,7 +1321,6 @@ bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_co
         .vk_command_buffer = vk_command_buffer,
     };
 
-
 	VK_CHECK(vkBeginCommandBuffer(out_command_buffer->vk_command_buffer,
 	   &(VkCommandBufferBeginInfo){
 		   .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1289,9 +1333,9 @@ bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_co
 	return true;
 }
 
-bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2Drawable* out_drawable)
+bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer, Gpu2Drawable* out_drawable)
 {
-	//FCS TODO: Actual Synchronization... array of image acquired semaphores that we pass to queue submission later 
+	//FCS TODO: Actual Synchronization... array of image acquired semaphores on device that we pass to queue submission later 
 
 	VkFenceCreateInfo vk_fence_create_info = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
@@ -1318,6 +1362,17 @@ bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2Drawable* out_drawable)
 	*out_drawable = (Gpu2Drawable) {
 		.texture = in_device->swapchain_images[in_device->current_image_index],
 	};
+
+	gpu2_cmd_vk_image_barrier(
+		in_command_buffer, 
+		&(Gpu2VkImageBarrier){
+			.vk_image = out_drawable->texture.vk_image,
+			.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			.dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			.old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.new_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		}
+	);
 
 	return true;
 }
@@ -1489,6 +1544,17 @@ void gpu2_present_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_
         .pImageIndices = &in_device->current_image_index,
         .pResults = NULL,
     };
+
+	gpu2_cmd_vk_image_barrier(
+		in_command_buffer, 
+		&(Gpu2VkImageBarrier){
+			.vk_image = in_drawable->texture.vk_image,
+			.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			.dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			.old_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		}
+	);
 }
 
 bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer)

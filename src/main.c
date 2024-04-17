@@ -138,7 +138,7 @@ int main()
 		assert(gpu2_create_command_buffer(&gpu2_device, &command_buffer));
 
 		Gpu2Drawable drawable;
-		assert(gpu2_get_next_drawable(&gpu2_device, &drawable));
+		assert(gpu2_get_next_drawable(&gpu2_device, &command_buffer, &drawable));
 		Gpu2Texture drawable_texture;
 		assert(gpu2_drawable_get_texture(&drawable, &drawable_texture));
 

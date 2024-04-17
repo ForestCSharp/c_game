@@ -131,7 +131,7 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer);
 
-bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2Drawable* out_drawable);
+bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer, Gpu2Drawable* out_drawable);
 bool gpu2_drawable_get_texture(Gpu2Drawable* in_drawable, Gpu2Texture* out_texture);
 
 void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_create_info, Gpu2RenderPass* out_render_pass);
