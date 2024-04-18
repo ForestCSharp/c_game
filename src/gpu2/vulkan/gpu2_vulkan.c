@@ -1457,6 +1457,7 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 		.vk_command_buffer = in_create_info->command_buffer->vk_command_buffer,
 	};
 
+	// FCS TODO: use vkCmdBeginRendering once MoltenVK is at 1.3
     // vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
     pfn_vk_begin_rendering(out_render_pass->vk_command_buffer, &vk_rendering_info);
 
