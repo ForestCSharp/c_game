@@ -152,7 +152,7 @@ int main()
 		};
 
 		Gpu2RenderPassCreateInfo render_pass_create_info = {
-			.num_color_attachments = ARRAY_LENGTH(color_attachments), 
+			.num_color_attachments = ARRAY_COUNT(color_attachments), 
 			.color_attachments = color_attachments,
 			.command_buffer = &command_buffer,
 		};

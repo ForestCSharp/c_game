@@ -343,7 +343,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
         "VK_LAYER_KHRONOS_validation",
         // "VK_LAYER_LUNARG_api_dump"
     };
-    u32 validation_layer_count = sizeof(validation_layers) / sizeof(validation_layers[0]);
+    u32 validation_layer_count = ARRAY_COUNT(validation_layers);
 
     // FCS TODO: Clean up defines. query surface extension string from window system?
     const char *extensions[] = {
@@ -357,7 +357,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
-    u32 extension_count = sizeof(extensions) / sizeof(extensions[0]);
+    u32 extension_count = ARRAY_COUNT(extensions); 
 
 	VkInstanceCreateFlags instance_create_flags = 0;
 	#if defined(__APPLE__)
@@ -442,7 +442,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
         "VK_KHR_portability_subset",
 		#endif
     };
-    u32 device_extension_count = sizeof(device_extensions) / sizeof(device_extensions[0]);
+    u32 device_extension_count = ARRAY_COUNT(device_extensions);
 
 	VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
@@ -877,7 +877,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 
 	VkPipelineDynamicStateCreateInfo dynamic_state = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = ARRAY_LENGTH(dynamic_states),
+		.dynamicStateCount = ARRAY_COUNT(dynamic_states),
 		.pDynamicStates = dynamic_states,
 	};
 
@@ -953,9 +953,9 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
 		.alphaBlendOp = VK_BLEND_OP_ADD,
 		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT 
-		| VK_COLOR_COMPONENT_G_BIT
-		| VK_COLOR_COMPONENT_B_BIT
-		| VK_COLOR_COMPONENT_A_BIT,
+						| VK_COLOR_COMPONENT_G_BIT
+						| VK_COLOR_COMPONENT_B_BIT
+						| VK_COLOR_COMPONENT_A_BIT,
 	}};
 
 	VkPipelineColorBlendStateCreateInfo color_blending = {
@@ -974,9 +974,8 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 	{
 		set_layouts[bind_group_idx] = in_create_info->bind_groups[bind_group_idx]->layout.vk_descriptor_set_layout;
 	}
-	const u32 num_set_layouts = sizeof(set_layouts) / sizeof(set_layouts[0]);
+	const u32 num_set_layouts = ARRAY_COUNT(set_layouts); 
 
-	//FCS TODO: Use Bind Groups here...
 	VkPipelineLayoutCreateInfo pipeline_layout_create_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = num_set_layouts, 
@@ -1593,6 +1592,5 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
 	return true;
 }
 
-//FCS TODO: Need to handle barriers because of dynamic rendering
 //FCS TODO: Track previous layout (from previous image barrier call...)
 //FCS TODO: No triangle... coordinate space problem?
