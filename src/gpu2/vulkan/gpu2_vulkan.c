@@ -323,7 +323,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
         .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
         .pEngineName = "C Game",
         .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-        .apiVersion = VK_API_VERSION_1_2,
+        .apiVersion = VK_API_VERSION_1_3,
     };
 
     u32 enumerated_layer_count;
