@@ -323,7 +323,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
         .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
         .pEngineName = "C Game",
         .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-        .apiVersion = VK_API_VERSION_1_3,
+        .apiVersion = VK_API_VERSION_1_2,
     };
 
     u32 enumerated_layer_count;
@@ -1462,10 +1462,10 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
     pfn_vk_begin_rendering(out_render_pass->vk_command_buffer, &vk_rendering_info);
 
 	VkViewport vk_viewport = {
-		.x = 0,
-		.y = 0,
-		.width = rendering_extent.width,
-		.height = rendering_extent.height,
+		.x = 0.0f,
+		.y = (float) rendering_extent.height,
+		.width = (float) rendering_extent.width,
+		.height = -(float) rendering_extent.height,
 		.minDepth = 0.0,
 		.maxDepth = 1.0,
 	};
@@ -1478,12 +1478,12 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 	
 	VkRect2D vk_scissor_rect = {
 		.offset = {
-			.x = vk_viewport.x,
-			.y = vk_viewport.y,
+			.x = 0,
+			.y = 0, 
 		},
 		.extent = {
-			.width = (u32)vk_viewport.width,
-			.height = (u32)vk_viewport.height,
+			.width = rendering_extent.width,
+			.height = rendering_extent.height,
 		},
 	};
     vkCmdSetScissor(
@@ -1593,5 +1593,6 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
 	return true;
 }
 
-//FCS TODO: Track previous layout (from previous image barrier call...)
-//FCS TODO: No triangle... coordinate space problem?
+// FCS TODO: Track previous layout (from previous image barrier call...)
+// FCS TODO: Verify we need viewport flip to match Metal Backend
+// FCS TODO: No triangle... 
