@@ -804,7 +804,7 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
 				vk_descriptor_buffer_infos[write_idx] = (VkDescriptorBufferInfo) {
 					.buffer = resource_write->buffer_binding.buffer->vk_buffer,
 					.offset = 0,
-					.range  = 1,
+					.range  = VK_WHOLE_SIZE,
 				};
 				break;
 			}
@@ -939,7 +939,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 		.depthBoundsTestEnable = VK_FALSE,
 		.stencilTestEnable = VK_FALSE,
 		.front = {},
-	.back = {},
+		.back = {},
 		.minDepthBounds = 0.0f,
 		.maxDepthBounds = 1.0f,
 	};
@@ -987,9 +987,24 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 	VkPipelineLayout vk_pipeline_layout;
 	VK_CHECK(vkCreatePipelineLayout(in_device->vk_device, &pipeline_layout_create_info, NULL, &vk_pipeline_layout));
 
+	const VkFormat vk_color_attachment_formats[] = {
+		in_device->surface_format.format,
+	};
+
+	//FCS TODO: Pass attachment formats in create_info
+	VkPipelineRenderingCreateInfo vk_pipeline_rendering_create_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+		.pNext = NULL,
+		.viewMask = 0,
+		.colorAttachmentCount = ARRAY_COUNT(vk_color_attachment_formats),
+		.pColorAttachmentFormats = vk_color_attachment_formats,
+		.depthAttachmentFormat = VK_FORMAT_UNDEFINED, // FCS TODO
+		.stencilAttachmentFormat = VK_FORMAT_UNDEFINED, //FCS TODO
+	};
+
 	VkGraphicsPipelineCreateInfo pipeline_create_info = {
 		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-		.pNext = NULL,
+		.pNext = &vk_pipeline_rendering_create_info,
 		.flags = 0,
 		.stageCount = 2,
 		.pStages = shader_stages,
@@ -1041,6 +1056,43 @@ u32 gpu2_vk_find_memory_type(VkPhysicalDevice physical_device, u32 type_filter, 
     }
 
     return UINT_MAX;
+}
+
+void gpu2_vk_map_memory(Gpu2Device* in_device, Gpu2Memory *memory, u64 offset, u64 size, void **ppData)
+{
+	assert(!memory->is_mapped);
+
+	const bool is_block_unmapped = memory->memory_region->owning_block->mapped_ref_count == 0;
+	if (is_block_unmapped)
+	{
+		VK_CHECK(vkMapMemory(
+			in_device->vk_device, 
+			memory->memory_region->owning_block->vk_memory,
+			0, 
+			memory->memory_region->owning_block->size, 
+			0, 
+			&memory->memory_region->owning_block->mapped_ptr
+		));
+	}
+
+	memory->is_mapped = true;
+	memory->memory_region->owning_block->mapped_ref_count++;
+	*ppData = (char*) memory->memory_region->owning_block->mapped_ptr + memory->memory_region->offset + offset;
+}
+
+void gpu2_vk_unmap_memory(Gpu2Device* in_device, Gpu2Memory *memory)
+{
+	assert(memory->is_mapped);
+	assert(memory->memory_region->owning_block->mapped_ref_count > 0);
+
+	memory->is_mapped = false;
+	memory->memory_region->owning_block->mapped_ref_count--;
+
+	const bool needs_unmap = memory->memory_region->owning_block->mapped_ref_count == 0;
+	if (needs_unmap)
+	{
+    	vkUnmapMemory(in_device->vk_device, memory->memory_region->owning_block->vk_memory);
+	}
 }
 
 Gpu2Memory* gpu2_vk_allocate_memory(Gpu2Device* in_device, u32 type_filter, VkMemoryPropertyFlags memory_properties, u64 alloc_size, u64 alignment)
@@ -1188,10 +1240,10 @@ void gpu2_vk_free_memory(Gpu2Device* in_device, Gpu2Memory *gpu_memory)
     assert(owning_block);
 
 	//FCS TODO: gpu2_map_memory and gpu2_unmap_memory
-	//if (gpu_memory->is_mapped)
-	//{
-	//	gpu_unmap_memory(context, gpu_memory);
-	//}
+	if (gpu_memory->is_mapped)
+	{
+		gpu2_vk_unmap_memory(in_device, gpu_memory);
+	}
 
     // 1. Find where our element lies in used_list
     u32 used_list_index = memory_region - owning_block->used_list;
@@ -1288,11 +1340,17 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 
 	VkMemoryRequirements memory_reqs;
 	vkGetBufferMemoryRequirements(in_device->vk_device, vk_buffer, &memory_reqs);
-	Gpu2Memory *memory = gpu2_vk_allocate_memory(in_device, memory_reqs.memoryTypeBits, FIXME_VK_MEMORY_PROPERTY_FLAGS, memory_reqs.size,
+	Gpu2Memory* memory = gpu2_vk_allocate_memory(in_device, memory_reqs.memoryTypeBits, FIXME_VK_MEMORY_PROPERTY_FLAGS, memory_reqs.size,
 	memory_reqs.alignment);
 
 	VK_CHECK(vkBindBufferMemory(in_device->vk_device, vk_buffer, memory->memory_region->owning_block->vk_memory,
 	memory->memory_region->offset));
+
+	//FCS TODO: Will need staging buffer for non-CPU addressable memory
+	void* pBufferData;
+	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
+	memcpy(pBufferData, in_create_info->data, in_create_info->size);
+	gpu2_vk_unmap_memory(in_device, memory);
 
 	*out_buffer = (Gpu2Buffer){
 		.vk_buffer = vk_buffer,
