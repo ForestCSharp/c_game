@@ -3,7 +3,7 @@
 
 struct Vertex 
 {
-	vec3 position;
+	vec4 position;
 };
 
 layout(set = 0, binding = 0) readonly buffer VertexBuffer {
@@ -18,6 +18,6 @@ void main()
 	uint vertices_index = indices_idx;
 	Vertex vertex = vertex_buffer.data[vertices_index];
 
-	gl_Position = vec4(vertex.position, 1);
+	gl_Position = vertex.position;
     out_position = gl_Position;
 }

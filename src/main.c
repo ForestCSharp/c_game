@@ -63,18 +63,18 @@ int main()
 
 	typedef struct Vertex
 	{
-		float x,y,z;
+		float x,y,z,w;
 	} Vertex;
 
-	Vertex vertices[] = {
-		{.x = -0.5f, .y= -0.5f, .z= 0.0f},
-		{.x =  0.5f, .y= -0.5f, .z= 0.0f},
-		{.x =  0.5f, .y=  0.5f, .z= 0.0f},
+	Vertex triangle_vertices[] = {
+		{.x = -0.5f, .y= -0.5f, .z= 0.0f, .w = 1.0f},
+		{.x =  0.5f, .y= -0.5f, .z= 0.0f, .w = 1.0f},
+		{.x =  0.0f, .y=  0.5f, .z= 0.0f, .w = 1.0f},
 	};
 
 	Gpu2BufferCreateInfo vertex_buffer_create_info = {
-		.size = sizeof(vertices),
-		.data = vertices,
+		.size = sizeof(triangle_vertices),
+		.data = triangle_vertices,
 	};
 	Gpu2Buffer vertex_buffer;
 	assert(gpu2_create_buffer(&gpu2_device, &vertex_buffer_create_info, &vertex_buffer));
