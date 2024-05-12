@@ -33,7 +33,7 @@
 // FCS TODO: Testing truetype
 #include "truetype.h"
 
-//FCS TODO: Helper to create and write a descriptor set in one operation (optional descriptor write field in create info?)
+//FCS TODO: No mesh/cube on gpu2 metal backend...
 
 int main()
 {
@@ -44,7 +44,9 @@ int main()
     }
 
 	// Create our window
-    Window window = window_create("C Game", 1280, 720);
+	i32 window_width = 1280;
+	i32 window_height = 720;
+    Window window = window_create("C Game", window_width, window_height);
 
 	Gpu2Device gpu2_device;
 	assert(gpu2_create_device(&window, &gpu2_device));
@@ -61,36 +63,69 @@ int main()
 	Gpu2Shader gpu2_fragment_shader;
 	assert(gpu2_create_shader(&gpu2_device, &fragment_shader_create_info, &gpu2_fragment_shader));
 
-	typedef struct Vertex
-	{
-		float x,y,z,w;
-	} Vertex;
+	sbuffer(StaticVertex) gpu2_vertices = NULL;
+	sbuffer(u32) gpu2_indices = NULL;
 
-	Vertex triangle_vertices[] = {
-		{.x = -0.5f, .y= -0.5f, .z= 0.0f, .w = 1.0f},
-		{.x =  0.5f, .y= -0.5f, .z= 0.0f, .w = 1.0f},
-		{.x =  0.0f, .y=  0.5f, .z= 0.0f, .w = 1.0f},
+	Vec3 box_axes[3] = {
+		vec3_new(1,0,0),
+		vec3_new(0,1,0),
+		vec3_new(0,0,1)
 	};
+	float box_halfwidths[3] = {1.0f, 1.0f, 1.0f};
+	append_box(box_axes, box_halfwidths, &gpu2_vertices, &gpu2_indices);	
 
 	Gpu2BufferCreateInfo vertex_buffer_create_info = {
-		.size = sizeof(triangle_vertices),
-		.data = triangle_vertices,
+		.size = sb_count(gpu2_vertices) * sizeof(StaticVertex),
+		.data = gpu2_vertices,
 	};
 	Gpu2Buffer vertex_buffer;
 	assert(gpu2_create_buffer(&gpu2_device, &vertex_buffer_create_info, &vertex_buffer));
+
+	Gpu2BufferCreateInfo index_buffer_create_info = {
+		.size = sb_count(gpu2_indices) * sizeof(u32),
+		.data = gpu2_indices,
+	};
+	Gpu2Buffer index_buffer;
+	assert(gpu2_create_buffer(&gpu2_device, &index_buffer_create_info, &index_buffer));
+
+	typedef struct Gpu2TestUniformStruct {
+		Mat4 model;
+		Mat4 view;
+		Mat4 projection;
+	} Gpu2TestUniformStruct;
+
+	Gpu2TestUniformStruct gpu2_uniform_data = {
+		.model = mat4_translation(vec3_new(0,0,5)),
+		.view = mat4_look_at(vec3_new(0,0,0), vec3_new(0,0,1), vec3_new(0,1,0)),
+		.projection = mat4_perspective(60.0f, (float)window_width / (float)window_height, 0.01f, 4000.0f),
+	};
+	
+	Gpu2BufferCreateInfo uniform_buffer_create_info = {
+		.size = sizeof(Gpu2TestUniformStruct),
+		.data = &gpu2_uniform_data,
+	};
+	Gpu2Buffer uniform_buffer;
+	assert(gpu2_create_buffer(&gpu2_device, &uniform_buffer_create_info, &uniform_buffer));
 
 	Gpu2ResourceBinding bindings[] = 
 	{
 		{
 			.type = GPU2_BINDING_TYPE_BUFFER,
 			.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+		},
+		{	
+			.type = GPU2_BINDING_TYPE_BUFFER,
+			.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+		},
+		{	
+			.type = GPU2_BINDING_TYPE_BUFFER,
+			.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
 		}
 	};
-	const u32 num_bindings = sizeof(bindings) / sizeof(bindings[0]);
 
 	Gpu2BindGroupLayoutCreateInfo bind_group_layout_create_info = {
 		.index = 0,
-		.num_bindings = num_bindings,
+		.num_bindings = ARRAY_COUNT(bindings),
 		.bindings = bindings,
 	};
 
@@ -103,13 +138,24 @@ int main()
 			.buffer_binding = {
 				.buffer = &vertex_buffer,
 			},
+		},
+		{
+			.type = GPU2_BINDING_TYPE_BUFFER,
+			.buffer_binding = {
+				.buffer = &index_buffer,
+			},
+		},
+		{
+			.type = GPU2_BINDING_TYPE_BUFFER,
+			.buffer_binding = {
+				.buffer = &uniform_buffer,
+			},
 		}
 	};
-	const u32 num_writes = sizeof(writes) / sizeof(writes[0]);
 
 	Gpu2BindGroupCreateInfo bind_group_create_info = {
 		.layout = &bind_group_layout,
-		.num_writes = num_writes,
+		.num_writes = ARRAY_COUNT(writes),
 		.writes = writes,
 	};
 
@@ -121,7 +167,7 @@ int main()
 	Gpu2RenderPipelineCreateInfo render_pipeline_create_info = {
 		.vertex_shader = &gpu2_vertex_shader,
 		.fragment_shader = &gpu2_fragment_shader,
-		.num_bind_groups = sizeof(pipeline_bind_groups) / sizeof(pipeline_bind_groups[0]),
+		.num_bind_groups = ARRAY_COUNT(pipeline_bind_groups),
 		.bind_groups = pipeline_bind_groups,
 	};
 	Gpu2RenderPipeline gpu2_render_pipeline;
@@ -145,7 +191,7 @@ int main()
 		Gpu2ColorAttachmentDescriptor color_attachments[] = {
 			{
 				.texture = &drawable_texture, 
-				.clear_color = {0.392f, 0.584f, 0.929f, 0},
+				.clear_color = {0.392f, 0.584f, 0.929f, 0.f},
 				.load_action = GPU2_LOAD_ACTION_CLEAR,
 				.store_action = GPU2_STORE_ACTION_STORE,
 			},
@@ -161,7 +207,7 @@ int main()
 		{
 			gpu2_render_pass_set_render_pipeline(&render_pass, &gpu2_render_pipeline);
 			gpu2_render_pass_set_bind_group(&render_pass, &gpu2_render_pipeline, &bind_group);
-			gpu2_render_pass_draw(&render_pass, 0, 3);
+			gpu2_render_pass_draw(&render_pass, 0, sb_count(gpu2_indices));
 		}
 		gpu2_end_render_pass(&render_pass);
 

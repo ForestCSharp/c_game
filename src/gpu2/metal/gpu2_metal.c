@@ -150,17 +150,19 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
 		switch (resource_write->type)
 		{
 			case GPU2_BINDING_TYPE_BUFFER:
-				{
-					Gpu2Buffer* buffer = resource_write->buffer_binding.buffer;
-					const u64 gpu_address = buffer->metal_buffer.gpuAddress;
-					memcpy(buffer_contents, &gpu_address, sizeof(gpu_address));
-					buffer_contents += sizeof(u64);
-					break;
-				}
+			{
+				Gpu2Buffer* buffer = resource_write->buffer_binding.buffer;
+				const u64 gpu_address = buffer->metal_buffer.gpuAddress;
+				memcpy(buffer_contents, &gpu_address, sizeof(u64));
+				buffer_contents += sizeof(u64);
+				break;
+			}
 			case GPU2_BINDING_TYPE_TEXTURE:
+			{
 				//FCS TODO:
 				assert(false);
 				break;
+			}
 		}
 	}
 
