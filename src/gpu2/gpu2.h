@@ -16,6 +16,7 @@ typedef struct Gpu2BufferCreateInfo
 	u64 size;
 	void* data;
 } Gpu2BufferCreateInfo;
+typedef Gpu2BufferCreateInfo Gpu2BufferWriteInfo;
 typedef struct Gpu2Buffer Gpu2Buffer;
 
 typedef struct Gpu2Texture Gpu2Texture;
@@ -128,6 +129,7 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline);
 
 bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer);
+void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info);
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer);
 

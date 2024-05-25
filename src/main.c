@@ -94,8 +94,14 @@ int main()
 		Mat4 projection;
 	} Gpu2TestUniformStruct;
 
+	Quat rotation = quat_identity;
+	Vec3 translation = vec3_new(0,0,5);
+
+	Mat4 model_matrix = mat4_mul_mat4(quat_to_mat4(rotation), mat4_translation(translation));
+
+	//FCS TODO: Only write in loop. Not initially
 	Gpu2TestUniformStruct gpu2_uniform_data = {
-		.model = mat4_translation(vec3_new(0,0,5)),
+		.model = model_matrix,
 		.view = mat4_look_at(vec3_new(0,0,0), vec3_new(0,0,1), vec3_new(0,1,0)),
 		.projection = mat4_perspective(60.0f, (float)window_width / (float)window_height, 0.01f, 4000.0f),
 	};
@@ -179,6 +185,17 @@ int main()
 		{
 			break;
 		}
+
+		{	// Updating Uniform Data
+			rotation = quat_mul(rotation, quat_new(vec3_new(0,1,0), 0.01f));
+			gpu2_uniform_data.model = mat4_mul_mat4(quat_to_mat4(rotation), mat4_translation(translation));
+			Gpu2BufferWriteInfo uniform_buffer_write_info = {
+				.size = sizeof(Gpu2TestUniformStruct),
+				.data = &gpu2_uniform_data,
+			};
+			gpu2_write_buffer(&gpu2_device, &uniform_buffer, &uniform_buffer_write_info);
+		}
+
 
 		Gpu2CommandBuffer command_buffer;
 		assert(gpu2_create_command_buffer(&gpu2_device, &command_buffer));

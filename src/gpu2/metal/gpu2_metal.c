@@ -202,6 +202,12 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 	return true;
 }
 
+void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info)
+{
+	assert(in_buffer->metal_buffer.contents != NULL);
+	memcpy(in_buffer->metal_buffer.contents, in_write_info->data, in_write_info->size);
+}
+
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)
 {
 	*out_command_buffer = (Gpu2CommandBuffer){};

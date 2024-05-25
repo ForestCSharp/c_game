@@ -1360,6 +1360,12 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 	return true;
 }
 
+void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info)
+{
+	//FCS TODO:
+	assert(false);
+}
+
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)
 {
     VkCommandBufferAllocateInfo alloc_info = {
