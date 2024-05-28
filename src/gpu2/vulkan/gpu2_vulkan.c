@@ -1362,8 +1362,17 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 
 void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info)
 {
-	//FCS TODO:
-	assert(false);
+	Gpu2Memory* memory = in_buffer->memory;
+
+	// Make Sure our memory is host-visible and host-coherent
+	VkMemoryPropertyFlags flags_to_check = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
+										 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	assert((memory->memory_properties & flags_to_check) != 0);
+	
+	void* pBufferData;
+	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
+	memcpy(pBufferData, in_write_info->data, in_write_info->size);
+	gpu2_vk_unmap_memory(in_device, memory);
 }
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)

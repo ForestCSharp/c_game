@@ -75,6 +75,7 @@ int main()
 	append_box(box_axes, box_halfwidths, &gpu2_vertices, &gpu2_indices);	
 
 	Gpu2BufferCreateInfo vertex_buffer_create_info = {
+		.is_cpu_visible = true,
 		.size = sb_count(gpu2_vertices) * sizeof(StaticVertex),
 		.data = gpu2_vertices,
 	};
@@ -82,6 +83,7 @@ int main()
 	assert(gpu2_create_buffer(&gpu2_device, &vertex_buffer_create_info, &vertex_buffer));
 
 	Gpu2BufferCreateInfo index_buffer_create_info = {
+		.is_cpu_visible = true,
 		.size = sb_count(gpu2_indices) * sizeof(u32),
 		.data = gpu2_indices,
 	};
@@ -107,6 +109,7 @@ int main()
 	};
 	
 	Gpu2BufferCreateInfo uniform_buffer_create_info = {
+		.is_cpu_visible = true,
 		.size = sizeof(Gpu2TestUniformStruct),
 		.data = &gpu2_uniform_data,
 	};

@@ -13,10 +13,18 @@ typedef struct Gpu2Shader Gpu2Shader;
 
 typedef struct Gpu2BufferCreateInfo
 {
+	bool is_cpu_visible;
 	u64 size;
 	void* data;
 } Gpu2BufferCreateInfo;
-typedef Gpu2BufferCreateInfo Gpu2BufferWriteInfo;
+
+typedef struct Gpu2BufferWriteInfo
+{
+	u64 size;
+	void* data;
+} Gpu2BufferWriteInfo;
+
+
 typedef struct Gpu2Buffer Gpu2Buffer;
 
 typedef struct Gpu2Texture Gpu2Texture;
