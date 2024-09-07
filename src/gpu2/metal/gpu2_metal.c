@@ -30,6 +30,7 @@ struct Gpu2BindGroup
 
 struct Gpu2RenderPipeline {
 	id<MTLRenderPipelineState> metal_render_pipeline_state;	
+	id<MTLDepthStencilState> metal_depth_stencil_state;
 };
 
 struct Gpu2RenderPass
@@ -169,6 +170,8 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
 	return true;
 }
 
+//FCS TODO: currently just assumes a single MTLPixelFormatBGRA8Unorm color attachment
+//FCS TODO: need to pass color attachment and depth attachment info here...
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline)
 {	
 	MTLRenderPipelineDescriptor *metal_render_pipeline_descriptor = [[MTLRenderPipelineDescriptor alloc] init];
@@ -179,14 +182,24 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 
 	//FCS TODO: CreateInfo Arg for color attachments...
 	metal_render_pipeline_descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+	//FCS TODO:
+	metal_render_pipeline_descriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+
+
+    MTLDepthStencilDescriptor* metal_depth_stencil_desc = [[MTLDepthStencilDescriptor alloc] init];
+	metal_depth_stencil_desc.depthCompareFunction = in_create_info->depth_test_enabled ? MTLCompareFunctionLess : MTLCompareFunctionAlways;
+	metal_depth_stencil_desc.depthWriteEnabled = in_create_info->depth_test_enabled;
+	id<MTLDepthStencilState> metal_depth_stencil_state = [in_device->metal_device newDepthStencilStateWithDescriptor:metal_depth_stencil_desc];
 
 	*out_render_pipeline = (Gpu2RenderPipeline){
 		.metal_render_pipeline_state = [in_device->metal_device newRenderPipelineStateWithDescriptor:metal_render_pipeline_descriptor error:nil],
+		.metal_depth_stencil_state = metal_depth_stencil_state,
 	};
 
 	return true;
 }
 
+//TODO: is_cpu_visible arg support
 bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer)
 {
 	*out_buffer = (Gpu2Buffer){};
@@ -199,6 +212,7 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 	{
 		out_buffer->metal_buffer = [in_device->metal_device newBufferWithLength:in_create_info->size options:MTLResourceCPUCacheModeDefaultCache];
 	}
+
 	return true;
 }
 
@@ -206,6 +220,81 @@ void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferW
 {
 	assert(in_buffer->metal_buffer.contents != NULL);
 	memcpy(in_buffer->metal_buffer.contents, in_write_info->data, in_write_info->size);
+}
+
+
+MTLPixelFormat gpu2_format_to_mtl_format(Gpu2Format in_format)
+{
+	switch(in_format)
+	{
+		case GPU2_FORMAT_D32_SFLOAT: return MTLPixelFormatDepth32Float;
+		default: 
+			printf("gpu2_format_to_vk_format: Unimplemented Format\n");
+			exit(0);
+			return 0;
+	}
+}
+
+
+MTLTextureUsage gpu2_texture_usage_flags_to_mtl_texture_usage(Gpu2TextureUsageFlags in_flags)
+{
+	MTLTextureUsage out_flags = 0;
+	
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_TRANSFER_SRC))
+	{
+		//
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_TRANSFER_DST))
+	{
+		//
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_SAMPLED))
+	{
+		out_flags |= MTLTextureUsageShaderRead;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_STORAGE))
+	{
+		out_flags |= MTLTextureUsageShaderRead;
+		out_flags |= MTLTextureUsageShaderWrite;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_COLOR_ATTACHMENT))
+	{
+		out_flags |= MTLTextureUsageRenderTarget;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT))
+	{
+		//
+	}
+
+	return out_flags;
+}
+
+bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture)
+{
+	const Gpu2TextureExtent extent	= in_create_info->extent;
+    MTLTextureType mtl_texture_type = extent.depth > 1 	?	MTLTextureType3D	
+									: extent.height > 1	? 	MTLTextureType2D
+									: 						MTLTextureType1D;
+
+	MTLTextureDescriptor *texture_descriptor = [[MTLTextureDescriptor alloc] init];
+	texture_descriptor.textureType = mtl_texture_type;
+	texture_descriptor.pixelFormat = gpu2_format_to_mtl_format(in_create_info->format);
+	texture_descriptor.width = extent.width;
+	texture_descriptor.height = extent.height;
+	texture_descriptor.depth = extent.depth;
+	texture_descriptor.mipmapLevelCount = 1;
+	texture_descriptor.sampleCount = 1;
+	texture_descriptor.arrayLength = 1;
+	texture_descriptor.storageMode = in_create_info->is_cpu_visible ? MTLStorageModeShared : MTLStorageModeManaged;
+	texture_descriptor.usage = gpu2_texture_usage_flags_to_mtl_texture_usage(in_create_info->usage);
+	
+	out_texture->metal_texture = [in_device->metal_device newTextureWithDescriptor:texture_descriptor];
+	return true;
 }
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)
@@ -282,6 +371,13 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 		}
 	}
 
+	Gpu2DepthAttachmentDescriptor* depth_attachment = in_create_info->depth_attachment;
+	if (depth_attachment)
+	{
+		metal_render_pass_descriptor.depthAttachment.texture = depth_attachment->texture->metal_texture;
+		metal_render_pass_descriptor.depthAttachment.clearDepth = depth_attachment->clear_depth;
+	}
+
 	out_render_pass->metal_render_command_encoder = [in_create_info->command_buffer->metal_command_buffer renderCommandEncoderWithDescriptor:metal_render_pass_descriptor];	
 }
 
@@ -293,6 +389,7 @@ void gpu2_end_render_pass(Gpu2RenderPass* in_render_pass)
 void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline)
 {
 	[in_render_pass->metal_render_command_encoder setRenderPipelineState:in_render_pipeline->metal_render_pipeline_state];
+	[in_render_pass->metal_render_command_encoder setDepthStencilState:in_render_pipeline->metal_depth_stencil_state];
 }
 
 void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)

@@ -1,14 +1,5 @@
-
-# working on gpu2 code for now...
-./gpu2_test.sh $1
-echo "REMOVE ME: TEMP: Just ran gpu2_test from build.sh"
-exit 0
-
 rm -r ./bin/
 mkdir ./bin/
-
-#TODO: Remove once GPU2 is complete
-./data/shaders/compile_shaders.sh
 
 ./gpu2_compile_shaders.sh data/shaders
 
@@ -40,8 +31,8 @@ if [ $machine = Mac ]; then
 
 	#Build and Run for Mac
 	cp /usr/local/lib/libvulkan.dylib ./bin/
-	clang -ObjC -g ./src/main.c ./bin/libvulkan.dylib \
-		-o bin/game \
+	clang -ObjC -g ./src/gpu2/gpu2_test.c ./bin/libvulkan.dylib \
+		-o bin/gpu2_test \
 		-I /usr/local/include/vulkan \
 		-I ./src/ \
 		-framework Cocoa \
@@ -51,18 +42,18 @@ if [ $machine = Mac ]; then
 		-rpath /usr/local/lib \
 		-D $render_backend_define
 
-	./bin/game
+	./bin/gpu2_test
 
 elif [ $machine = MinGW ]; then
 
 	#Build and Run for Windows
-	clang -g -gcodeview src/main.c \
-		-o ./bin/game.exe \
+	clang -g -gcodeview src/gpu2/gpu2_test.c \
+		-o ./bin/gpu2_test.exe \
 		-l user32.lib ${VULKAN_SDK}/Lib/vulkan-1.lib \
 		-I ${VULKAN_SDK}/Include \
 		-I src \
 		-D $render_backend_define
 
-	./bin/game.exe
+	./bin/gpu2_test.exe
 fi
 

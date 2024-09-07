@@ -11,6 +11,7 @@ typedef struct Gpu2ShaderCreateInfo
 } Gpu2ShaderCreateInfo;
 typedef struct Gpu2Shader Gpu2Shader;
 
+//FCS TODO: Buffer Type (Storage / Uniform buffers)
 typedef struct Gpu2BufferCreateInfo
 {
 	bool is_cpu_visible;
@@ -24,6 +25,45 @@ typedef struct Gpu2BufferWriteInfo
 	void* data;
 } Gpu2BufferWriteInfo;
 
+typedef struct Gpu2TextureExtent
+{
+	u32 width;
+	u32 height;
+	u32 depth;
+} Gpu2TextureExtent;
+
+
+typedef enum Gpu2Format
+{
+    GPU2_FORMAT_RGBA8_UNORM, 
+    GPU2_FORMAT_BGRA8_UNORM, 
+    GPU2_FORMAT_RGBA8_SRGB, 
+    GPU2_FORMAT_BGRA8_SRGB, 
+    GPU2_FORMAT_RG32_SFLOAT, 
+    GPU2_FORMAT_RGB32_SFLOAT, 
+    GPU2_FORMAT_RGBA32_SFLOAT, 
+    GPU2_FORMAT_D32_SFLOAT, 
+    GPU2_FORMAT_R32_SINT, 
+} Gpu2Format;
+
+typedef enum Gpu2TextureUsageFlagBits
+{
+    GPU2_TEXTURE_USAGE_TRANSFER_SRC, 
+    GPU2_TEXTURE_USAGE_TRANSFER_DST,
+    GPU2_TEXTURE_USAGE_SAMPLED, 
+    GPU2_TEXTURE_USAGE_STORAGE, 
+    GPU2_TEXTURE_USAGE_COLOR_ATTACHMENT, 
+    GPU2_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT, 
+} Gpu2TextureUsageFlagBits;
+typedef u32 Gpu2TextureUsageFlags;
+
+typedef struct Gpu2TextureCreateInfo
+{
+	Gpu2Format format;
+	Gpu2TextureExtent extent;
+	Gpu2TextureUsageFlags usage; 
+	bool is_cpu_visible;
+} Gpu2TextureCreateInfo;
 
 typedef struct Gpu2Buffer Gpu2Buffer;
 
@@ -31,7 +71,7 @@ typedef struct Gpu2Texture Gpu2Texture;
 
 typedef enum Gpu2BindingType
 {
-	GPU2_BINDING_TYPE_BUFFER, 	// Storage buffer
+	GPU2_BINDING_TYPE_BUFFER, // Storage buffer
 	GPU2_BINDING_TYPE_TEXTURE,
 } Gpu2BindingType;
 
@@ -94,6 +134,7 @@ typedef struct Gpu2RenderPipelineCreateInfo
 	Gpu2Shader* fragment_shader;
 	u32 num_bind_groups;
 	Gpu2BindGroup** bind_groups; 
+	bool depth_test_enabled;
 } Gpu2RenderPipelineCreateInfo;
 typedef struct Gpu2RenderPipeline Gpu2RenderPipeline;
 
@@ -121,10 +162,19 @@ typedef struct Gpu2ColorAttachmentDescriptor
 	Gpu2StoreAction store_action;
 } Gpu2ColorAttachmentDescriptor;
 
+typedef struct Gpu2DepthAttachmentDescriptor
+{
+	Gpu2Texture* texture;
+	float clear_depth;
+	Gpu2LoadAction load_action;
+	Gpu2StoreAction store_action;
+} Gpu2DepthAttachmentDescriptor;
+
 typedef struct Gpu2RenderPassCreateInfo
 {
 	u32 num_color_attachments;
 	Gpu2ColorAttachmentDescriptor* color_attachments;
+	Gpu2DepthAttachmentDescriptor* depth_attachment;
 	Gpu2CommandBuffer* command_buffer;
 } Gpu2RenderPassCreateInfo;
 typedef struct Gpu2RenderPass Gpu2RenderPass;
@@ -138,6 +188,10 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 
 bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer);
 void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info);
+//TODO: gpu2_destroy_buffer
+
+bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture);
+//TODO: gpu2_destroy_texture
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer);
 
@@ -158,3 +212,4 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
 // FCS TODO: Remove bool returns.
 // FCS TODO: Rename "drawable" to something else
 // FCS TODO: Rename BindGroup to ResourceGroup
+// FCS TODO: Resource/Object destroy functions 

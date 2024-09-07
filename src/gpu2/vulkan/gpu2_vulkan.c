@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan.h>
 #include "stretchy_buffer.h"
+#include "math/basic_math.h"
 
 PFN_vkCmdBeginRenderingKHR pfn_vk_begin_rendering = NULL;
 PFN_vkCmdEndRenderingKHR pfn_vk_end_rendering = NULL;
@@ -165,7 +166,7 @@ VkBool32 gpu2_vulkan_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messa
 {
     if (!(messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT))
     {
-        printf("Validation Layer: %s\n", pCallbackData->pMessage);
+        printf("\nValidation Layer: %s\n", pCallbackData->pMessage);
     }
     return VK_FALSE;
 }
@@ -275,6 +276,8 @@ typedef struct Gpu2VkImageBarrier
     VkPipelineStageFlags dst_stage;
     VkImageLayout old_layout;
     VkImageLayout new_layout;
+	VkImageAspectFlags aspect_mask;
+
 } Gpu2VkImageBarrier;
 
 void gpu2_cmd_vk_image_barrier(Gpu2CommandBuffer* in_command_buffer, Gpu2VkImageBarrier* in_barrier)
@@ -291,7 +294,7 @@ void gpu2_cmd_vk_image_barrier(Gpu2CommandBuffer* in_command_buffer, Gpu2VkImage
         .image = in_barrier->vk_image,
         .subresourceRange =
 		{
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.aspectMask = in_barrier->aspect_mask,
 			.baseMipLevel = 0,
 			.levelCount = 1,
 			.baseArrayLayer = 0,
@@ -640,7 +643,7 @@ void gpu2_vk_resize_swapchain(Gpu2Device* in_device, const Window* const in_wind
             .components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
             .components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
             .components.a = VK_COMPONENT_SWIZZLE_IDENTITY,
-            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, //FCS TODO:
             .subresourceRange.baseMipLevel = 0,
             .subresourceRange.levelCount = 1,
             .subresourceRange.baseArrayLayer = 0,
@@ -933,8 +936,8 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
 		.pNext = NULL,
 		.flags = 0,
-		.depthTestEnable = VK_FALSE, 
-		.depthWriteEnable = VK_FALSE,
+		.depthTestEnable = in_create_info->depth_test_enabled ? VK_TRUE : VK_FALSE, 
+		.depthWriteEnable = in_create_info->depth_test_enabled ? VK_TRUE : VK_FALSE,
 		.depthCompareOp = VK_COMPARE_OP_LESS, 
 		.depthBoundsTestEnable = VK_FALSE,
 		.stencilTestEnable = VK_FALSE,
@@ -998,7 +1001,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 		.viewMask = 0,
 		.colorAttachmentCount = ARRAY_COUNT(vk_color_attachment_formats),
 		.pColorAttachmentFormats = vk_color_attachment_formats,
-		.depthAttachmentFormat = VK_FORMAT_UNDEFINED, // FCS TODO
+		.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT, // FCS TODO
 		.stencilAttachmentFormat = VK_FORMAT_UNDEFINED, //FCS TODO
 	};
 
@@ -1319,12 +1322,8 @@ void gpu2_vk_free_memory(Gpu2Device* in_device, Gpu2Memory *gpu_memory)
     }
 }
 
-//FCS TODO: Buffer Usage flags arg
+//FCS TODO: Buffer Usage flags arg?
 static const VkBufferUsageFlags FIXME_VK_BUFFER_USAGE_FLAGS = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-//FCS TODO: Memory Property Flags arg
-static const VkMemoryPropertyFlags FIXME_VK_MEMORY_PROPERTY_FLAGS 	= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT 
-																	| VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
-																	| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
 bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer)
 {
@@ -1338,9 +1337,17 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 	VkBuffer vk_buffer;
 	VK_CHECK(vkCreateBuffer(in_device->vk_device, &buffer_create_info, NULL, &vk_buffer));
 
+
+	VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	if (in_create_info->is_cpu_visible)
+	{
+		memory_properties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		memory_properties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	}
+
 	VkMemoryRequirements memory_reqs;
 	vkGetBufferMemoryRequirements(in_device->vk_device, vk_buffer, &memory_reqs);
-	Gpu2Memory* memory = gpu2_vk_allocate_memory(in_device, memory_reqs.memoryTypeBits, FIXME_VK_MEMORY_PROPERTY_FLAGS, memory_reqs.size,
+	Gpu2Memory* memory = gpu2_vk_allocate_memory(in_device, memory_reqs.memoryTypeBits, memory_properties, memory_reqs.size,
 	memory_reqs.alignment);
 
 	VK_CHECK(vkBindBufferMemory(in_device->vk_device, vk_buffer, memory->memory_region->owning_block->vk_memory,
@@ -1373,6 +1380,155 @@ void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferW
 	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
 	memcpy(pBufferData, in_write_info->data, in_write_info->size);
 	gpu2_vk_unmap_memory(in_device, memory);
+}
+
+VkFormat gpu2_format_to_vk_format(Gpu2Format in_format)
+{
+	switch(in_format)
+	{
+		case GPU2_FORMAT_D32_SFLOAT: return VK_FORMAT_D32_SFLOAT;
+		default: 
+			printf("gpu2_format_to_vk_format: Unimplemented Format\n");
+			exit(0);
+			return 0;
+	}
+}
+
+VkImageUsageFlags gpu2_texture_usage_flags_to_vk_image_usage_flags(Gpu2TextureUsageFlags in_flags)
+{
+	VkImageUsageFlags out_flags = 0;
+	
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_TRANSFER_SRC))
+	{
+		out_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_TRANSFER_DST))
+	{
+		out_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_SAMPLED))
+	{
+		out_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_STORAGE))
+	{
+		out_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_COLOR_ATTACHMENT))
+	{
+		out_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT))
+	{
+		out_flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	}
+
+	return out_flags;
+}
+
+bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture)
+{
+	const Gpu2TextureExtent extent = in_create_info->extent;
+    VkImageType vk_image_type 	= extent.depth > 1 	? 	VK_IMAGE_TYPE_3D
+								: extent.height > 1	? 	VK_IMAGE_TYPE_2D
+								: 						VK_IMAGE_TYPE_1D;
+
+	VkFormat vk_format = gpu2_format_to_vk_format(in_create_info->format);
+
+    VkImageCreateInfo vk_image_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .imageType = vk_image_type,
+        .format = vk_format,
+        .extent =
+            {
+                .width = extent.width,
+                .height = extent.height,
+                .depth = extent.depth,
+            },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = gpu2_texture_usage_flags_to_vk_image_usage_flags(in_create_info->usage),
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = NULL,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    VkImage vk_image = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateImage(in_device->vk_device, &vk_image_create_info, NULL, &vk_image));
+
+    VkMemoryRequirements memory_reqs;
+    vkGetImageMemoryRequirements(in_device->vk_device, vk_image, &memory_reqs);
+
+	VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	if (in_create_info->is_cpu_visible)
+	{
+		memory_properties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		memory_properties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	}
+
+    Gpu2Memory *memory = gpu2_vk_allocate_memory(
+		in_device, 
+		memory_reqs.memoryTypeBits, 
+		memory_properties, 
+		memory_reqs.size,
+		memory_reqs.alignment
+	);
+
+    VK_CHECK(vkBindImageMemory(
+		in_device->vk_device, 
+		vk_image,
+		memory->memory_region->owning_block->vk_memory,
+        memory->memory_region->offset
+	));
+
+	VkImageViewType vk_image_view_type = VK_IMAGE_VIEW_TYPE_1D;
+	switch(vk_image_type)
+	{
+		case VK_IMAGE_TYPE_1D: vk_image_view_type = VK_IMAGE_VIEW_TYPE_1D; break;
+		case VK_IMAGE_TYPE_2D: vk_image_view_type = VK_IMAGE_VIEW_TYPE_2D; break;
+		case VK_IMAGE_TYPE_3D: vk_image_view_type = VK_IMAGE_VIEW_TYPE_3D; break;
+		default: break;
+	}
+
+	// FCS TODO: Set aspectMask based on format
+    VkImageViewCreateInfo vk_image_view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .flags = 0,
+        .pNext = NULL,
+        .image = vk_image,
+        .viewType = vk_image_view_type,
+        .format = vk_format,
+        .components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .components.a = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel = 0,
+        .subresourceRange.levelCount = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount = 1,
+    };
+
+    VkImageView vk_image_view = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateImageView(in_device->vk_device, &vk_image_view_create_info, NULL, &vk_image_view));
+
+	*out_texture = (Gpu2Texture) {
+		.vk_image = vk_image,
+		.vk_image_view = vk_image_view,
+		.vk_format = vk_format,
+	};
+
+	return true;
 }
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)
@@ -1441,6 +1597,7 @@ bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command
 			.dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 			.old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
 			.new_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT,
 		}
 	);
 
@@ -1507,6 +1664,42 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 		};
     }
 
+	VkRenderingAttachmentInfo vk_depth_attachment = {};
+	Gpu2DepthAttachmentDescriptor* depth_attachment_desc = in_create_info->depth_attachment;
+	if (depth_attachment_desc)
+	{
+		Gpu2Texture* depth_attachment_texture = depth_attachment_desc->texture;
+
+		vk_depth_attachment = (VkRenderingAttachmentInfo) {
+			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+			.pNext = NULL,
+			.imageView = depth_attachment_texture->vk_image_view,
+			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			.resolveMode = VK_RESOLVE_MODE_NONE,
+			.resolveImageView = VK_NULL_HANDLE,
+			.resolveImageLayout = 0,
+			.loadOp = gpu2_load_action_to_vulkan_load_op(depth_attachment_desc->load_action),
+			.storeOp = gpu2_store_action_to_vulkan_store_op(depth_attachment_desc->store_action),
+			.clearValue = {
+				.depthStencil = {
+					.depth = depth_attachment_desc->clear_depth,
+				},
+			},
+		};
+
+		gpu2_cmd_vk_image_barrier(
+			in_create_info->command_buffer, 
+			&(Gpu2VkImageBarrier){
+				.vk_image = depth_attachment_texture->vk_image,
+				.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				.dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				.old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+				.new_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+				.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT,
+			}
+		);
+	}
+
     VkRenderingInfo vk_rendering_info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .pNext = NULL,
@@ -1522,7 +1715,7 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
         .viewMask = 0,
         .colorAttachmentCount = in_create_info->num_color_attachments,
         .pColorAttachments = vk_color_attachments,
-        .pDepthAttachment = NULL,
+        .pDepthAttachment = depth_attachment_desc ? &vk_depth_attachment : NULL,
         .pStencilAttachment = NULL,
     };
 
@@ -1624,6 +1817,7 @@ void gpu2_present_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_
 			.dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 			.old_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			.new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT,
 		}
 	);
 }

@@ -26,6 +26,7 @@ layout(set = 0, binding = 2) readonly buffer UniformBuffer {
 } uniform_buffer;
 
 layout(location = 0) out vec4 out_position;
+layout(location = 1) out vec4 out_color;
 
 void main()
 {
@@ -35,4 +36,5 @@ void main()
 
 	gl_Position = uniform_buffer.projection * uniform_buffer.view * uniform_buffer.model * vertex.position;
     out_position = gl_Position;
+	out_color = vertex.color;
 }
