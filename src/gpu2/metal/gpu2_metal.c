@@ -2,6 +2,8 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CoreAnimation.h>
 
+#define _OBJC_RELEASE(obj) { [obj release]; obj = nil; }
+
 struct Gpu2Device
 {
 	id<MTLDevice> metal_device;
@@ -222,6 +224,10 @@ void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferW
 	memcpy(in_buffer->metal_buffer.contents, in_write_info->data, in_write_info->size);
 }
 
+void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+{
+	_OBJC_RELEASE(in_buffer->metal_buffer);
+}
 
 MTLPixelFormat gpu2_format_to_mtl_format(Gpu2Format in_format)
 {
@@ -295,6 +301,11 @@ bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create
 	
 	out_texture->metal_texture = [in_device->metal_device newTextureWithDescriptor:texture_descriptor];
 	return true;
+}
+
+void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture)
+{
+	_OBJC_RELEASE(in_texture->metal_texture);
 }
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)

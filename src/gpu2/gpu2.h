@@ -188,10 +188,10 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 
 bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer);
 void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info);
-//TODO: gpu2_destroy_buffer
+void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
 
 bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture);
-//TODO: gpu2_destroy_texture
+void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture);
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer);
 

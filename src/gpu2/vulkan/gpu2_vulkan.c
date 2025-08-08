@@ -1347,11 +1347,20 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 
 	VkMemoryRequirements memory_reqs;
 	vkGetBufferMemoryRequirements(in_device->vk_device, vk_buffer, &memory_reqs);
-	Gpu2Memory* memory = gpu2_vk_allocate_memory(in_device, memory_reqs.memoryTypeBits, memory_properties, memory_reqs.size,
-	memory_reqs.alignment);
+	Gpu2Memory* memory = gpu2_vk_allocate_memory(
+		in_device, 
+		memory_reqs.memoryTypeBits, 
+		memory_properties, 
+		memory_reqs.size, 
+		memory_reqs.alignment
+	);
 
-	VK_CHECK(vkBindBufferMemory(in_device->vk_device, vk_buffer, memory->memory_region->owning_block->vk_memory,
-	memory->memory_region->offset));
+	VK_CHECK(vkBindBufferMemory(
+		in_device->vk_device, 
+		vk_buffer, 
+		memory->memory_region->owning_block->vk_memory,
+		memory->memory_region->offset)
+	);
 
 	//FCS TODO: Will need staging buffer for non-CPU addressable memory
 	void* pBufferData;
@@ -1380,6 +1389,12 @@ void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferW
 	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
 	memcpy(pBufferData, in_write_info->data, in_write_info->size);
 	gpu2_vk_unmap_memory(in_device, memory);
+}
+
+void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+{
+	vkDestroyBuffer(in_device->vk_device, in_buffer->vk_buffer, NULL);
+	gpu2_vk_free_memory(in_device, in_buffer->memory);
 }
 
 VkFormat gpu2_format_to_vk_format(Gpu2Format in_format)
@@ -1526,9 +1541,17 @@ bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create
 		.vk_image = vk_image,
 		.vk_image_view = vk_image_view,
 		.vk_format = vk_format,
+		.memory = memory,
 	};
 
 	return true;
+}
+
+void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture)
+{
+	vkDestroyImageView(in_device->vk_device, in_texture->vk_image_view, NULL);
+	vkDestroyImage(in_device->vk_device, in_texture->vk_image, NULL);
+	gpu2_vk_free_memory(in_device, in_texture->memory);	
 }
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)

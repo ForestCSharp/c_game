@@ -40,7 +40,8 @@ if [ $machine = Mac ]; then
 
 	#Build and Run for Mac
 	cp /usr/local/lib/libvulkan.dylib ./bin/
-	clang -ObjC -g ./src/main.c ./bin/libvulkan.dylib \
+	clang -ObjC -g ./src/main.c \
+		./bin/libvulkan.dylib \
 		-o bin/game \
 		-I /usr/local/include/vulkan \
 		-I ./src/ \

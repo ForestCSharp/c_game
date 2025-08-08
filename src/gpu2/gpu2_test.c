@@ -242,6 +242,13 @@ int main()
 		assert(gpu2_commit_command_buffer(&gpu2_device, &command_buffer));
 	}
 
+	// Cleanup
+	gpu2_destroy_buffer(&gpu2_device, &vertex_buffer);
+	gpu2_destroy_buffer(&gpu2_device, &index_buffer);
+	gpu2_destroy_buffer(&gpu2_device, &uniform_buffer);
+
+	gpu2_destroy_texture(&gpu2_device, &depth_texture);
+
 	return 0;
 }
 
