@@ -9,9 +9,6 @@
 #include "stretchy_buffer.h"
 #include "math/basic_math.h"
 
-PFN_vkCmdBeginRenderingKHR pfn_vk_begin_rendering = NULL;
-PFN_vkCmdEndRenderingKHR pfn_vk_end_rendering = NULL;
-
 typedef struct Gpu2VulkanPhysicalDeviceData
 {
     VkPhysicalDevice physical_device;
@@ -440,7 +437,6 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
     const char *device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, // FCS NOTE: MOLTEN_VK is on Vulkan 1.2, so request extension for now
 		#if defined(__APPLE__)
         "VK_KHR_portability_subset",
 		#endif
@@ -507,11 +503,6 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 
     VkDevice vk_device = VK_NULL_HANDLE;
     VK_CHECK(vkCreateDevice(physical_device_data.physical_device, &device_create_info, NULL, &vk_device));
-
-	// FCS TODO: use 1.3 core functions once MoltenVK Supports them
-    pfn_vk_begin_rendering = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(vk_device, "vkCmdBeginRenderingKHR");
-    pfn_vk_end_rendering = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(vk_device, "vkCmdEndRenderingKHR");
-    assert(pfn_vk_begin_rendering && pfn_vk_end_rendering);
 
     VkQueue graphics_queue;
     vkGetDeviceQueue(vk_device, physical_device_data.graphics_family_index, 0, &graphics_queue);
@@ -1746,9 +1737,7 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 		.vk_command_buffer = in_create_info->command_buffer->vk_command_buffer,
 	};
 
-	// FCS TODO: use vkCmdBeginRendering once MoltenVK is at 1.3
-    // vkCmdBeginRendering(command_buffer->vk_command_buffer, &vk_rendering_info);
-    pfn_vk_begin_rendering(out_render_pass->vk_command_buffer, &vk_rendering_info);
+    vkCmdBeginRendering(out_render_pass->vk_command_buffer, &vk_rendering_info);
 
 	VkViewport vk_viewport = {
 		.x = 0.0f,
@@ -1785,7 +1774,7 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 
 void gpu2_end_render_pass(Gpu2RenderPass* in_render_pass)
 {
-    pfn_vk_end_rendering(in_render_pass->vk_command_buffer);
+	vkCmdEndRendering(in_render_pass->vk_command_buffer);
 }
 
 void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline)
