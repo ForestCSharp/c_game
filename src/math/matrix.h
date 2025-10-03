@@ -166,8 +166,8 @@ Mat4 mat4_perspective(const float fov, const float aspect_ratio, const float fru
 
     return (Mat4) {
         .d = {
-			x_scale, 	0, 				0, 									0, 
-			0, 			y_scale * -1.0, 0, 									0, 
+			x_scale, 	0, 				0, 													0, 
+			0, 			y_scale,		0, 													0, 
 			0, 			0, 				(frustum_far + frustum_near) / near_minus_far,		-1, 
 			0, 			0, 				2 * frustum_far * frustum_near / near_minus_far,	0
 		},

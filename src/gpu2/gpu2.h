@@ -94,6 +94,7 @@ typedef struct Gpu2BindGroupLayoutCreateInfo
 	u32 index;
 	u32 num_bindings;
 	Gpu2ResourceBinding* bindings;
+	bool update_after_bind;
 } Gpu2BindGroupLayoutCreateInfo;
 typedef struct Gpu2BindGroupLayout Gpu2BindGroupLayout;
 
@@ -109,6 +110,7 @@ typedef struct Gpu2TextureBinding
 
 typedef struct Gpu2ResourceWrite
 {
+	u32 binding_index;
 	Gpu2BindingType type;
 	union 
 	{
@@ -121,10 +123,16 @@ typedef struct Gpu2BindGroupCreateInfo
 {
 	u32 index;
 	Gpu2BindGroupLayout* layout; 
+} Gpu2BindGroupCreateInfo;
+
+typedef struct Gpu2BindGroup Gpu2BindGroup;
+
+typedef struct Gpu2BindGroupUpdateInfo
+{
+	Gpu2BindGroup* bind_group;
 	u32 num_writes;
 	Gpu2ResourceWrite* writes;
-} Gpu2BindGroupCreateInfo;
-typedef struct Gpu2BindGroup Gpu2BindGroup;
+} Gpu2BindGroupUpdateInfo;
 
 static const u32 GPU2_BIND_GROUP_MAX_BINDINGS = 16;
 
@@ -132,8 +140,8 @@ typedef struct Gpu2RenderPipelineCreateInfo
 {
 	Gpu2Shader* vertex_shader;
 	Gpu2Shader* fragment_shader;
-	u32 num_bind_groups;
-	Gpu2BindGroup** bind_groups; 
+	u32 num_bind_group_layouts;
+	Gpu2BindGroupLayout** bind_group_layouts; 
 	bool depth_test_enabled;
 } Gpu2RenderPipelineCreateInfo;
 typedef struct Gpu2RenderPipeline Gpu2RenderPipeline;
@@ -180,14 +188,23 @@ typedef struct Gpu2RenderPassCreateInfo
 typedef struct Gpu2RenderPass Gpu2RenderPass;
 
 bool gpu2_create_device(Window* in_window, Gpu2Device* out_device);
+void gpu2_destroy_device(Gpu2Device* in_device);
+
+u32 gpu2_get_swapchain_count(Gpu2Device* in_device);
+
 bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader);
 
-bool gpu2_create_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout);
-bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group);
+bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout);
+bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group);
+void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo* in_update_info);
+void gpu2_destroy_bind_group(Gpu2Device* in_device, Gpu2BindGroup* in_bind_group);
+void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* in_bind_group_layout);
+
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline);
 
 bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer);
 void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info);
+void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
 void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
 
 bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture);
@@ -207,7 +224,6 @@ void gpu2_render_pass_draw(Gpu2RenderPass* in_render_pass, u32 vertex_start, u32
 
 void gpu2_present_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer, Gpu2Drawable* in_drawable);
 bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer);
-
 
 // FCS TODO: Remove bool returns.
 // FCS TODO: Rename "drawable" to something else

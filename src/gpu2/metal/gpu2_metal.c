@@ -24,9 +24,22 @@ struct Gpu2BindGroupLayout
 	Gpu2ResourceBinding bindings[GPU2_BIND_GROUP_MAX_BINDINGS];
 };
 
+// Stores a reference to the last write at a given binding offset
+//FCS TODO: Rename to denote it's metal-specific
+typedef struct Gpu2BindGroupWriteReference
+{
+	bool is_valid;
+	Gpu2BindingType type;
+	id<MTLBuffer> metal_buffer;
+	id<MTLTexture> metal_texture;
+} Gpu2BindGroupWriteReference;
+
 struct Gpu2BindGroup
 {
-	Gpu2BindGroupCreateInfo create_info;
+	Gpu2BindGroupLayout layout;
+	u64 binding_offsets[GPU2_BIND_GROUP_MAX_BINDINGS];
+	Gpu2BindGroupWriteReference write_references[GPU2_BIND_GROUP_MAX_BINDINGS];
+
 	id<MTLBuffer> metal_argument_buffer;
 };
 
@@ -76,6 +89,18 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 	return true;
 }
 
+void gpu2_destroy_device(Gpu2Device* in_device)
+{
+	in_device->metal_device = nil;
+	in_device->metal_layer = nil;
+	in_device->metal_queue = nil;
+}
+
+u32 gpu2_get_swapchain_count(Gpu2Device* in_device)
+{
+	return in_device->metal_layer.maximumDrawableCount;
+}
+
 bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader)
 {
 	String filename_string = string_new(in_create_info->filename);
@@ -88,12 +113,18 @@ bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_i
 
 	const char* entry_point = "main0";
 
-	NSError* error;
-	id<MTLLibrary> library = [in_device->metal_device newLibraryWithSource:[NSString stringWithUTF8String:shader_source] options:nil error:&error];
-	assert(!error);
+	NSError* lib_error = nil;
+	id<MTLLibrary> library = [in_device->metal_device newLibraryWithSource:[NSString stringWithUTF8String:shader_source] options:nil error:&lib_error];
+
+	if (lib_error)
+	{
+		NSLog(@"newLibraryWithSource Error: %@", lib_error);
+		assert(false);
+	}
+
 	assert(library);
 
-	id<MTLFunction> function = [library newFunctionWithName:[NSString stringWithUTF8String:entry_point]]; 
+	id<MTLFunction> function = [library newFunctionWithName:[NSString stringWithUTF8String:entry_point]];
 	assert(function);
 
 	*out_shader = (Gpu2Shader){
@@ -106,7 +137,7 @@ bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_i
 	return true;
 }
 
-bool gpu2_create_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout)
+bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout)
 {
 	out_bind_group_layout->index = in_create_info->index;
 	out_bind_group_layout->num_bindings = in_create_info->num_bindings;
@@ -115,23 +146,26 @@ bool gpu2_create_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayoutCre
 	return true;
 }
 
-bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group)
+bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group)
 {
 	*out_bind_group = (Gpu2BindGroup) {};	
 
-	out_bind_group->create_info = *in_create_info;
-	//FCS TODO: in_create_info bindings may not live long enough...
+	Gpu2BindGroupLayout* layout = in_create_info->layout;
+
+	out_bind_group->layout = *layout;
 
 	// Determine Argument Buffer Length
-	Gpu2BindGroupLayout* layout = in_create_info->layout;
 	u64 argument_buffer_size = 0;
 	for (i32 binding_index = 0; binding_index < layout->num_bindings; ++binding_index)
 	{
 		Gpu2ResourceBinding* resource_binding = &layout->bindings[binding_index];
+
+		// Store offset to this binding
+		out_bind_group->binding_offsets[binding_index] = argument_buffer_size;
 		switch(resource_binding->type)
 		{
 			case GPU2_BINDING_TYPE_BUFFER:
-				argument_buffer_size += sizeof(u64);
+				argument_buffer_size += 1 * sizeof(u64);
 				break;
 			case GPU2_BINDING_TYPE_TEXTURE:
 				//FCS TODO:
@@ -141,35 +175,74 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
 	}
 
 	// Create Argument Buffer
-	out_bind_group->metal_argument_buffer = [in_device->metal_device newBufferWithLength:argument_buffer_size options:MTLResourceCPUCacheModeDefaultCache];
+	MTLResourceOptions options = MTLResourceStorageModeShared | MTLResourceCPUCacheModeDefaultCache;
+	out_bind_group->metal_argument_buffer = [in_device->metal_device newBufferWithLength:argument_buffer_size options:options];
 
+	// Fill the entire buffer with zeroes
+	memset(out_bind_group->metal_argument_buffer.contents, 0, argument_buffer_size);
+
+	return true;
+}
+
+void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo* in_update_info)
+{
 	// Write Resources into Argument Buffer
-	void* buffer_contents = out_bind_group->metal_argument_buffer.contents;
-	for (i32 write_index = 0; write_index < in_create_info->num_writes; ++write_index)
+	Gpu2BindGroup* bind_group = in_update_info->bind_group;
+	Gpu2BindGroupLayout* layout = &bind_group->layout;
+	for (i32 write_index = 0; write_index < in_update_info->num_writes; ++write_index)
 	{
-		Gpu2ResourceWrite* resource_write = &in_create_info->writes[write_index];
-		Gpu2ResourceBinding* resource_binding = &layout->bindings[write_index];
+		Gpu2ResourceWrite* resource_write = &in_update_info->writes[write_index];	
+		u32 resource_binding_index = resource_write->binding_index;
+
+		assert(resource_binding_index < layout->num_bindings);
+		Gpu2ResourceBinding* resource_binding = &layout->bindings[resource_binding_index];
 		assert(resource_write->type == resource_binding->type);
+
+		u32 argbuffer_offset = bind_group->binding_offsets[resource_binding_index];	
+
 		switch (resource_write->type)
 		{
 			case GPU2_BINDING_TYPE_BUFFER:
 			{
 				Gpu2Buffer* buffer = resource_write->buffer_binding.buffer;
+				assert(buffer && buffer->metal_buffer);
+
+				// Get argbuffer contents
+				u8* argbuffer_contents = (u8*) bind_group->metal_argument_buffer.contents;
+				
+				// Account for binding offset
+				argbuffer_contents += argbuffer_offset;
+
 				const u64 gpu_address = buffer->metal_buffer.gpuAddress;
-				memcpy(buffer_contents, &gpu_address, sizeof(u64));
-				buffer_contents += sizeof(u64);
+				memcpy(argbuffer_contents, &gpu_address, sizeof(u64));
+
+				bind_group->write_references[resource_binding_index] = (Gpu2BindGroupWriteReference){
+					.is_valid = true,
+					.type = GPU2_BINDING_TYPE_BUFFER,
+					.metal_buffer = buffer->metal_buffer,
+				};
 				break;
 			}
 			case GPU2_BINDING_TYPE_TEXTURE:
 			{
 				//FCS TODO:
+				//FCS TODO: write_references info
 				assert(false);
 				break;
 			}
 		}
 	}
+}
 
-	return true;
+void gpu2_destroy_bind_group(Gpu2Device* in_device, Gpu2BindGroup* in_bind_group)
+{
+	in_bind_group->metal_argument_buffer = nil;
+	*in_bind_group = (Gpu2BindGroup){};
+}
+
+void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* in_bind_group_layout)
+{
+	*in_bind_group_layout = (Gpu2BindGroupLayout){};
 }
 
 //FCS TODO: currently just assumes a single MTLPixelFormatBGRA8Unorm color attachment
@@ -206,13 +279,19 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 {
 	*out_buffer = (Gpu2Buffer){};
 
+	MTLResourceOptions options = MTLResourceCPUCacheModeDefaultCache;
+	if (in_create_info->is_cpu_visible)
+	{
+		options |= MTLStorageModeShared;
+	}
+
 	if (in_create_info->data)
 	{
-		out_buffer->metal_buffer = [in_device->metal_device newBufferWithBytes:in_create_info->data length:in_create_info->size options:MTLResourceCPUCacheModeDefaultCache];
+		out_buffer->metal_buffer = [in_device->metal_device newBufferWithBytes:in_create_info->data length:in_create_info->size options:options];
 	}
 	else
 	{
-		out_buffer->metal_buffer = [in_device->metal_device newBufferWithLength:in_create_info->size options:MTLResourceCPUCacheModeDefaultCache];
+		out_buffer->metal_buffer = [in_device->metal_device newBufferWithLength:in_create_info->size options:options];
 	}
 
 	return true;
@@ -222,6 +301,11 @@ void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferW
 {
 	assert(in_buffer->metal_buffer.contents != NULL);
 	memcpy(in_buffer->metal_buffer.contents, in_write_info->data, in_write_info->size);
+}
+
+void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+{
+	return in_buffer->metal_buffer.contents;
 }
 
 void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
@@ -374,11 +458,12 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 			metal_render_pass_descriptor.colorAttachments[i].texture = color_attachment->texture->metal_texture;
 			metal_render_pass_descriptor.colorAttachments[i].loadAction = gpu2_load_action_to_metal_load_action(color_attachment->load_action);
 			metal_render_pass_descriptor.colorAttachments[i].storeAction = gpu2_store_action_to_metal_store_action(color_attachment->store_action);
-			const float r = color_attachment->clear_color[0];
-			const float g = color_attachment->clear_color[1];
-			const float b = color_attachment->clear_color[2];
-			const float a = color_attachment->clear_color[3];
-			metal_render_pass_descriptor.colorAttachments[i].clearColor = MTLClearColorMake(r,g,b,a);
+			metal_render_pass_descriptor.colorAttachments[i].clearColor = MTLClearColorMake(
+				color_attachment->clear_color[0],
+				color_attachment->clear_color[1],
+				color_attachment->clear_color[2],
+				color_attachment->clear_color[3]
+			);
 		}
 	}
 
@@ -386,6 +471,8 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 	if (depth_attachment)
 	{
 		metal_render_pass_descriptor.depthAttachment.texture = depth_attachment->texture->metal_texture;
+		metal_render_pass_descriptor.depthAttachment.loadAction = gpu2_load_action_to_metal_load_action(depth_attachment->load_action);
+		metal_render_pass_descriptor.depthAttachment.storeAction = gpu2_store_action_to_metal_store_action(depth_attachment->store_action);
 		metal_render_pass_descriptor.depthAttachment.clearDepth = depth_attachment->clear_depth;
 	}
 
@@ -408,14 +495,16 @@ void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderP
 	assert(in_render_pass);
 	assert(in_bind_group);
 	
-	//FCS TODO: This might not live long enough...
-	Gpu2BindGroupLayout* layout = in_bind_group->create_info.layout;
-
+	Gpu2BindGroupLayout* layout = &in_bind_group->layout;
 	for (i32 binding_index = 0; binding_index < layout->num_bindings; ++binding_index)
 	{
-		Gpu2ResourceBinding* resource_binding = &layout->bindings[binding_index];
-	  	Gpu2ResourceWrite* resource_write = &in_bind_group->create_info.writes[binding_index];
+		Gpu2BindGroupWriteReference* write_reference = &in_bind_group->write_references[binding_index];
+		if (!write_reference->is_valid)
+		{
+			continue;
+		}
 
+		Gpu2ResourceBinding* resource_binding = &layout->bindings[binding_index];
 		MTLRenderStages metal_render_stages = 0;	
 		if (BIT_COMPARE(resource_binding->shader_stages, GPU2_SHADER_STAGE_VERTEX))
 		{
@@ -426,16 +515,40 @@ void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderP
 			metal_render_stages |= MTLRenderStageFragment;
 	  	}
 	  		
-		[in_render_pass->metal_render_command_encoder useResource:resource_write->buffer_binding.buffer->metal_buffer usage:MTLResourceUsageRead stages:metal_render_stages];
+	  	switch(write_reference->type)
+		{
+			case GPU2_BINDING_TYPE_BUFFER:
+				[in_render_pass->metal_render_command_encoder 
+					useResource:write_reference->metal_buffer 
+					usage:MTLResourceUsageRead
+	  				stages:metal_render_stages
+				];
+	  			break;
+	  		case GPU2_BINDING_TYPE_TEXTURE:
+				//[in_render_pass->metal_render_command_encoder 
+				//	useResource:write_reference->metal_texture
+				//	usage:MTLResourceUsageRead
+				//	stages:metal_render_stages
+				//];
+	  			break;
+		}
 	}
 
-	[in_render_pass->metal_render_command_encoder setVertexBuffer:in_bind_group->metal_argument_buffer offset:0 atIndex:in_bind_group->create_info.index];
-	[in_render_pass->metal_render_command_encoder setFragmentBuffer:in_bind_group->metal_argument_buffer offset:0 atIndex:in_bind_group->create_info.index];	
+	[in_render_pass->metal_render_command_encoder
+		setVertexBuffer:in_bind_group->metal_argument_buffer
+		offset:0 
+		atIndex:layout->index
+	];
+
+	[in_render_pass->metal_render_command_encoder
+		setFragmentBuffer:in_bind_group->metal_argument_buffer
+		offset:0
+		atIndex:layout->index
+	];	
 }
 
 void gpu2_render_pass_draw(Gpu2RenderPass* in_render_pass, u32 vertex_start, u32 vertex_count)
 {
-	//FCS TODO: primitive type arg? 
 	[in_render_pass->metal_render_command_encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:vertex_start vertexCount:vertex_count];
 }
 

@@ -1,19 +1,22 @@
 
 # working on gpu2 code for now...
-./gpu2_test.sh $1
-echo "REMOVE ME: TEMP: Just ran gpu2_test from build.sh"
-exit 0
+#./gpu2_test.sh $1
+#echo "REMOVE ME: TEMP: Just ran gpu2_test from build.sh"
+#exit 0
 
 rm -r ./bin/
 mkdir ./bin/
 
-#TODO: Remove once GPU2 is complete
-./data/shaders/compile_shaders.sh
+./gpu2_compile_shaders.sh data/shaders/gpu2
 
-./gpu2_compile_shaders.sh data/shaders
+# Metal Debugging Options 
+export MTL_DEBUG_LAYER=1
 
+# Molten VK Options
 export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1
 export MVK_CONFIG_LOG_LEVEL=3
+export MVK_CONFIG_LOG_SHADER_CONVERSION=1
+export MVK_CONFIG_LOG_METAL_SHADER_COMPILE=1
 export MVK_DEBUG=1
 
 if [ "$1" = "metal" ] || [ "$1" = "mtl" ]; then 

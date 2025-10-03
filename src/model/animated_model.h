@@ -4,6 +4,7 @@
 #include "math/matrix.h"
 #include "math/vec.h"
 #include "math/quat.h"
+#include "model/static_model.h"
 #include "gltf.h"
 #include "gpu/gpu.h"
 #include "types.h"
@@ -58,11 +59,6 @@ typedef struct BakedAnimation
 // ---- Animated Model ---- //
 typedef struct SkinnedVertex
 {
-    Vec4 position;
-    Vec4 normal;
-    Vec4 color;
-    Vec2 uv;
-	Vec2 padding;
     Vec4 joint_indices;
     Vec4 joint_weights;
 } SkinnedVertex;
@@ -72,7 +68,8 @@ typedef struct AnimatedModel
     GltfAsset gltf_asset;
 
     i32 num_vertices;
-    SkinnedVertex* vertices;
+    StaticVertex* static_vertices;
+	SkinnedVertex* skinned_vertices;
 
     i32 num_indices;
     u32* indices;
@@ -82,17 +79,12 @@ typedef struct AnimatedModel
 	BakedAnimation baked_animation;
 
 	// GPU DATA
-    GpuBuffer vertex_buffer;
-	StorageBufferHandle vertex_buffer_handle;
-
-    GpuBuffer index_buffer;
-	StorageBufferHandle index_buffer_handle;
-
+    Gpu2Buffer static_vertex_buffer;
+	Gpu2Buffer skinned_vertex_buffer;
+    Gpu2Buffer index_buffer;
 
 	size_t joints_buffer_size;
-	GpuBuffer inverse_bind_matrices_buffer;
-	StorageBufferHandle inverse_bind_matrices_buffer_handle;
-
+	Gpu2Buffer inverse_bind_matrices_buffer;
 } AnimatedModel;
 
 typedef struct NodeAnimData 
@@ -230,7 +222,7 @@ Mat4 compute_animated_node_transform(GltfNode* target_node, GltfNode* nodes_arra
 	}
 }
 
-bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, BindlessResourceManager* bindless_resource_manager, AnimatedModel* out_model)
+bool animated_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, AnimatedModel* out_model)
 {
     assert(out_model);
     memset(out_model, 0, sizeof(AnimatedModel));
@@ -273,7 +265,8 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Bindles
         return false;
     }
 
-    out_model->vertices = calloc(out_model->num_vertices, sizeof(SkinnedVertex));
+    out_model->static_vertices = calloc(out_model->num_vertices, sizeof(StaticVertex));
+    out_model->skinned_vertices = calloc(out_model->num_vertices, sizeof(SkinnedVertex));
     out_model->indices = calloc(out_model->num_indices, sizeof(u32));
 
     // Flatten all primitives into a single vertex/index array pair
@@ -312,27 +305,25 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Bindles
             i32 out_index = i + vertex_offset;
             assert(out_index < out_model->num_vertices);
 
-            memcpy(&out_model->vertices[out_index].position, positions_buffer, positions_byte_stride);
-			out_model->vertices[out_index].position.w = 1.0;
-            memcpy(&out_model->vertices[out_index].normal, normals_buffer, normals_byte_stride);
-			out_model->vertices[out_index].normal.w = 0.0;
-            memcpy(&out_model->vertices[out_index].color, (float[4]){0.8f, 0.2f, 0.2f, 1.0f}, sizeof(float) * 4);
-            //memcpy(&out_model->vertices[out_index].uv, uvs_buffer, uvs_byte_stride);
+            memcpy(&out_model->static_vertices[out_index].position, positions_buffer, positions_byte_stride);
+			out_model->static_vertices[out_index].position.w = 1.0;
+            memcpy(&out_model->static_vertices[out_index].normal, normals_buffer, normals_byte_stride);
+			out_model->static_vertices[out_index].normal.w = 0.0;
+            memcpy(&out_model->static_vertices[out_index].color, (float[4]){0.8f, 0.2f, 0.2f, 1.0f}, sizeof(float) * 4);
 
 			// Joint Indices can't just be memcpy'd into a vec4 as they may be smaller than 32-bits
 			const i32 joint_indices_component_size = gltf_component_type_size(primitive->joint_indices->component_type);
 			for (i32 i = 0; i < 4; ++i)
 			{
 				i32 joint_idx = (i32) *(joint_indices_buffer + (joint_indices_component_size * i));
-				float* vec_ptr = (float*)&out_model->vertices[out_index].joint_indices;
+				float* vec_ptr = (float*)&out_model->skinned_vertices[out_index].joint_indices;
 				vec_ptr[i] = (float) joint_idx; 
 			}
 
-            memcpy(&out_model->vertices[out_index].joint_weights, joint_weights_buffer, joint_weights_byte_stride);
+            memcpy(&out_model->skinned_vertices[out_index].joint_weights, joint_weights_buffer, joint_weights_byte_stride);
 
             positions_buffer += positions_byte_stride;
             normals_buffer += normals_byte_stride;
-            //uvs_buffer += uvs_byte_stride;
 
             joint_indices_buffer += joint_indices_byte_stride;
             joint_weights_buffer += joint_weights_byte_stride;
@@ -501,62 +492,58 @@ bool animated_model_load(const char* gltf_path, GpuContext* gpu_context, Bindles
 
     // GPU Data Setup
     {
-		{
-			GpuBufferCreateInfo vertex_buffer_create_info = {
+		Gpu2BufferCreateInfo static_vertex_buffer_create_info = {
+				.is_cpu_visible = true,
+				.size = sizeof(StaticVertex) * out_model->num_vertices,
+				.data = out_model->static_vertices,
+			};
+		assert(gpu2_create_buffer(in_gpu_device, &static_vertex_buffer_create_info, &out_model->static_vertex_buffer));
+
+		Gpu2BufferCreateInfo skinned_vertex_buffer_create_info = {
+				.is_cpu_visible = true,
 				.size = sizeof(SkinnedVertex) * out_model->num_vertices,
-				.usage =  GPU_BUFFER_USAGE_STORAGE_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
-				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-				.debug_name = "animated model vertex buffer",
+				.data = out_model->skinned_vertices,
 			};
-			out_model->vertex_buffer = gpu_create_buffer(gpu_context, &vertex_buffer_create_info);
-			gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertex_buffer_create_info.size, out_model->vertices);
-			out_model->vertex_buffer_handle = bindless_resource_manager_register_storage_buffer(gpu_context, bindless_resource_manager, &out_model->vertex_buffer);
-		}
+		assert(gpu2_create_buffer(in_gpu_device, &skinned_vertex_buffer_create_info, &out_model->skinned_vertex_buffer));
 
-		{
-			GpuBufferCreateInfo index_buffer_create_info = {
+		Gpu2BufferCreateInfo index_buffer_create_info = {
+				.is_cpu_visible = true,
 				.size = sizeof(u32) * out_model->num_indices,
-				.usage =  GPU_BUFFER_USAGE_STORAGE_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
-				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-				.debug_name = "animated model index buffer",
+				.data = out_model->indices,
 			};
-			out_model->index_buffer = gpu_create_buffer(gpu_context, &index_buffer_create_info);
-			gpu_upload_buffer(gpu_context, &out_model->index_buffer, index_buffer_create_info.size, out_model->indices);
-			out_model->index_buffer_handle = bindless_resource_manager_register_storage_buffer(gpu_context, bindless_resource_manager, &out_model->index_buffer);
-		}
+		assert(gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer));
 
-		{
-			// Size of our joint related matrices buffers
-			out_model->joints_buffer_size = out_model->num_joints * sizeof(Mat4);
 
-			GpuBufferCreateInfo joint_buffers_create_info = {
+		// Size of our joint related matrices buffers
+		out_model->joints_buffer_size = out_model->num_joints * sizeof(Mat4);
+
+		Gpu2BufferCreateInfo joints_buffer_create_info = {
+				.is_cpu_visible = true,
 				.size = out_model->joints_buffer_size,
-				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
-				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL | GPU_MEMORY_PROPERTY_HOST_VISIBLE | GPU_MEMORY_PROPERTY_HOST_COHERENT,
-				.debug_name = "animated model joint buffer",
+				.data = out_model->inverse_bind_matrices,
 			};
-			out_model->inverse_bind_matrices_buffer = gpu_create_buffer(gpu_context, &joint_buffers_create_info);
-			gpu_upload_buffer(gpu_context, &out_model->inverse_bind_matrices_buffer, out_model->joints_buffer_size, out_model->inverse_bind_matrices);
-			out_model->inverse_bind_matrices_buffer_handle = bindless_resource_manager_register_storage_buffer(gpu_context, bindless_resource_manager, &out_model->inverse_bind_matrices_buffer);
-		}
+		assert(gpu2_create_buffer(in_gpu_device, &joints_buffer_create_info, &out_model->inverse_bind_matrices_buffer));
 
+		// Animated joint buffers will be setup later
     }
 
     return true;
 }
 
-void animated_model_free(GpuContext* gpu_context, BindlessResourceManager* bindless_resource_manager, AnimatedModel* in_model)
+void animated_model_free(Gpu2Device* in_gpu_device, AnimatedModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
-    free(in_model->vertices);
+    free(in_model->static_vertices);
+    free(in_model->skinned_vertices);
     free(in_model->indices);
 	free(in_model->inverse_bind_matrices);
 
 	// Unregister and destroy bindless resources
-	bindless_resource_manager_unregister_storage_buffer(gpu_context, bindless_resource_manager, in_model->vertex_buffer_handle);
-	bindless_resource_manager_unregister_storage_buffer(gpu_context, bindless_resource_manager, in_model->index_buffer_handle);
-	bindless_resource_manager_unregister_storage_buffer(gpu_context, bindless_resource_manager, in_model->inverse_bind_matrices_buffer_handle);
+	gpu2_destroy_buffer(in_gpu_device, &in_model->static_vertex_buffer);	
+	gpu2_destroy_buffer(in_gpu_device, &in_model->skinned_vertex_buffer);	
+	gpu2_destroy_buffer(in_gpu_device, &in_model->index_buffer);
+	gpu2_destroy_buffer(in_gpu_device, &in_model->inverse_bind_matrices_buffer);
 
 	for (i32 keyframe_idx = 0; keyframe_idx < in_model->baked_animation.num_keyframes; ++keyframe_idx)
 	{
@@ -566,7 +553,7 @@ void animated_model_free(GpuContext* gpu_context, BindlessResourceManager* bindl
 	free(in_model->baked_animation.keyframes);
 }
 
-void animated_model_update_animation(GpuContext* gpu_context, AnimatedModel* in_model, float in_anim_time, Mat4* out_joint_matrices)
+void animated_model_update_animation(AnimatedModel* in_model, float in_anim_time, Mat4* out_joint_matrices)
 {
 	assert(out_joint_matrices); 
 

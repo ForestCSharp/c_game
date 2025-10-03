@@ -1,8 +1,7 @@
 #pragma once
 
 #include "gltf.h"
-#include "gpu/gpu.h"
-#include "gpu/bindless.h"
+#include "gpu2/gpu2.h"
 #include "types.h"
 #include "assert.h"
 
@@ -25,11 +24,8 @@ typedef struct StaticModel
     i32 num_indices;
     u32* indices;
 
-    GpuBuffer vertex_buffer;
-    GpuBuffer index_buffer;
-
-	StorageBufferHandle vertex_buffer_handle;
-	StorageBufferHandle index_buffer_handle;
+    Gpu2Buffer vertex_buffer;
+    Gpu2Buffer index_buffer;
 } StaticModel;
 
 Mat4 compute_static_node_transform(GltfNode* target_node, GltfNode* nodes_array, i32 num_nodes)
@@ -46,7 +42,7 @@ Mat4 compute_static_node_transform(GltfNode* target_node, GltfNode* nodes_array,
 	return computed_transform;
 }
 
-bool static_model_load(const char* gltf_path, GpuContext* gpu_context, BindlessResourceManager* bindless_resource_manager, StaticModel* out_model)
+bool static_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, StaticModel* out_model)
 {
     assert(out_model);
     memset(out_model, 0, sizeof(StaticModel));
@@ -165,43 +161,32 @@ bool static_model_load(const char* gltf_path, GpuContext* gpu_context, BindlessR
 
     // GPU Data Setup
     {
-		{
-			GpuBufferCreateInfo vertex_buffer_create_info = {
-				.size = sizeof(StaticVertex) * out_model->num_vertices,
-				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
-				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-				.debug_name = "static model vertex buffer",
-			};
-			out_model->vertex_buffer = gpu_create_buffer(gpu_context, &vertex_buffer_create_info);
-			gpu_upload_buffer(gpu_context, &out_model->vertex_buffer, vertex_buffer_create_info.size, out_model->vertices);
-		}
+		Gpu2BufferCreateInfo vertex_buffer_create_info = {
+			.is_cpu_visible = true,
+			.size = sizeof(StaticVertex) * out_model->num_vertices,
+			.data = out_model->vertices,
+		};
+		assert(gpu2_create_buffer(in_gpu_device, &vertex_buffer_create_info, &out_model->vertex_buffer));
 
-		{
-			GpuBufferCreateInfo index_buffer_create_info = {
-				.size = sizeof(u32) * out_model->num_indices,
-				.usage =  GPU_BUFFER_USAGE_STORAGE_BUFFER | GPU_BUFFER_USAGE_TRANSFER_DST,
-				.memory_properties = GPU_MEMORY_PROPERTY_DEVICE_LOCAL,
-				.debug_name = "static model index buffer",
-			};
-			out_model->index_buffer = gpu_create_buffer(gpu_context, &index_buffer_create_info);
-			gpu_upload_buffer(gpu_context, &out_model->index_buffer, index_buffer_create_info.size, out_model->indices);
-		}
-
-
-		out_model->vertex_buffer_handle = bindless_resource_manager_register_storage_buffer(gpu_context, bindless_resource_manager, &out_model->vertex_buffer);
-		out_model->index_buffer_handle = bindless_resource_manager_register_storage_buffer(gpu_context, bindless_resource_manager, &out_model->index_buffer);
+		Gpu2BufferCreateInfo index_buffer_create_info = {
+			.is_cpu_visible = true,
+			.size = sizeof(u32) * out_model->num_indices,
+			.data = out_model->indices,
+		};
+		Gpu2Buffer index_buffer;
+		assert(gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer));
     }
 
 
     return true;
 }
 
-void static_model_free(GpuContext* gpu_context, BindlessResourceManager* bindless_resource_manager, StaticModel* in_model)
+void static_model_free(Gpu2Device* in_gpu_device, StaticModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
     free(in_model->vertices);
     free(in_model->indices);
-	bindless_resource_manager_unregister_storage_buffer(gpu_context, bindless_resource_manager, in_model->vertex_buffer_handle);
-	bindless_resource_manager_unregister_storage_buffer(gpu_context, bindless_resource_manager, in_model->index_buffer_handle);
+	gpu2_destroy_buffer(in_gpu_device, &in_model->vertex_buffer);	
+	gpu2_destroy_buffer(in_gpu_device, &in_model->index_buffer);
 }

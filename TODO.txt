@@ -1,6 +1,8 @@
 
 [We're Back! -> Gpu Abstraction Purgatory Part N]
 - get metal and vulkan backends propped up
+- explore bindless options that work with Metal and Vulkan
+	- Currently looking into 1 binding per set and using unique set for unbounded resource lists?
 - start porting over old graphics code
 - evaluate API design
 - ???

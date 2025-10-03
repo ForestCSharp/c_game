@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "app/app.h"
+#include "timer.h"
 
 // GPU2_IMPLEMENTATION_<BACKEND> set up in build.sh	
 #include "gpu2/gpu2.c"
@@ -14,16 +15,13 @@
 
 #include "stretchy_buffer.h"
 
-typedef struct Gpu2TestVertex
-{
-    Vec4 position;
-    Vec4 normal;
-    Vec4 color;
-    Vec2 uv;
-	Vec2 padding;
-} Gpu2TestVertex;
+#include "model/static_model.h"
+#include "model/animated_model.h"
 
-void gpu2_test_append_box(const Vec3 axes[3], const float half_extents[3], sbuffer(Gpu2TestVertex)* out_vertices, sbuffer(u32)* out_indices);
+//FCS TODO: IN ORDER
+// Skinned Model Port (kill bindless)
+// Game Object Port (kill bindless)
+// UI Port
 
 int main()
 {
@@ -34,6 +32,32 @@ int main()
 
 	Gpu2Device gpu2_device;
 	assert(gpu2_create_device(&window, &gpu2_device));
+
+	// Set up Static Model
+	StaticModel static_model;
+	if (!static_model_load("data/meshes/Monkey.glb", &gpu2_device, &static_model))
+	{
+		printf("Failed to Load Static Model\n");
+		return 1;
+	}
+
+	// Set up Animated Model 
+	AnimatedModel animated_model;
+	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu2_device, &animated_model))
+	{
+		printf("Failed to Load Animated Model\n");
+		return 1;
+	}
+
+	// Go ahead and allocate the buffer we use to animate our joints
+	Mat4* joint_matrices = calloc(animated_model.num_joints, sizeof(Mat4));
+	Gpu2BufferCreateInfo joints_buffer_create_info = {
+		.is_cpu_visible = true,
+		.size = animated_model.joints_buffer_size,
+		.data = joint_matrices,
+	};
+	Gpu2Buffer joint_matrices_buffer;
+	assert(gpu2_create_buffer(&gpu2_device, &joints_buffer_create_info, &joint_matrices_buffer));
 
 	Gpu2ShaderCreateInfo vertex_shader_create_info = {
 		.filename = "bin/shaders/gpu2_test.vert",
@@ -47,121 +71,209 @@ int main()
 	Gpu2Shader gpu2_fragment_shader;
 	assert(gpu2_create_shader(&gpu2_device, &fragment_shader_create_info, &gpu2_fragment_shader));
 
-	sbuffer(Gpu2TestVertex) gpu2_vertices = NULL;
-	sbuffer(u32) gpu2_indices = NULL;
-
-	Vec3 box_axes[3] = {
-		vec3_new(1,0,0),
-		vec3_new(0,1,0),
-		vec3_new(0,0,1)
-	};
-	float box_halfwidths[3] = {1.0f, 1.0f, 1.0f};
-	gpu2_test_append_box(box_axes, box_halfwidths, &gpu2_vertices, &gpu2_indices);	
-
-	Gpu2BufferCreateInfo vertex_buffer_create_info = {
-		.is_cpu_visible = true,
-		.size = sb_count(gpu2_vertices) * sizeof(Gpu2TestVertex),
-		.data = gpu2_vertices,
-	};
-	Gpu2Buffer vertex_buffer;
-	assert(gpu2_create_buffer(&gpu2_device, &vertex_buffer_create_info, &vertex_buffer));
-
-	Gpu2BufferCreateInfo index_buffer_create_info = {
-		.is_cpu_visible = true,
-		.size = sb_count(gpu2_indices) * sizeof(u32),
-		.data = gpu2_indices,
-	};
-	Gpu2Buffer index_buffer;
-	assert(gpu2_create_buffer(&gpu2_device, &index_buffer_create_info, &index_buffer));
-
-	typedef struct Gpu2TestUniformStruct {
+	typedef struct UniformStruct {
 		Mat4 model;
 		Mat4 view;
 		Mat4 projection;
-	} Gpu2TestUniformStruct;
+		bool is_skinned;
+		uint padding[3];
+	} UniformStruct;
 
-	Quat rotation = quat_identity;
-	Vec3 translation = vec3_new(0,0,5);
+	Mat4 view_matrix = mat4_look_at(vec3_new(0,0,0), vec3_new(0,0,1), vec3_new(0,1,0));
+	Mat4 proj_matrix = mat4_perspective(60.0f, (float)window_width / (float)window_height, 0.01f, 4000.0f);
 
-	Mat4 model_matrix = mat4_mul_mat4(quat_to_mat4(rotation), mat4_translation(translation));
+	// Static Uniform Data Setup
+	Quat static_rotation = quat_identity;
+	Vec3 static_translation = vec3_new(-2,0.25,5);
 
-	//FCS TODO: Only write in loop. Not initially
-	Gpu2TestUniformStruct gpu2_uniform_data = {
-		.model = model_matrix,
-		.view = mat4_look_at(vec3_new(0,0,0), vec3_new(0,0,1), vec3_new(0,1,0)),
-		.projection = mat4_perspective(60.0f, (float)window_width / (float)window_height, 0.01f, 4000.0f),
+	Mat4 static_model_matrix = mat4_mul_mat4(
+		mat4_scale(vec3_new(1, 1, 1)),
+		mat4_mul_mat4(
+			quat_to_mat4(static_rotation), 
+			mat4_translation(static_translation)
+		)
+	);
+
+	UniformStruct static_uniform_data = {
+		.model = static_model_matrix,
+		.view = view_matrix,
+		.projection = proj_matrix,
+		.is_skinned = false,
 	};
 	
-	Gpu2BufferCreateInfo uniform_buffer_create_info = {
+	Gpu2BufferCreateInfo static_uniform_buffer_create_info = {
 		.is_cpu_visible = true,
-		.size = sizeof(Gpu2TestUniformStruct),
-		.data = &gpu2_uniform_data,
+		.size = sizeof(UniformStruct),
+		.data = &static_uniform_data,
 	};
-	Gpu2Buffer uniform_buffer;
-	assert(gpu2_create_buffer(&gpu2_device, &uniform_buffer_create_info, &uniform_buffer));
+	Gpu2Buffer static_uniform_buffer;
+	assert(gpu2_create_buffer(&gpu2_device, &static_uniform_buffer_create_info, &static_uniform_buffer));
 
-	Gpu2ResourceBinding bindings[] = 
-	{
-		{
-			.type = GPU2_BINDING_TYPE_BUFFER,
-			.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
-		},
-		{	
-			.type = GPU2_BINDING_TYPE_BUFFER,
-			.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
-		},
-		{	
-			.type = GPU2_BINDING_TYPE_BUFFER,
-			.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
-		}
+	// Animated Uniform Data Setup
+	Quat animated_rotation = quat_new(vec3_new(0,1,0), 180.f * DEGREES_TO_RADIANS); 
+	Vec3 animated_translation = vec3_new(2,-0.5,5);
+
+	Mat4 animated_model_matrix = mat4_mul_mat4(
+		mat4_scale(vec3_new(1, 1, 1)),
+		mat4_mul_mat4(
+			quat_to_mat4(animated_rotation), 
+			mat4_translation(animated_translation)
+		)
+	);
+
+	UniformStruct animated_uniform_data = {
+		.model = animated_model_matrix,
+		.view = view_matrix,
+		.projection = proj_matrix,
+		.is_skinned = true,
 	};
+	
+	Gpu2BufferCreateInfo animated_uniform_buffer_create_info = {
+		.is_cpu_visible = true,
+		.size = sizeof(UniformStruct),
+		.data = &animated_uniform_data,
+	};
+	Gpu2Buffer animated_uniform_buffer;
+	assert(gpu2_create_buffer(&gpu2_device, &animated_uniform_buffer_create_info, &animated_uniform_buffer));
 
+	//FCS TODO: HERE! Create Separate static and skinned vertex shaders, bind-group-layouts, etc.
+	
+	// Create Bind Group Layout
 	Gpu2BindGroupLayoutCreateInfo bind_group_layout_create_info = {
 		.index = 0,
-		.num_bindings = ARRAY_COUNT(bindings),
-		.bindings = bindings,
+		.num_bindings = 6,
+		.bindings = (Gpu2ResourceBinding[6]){
+			{
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+			},
+			{
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+			},
+			{
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+			},
+			{
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+			},
+			{
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+			},
+			{
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU2_SHADER_STAGE_VERTEX | GPU2_SHADER_STAGE_FRAGMENT,	
+			},
+		},
 	};
-
 	Gpu2BindGroupLayout bind_group_layout;
 	assert(gpu2_create_bind_group_layout(&gpu2_device, &bind_group_layout_create_info, &bind_group_layout));
 
-	Gpu2ResourceWrite writes[] = {
-		{
-			.type = GPU2_BINDING_TYPE_BUFFER,
-			.buffer_binding = {
-				.buffer = &vertex_buffer,
-			},
-		},
-		{
-			.type = GPU2_BINDING_TYPE_BUFFER,
-			.buffer_binding = {
-				.buffer = &index_buffer,
-			},
-		},
-		{
-			.type = GPU2_BINDING_TYPE_BUFFER,
-			.buffer_binding = {
-				.buffer = &uniform_buffer,
-			},
-		}
-	};
-
-	Gpu2BindGroupCreateInfo bind_group_create_info = {
+	// Create Static Bind Group
+	Gpu2BindGroupCreateInfo static_bind_group_create_info = {
 		.layout = &bind_group_layout,
-		.num_writes = ARRAY_COUNT(writes),
-		.writes = writes,
 	};
+	Gpu2BindGroup static_bind_group;
+	assert(gpu2_create_bind_group(&gpu2_device, &static_bind_group_create_info, &static_bind_group));
 
-	Gpu2BindGroup bind_group;
-	assert(gpu2_create_bind_group(&gpu2_device, &bind_group_create_info, &bind_group));		
+	// Create Animated Bind Group
+	Gpu2BindGroupCreateInfo animated_bind_group_create_info = {
+		.layout = &bind_group_layout,
+	};
+	Gpu2BindGroup animated_bind_group;
+	assert(gpu2_create_bind_group(&gpu2_device, &animated_bind_group_create_info, &animated_bind_group));
 
-	Gpu2BindGroup* pipeline_bind_groups[] = { &bind_group };
+	//  Write updates to our static bind group
+	const Gpu2BindGroupUpdateInfo static_bind_group_update_info = {
+		.bind_group = &static_bind_group,
+		.num_writes = 3,
+		.writes = (Gpu2ResourceWrite[3]){
+			{
+				.binding_index = 0,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &static_model.vertex_buffer,
+				},
+			},
+			{
+				.binding_index = 1,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &static_model.index_buffer,
+				},
+			},
+			{
+				.binding_index = 2,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &static_uniform_buffer,
+				},
+			},
+		},
+	};
+	gpu2_update_bind_group(&gpu2_device, &static_bind_group_update_info);
+
+	//  Write updates to our animated bind group
+	const Gpu2BindGroupUpdateInfo animated_bind_group_update_info = {
+		.bind_group = &animated_bind_group,
+		.num_writes = 6,
+		.writes = (Gpu2ResourceWrite[6]){
+			{
+				.binding_index = 0,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &animated_model.static_vertex_buffer,
+				},
+			},
+			{
+				.binding_index = 1,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &animated_model.index_buffer,
+				},
+			},
+			{
+				.binding_index = 2,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &animated_uniform_buffer,
+				},
+			},
+			{
+				.binding_index = 3,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &animated_model.skinned_vertex_buffer,
+				},
+			},
+			{
+				.binding_index = 4,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &animated_model.inverse_bind_matrices_buffer,
+				},
+			},
+			{
+				.binding_index = 5,
+				.type = GPU2_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &joint_matrices_buffer,
+				},
+			},
+		},
+	};
+	gpu2_update_bind_group(&gpu2_device, &animated_bind_group_update_info);
+
+	Gpu2BindGroupLayout* pipeline_bind_group_layouts[] = { &bind_group_layout };
 
 	Gpu2RenderPipelineCreateInfo render_pipeline_create_info = {
 		.vertex_shader = &gpu2_vertex_shader,
 		.fragment_shader = &gpu2_fragment_shader,
-		.num_bind_groups = ARRAY_COUNT(pipeline_bind_groups),
-		.bind_groups = pipeline_bind_groups,
+		.num_bind_group_layouts = ARRAY_COUNT(pipeline_bind_group_layouts),
+		.bind_group_layouts = pipeline_bind_group_layouts,
 		.depth_test_enabled = true,
 	};
 	Gpu2RenderPipeline gpu2_render_pipeline;
@@ -179,23 +291,49 @@ int main()
 	Gpu2Texture depth_texture;
 	assert(gpu2_create_texture(&gpu2_device, &depth_texture_create_info, &depth_texture));
 
+	u64 time = time_now();
+
 	while (window_handle_messages(&window))
 	{
 		if (window_input_pressed(&window, KEY_ESCAPE))
 		{
 			break;
 		}
+		
+        const u64 new_time = time_now();
+        const double delta_time = time_seconds(new_time - time);
+        time = new_time;
 
-		{	// Updating Uniform Data
-			rotation = quat_mul(rotation, quat_new(vec3_new(0,1,0), 0.01f));
-			gpu2_uniform_data.model = mat4_mul_mat4(quat_to_mat4(rotation), mat4_translation(translation));
+		{	// Updating Static Uniform Data
+			static_rotation = quat_mul(static_rotation, quat_new(vec3_new(0,1,0), 0.01f));
+			static_uniform_data.model = mat4_mul_mat4(quat_to_mat4(static_rotation), mat4_translation(static_translation));
 			Gpu2BufferWriteInfo uniform_buffer_write_info = {
-				.size = sizeof(Gpu2TestUniformStruct),
-				.data = &gpu2_uniform_data,
+				.size = sizeof(UniformStruct),
+				.data = &static_uniform_data,
 			};
-			gpu2_write_buffer(&gpu2_device, &uniform_buffer, &uniform_buffer_write_info);
+			gpu2_write_buffer(&gpu2_device, &static_uniform_buffer, &uniform_buffer_write_info);
 		}
 
+		{	// Updating Animated Model
+			static float current_anim_time = 0.0f;
+			static const float animation_rate = 1.0f;
+			current_anim_time += (delta_time * animation_rate);
+			if (current_anim_time > animated_model.baked_animation.end_time)
+			{ 
+				current_anim_time = animated_model.baked_animation.start_time;
+			}
+			if (current_anim_time < animated_model.baked_animation.start_time)
+			{ 
+				current_anim_time = animated_model.baked_animation.end_time;
+			}
+
+			animated_model_update_animation(&animated_model, current_anim_time, joint_matrices);
+			Gpu2BufferWriteInfo joint_matrices_buffer_write_info = {
+				.size = sizeof(Mat4) * animated_model.num_joints,
+				.data = joint_matrices,
+			};
+			gpu2_write_buffer(&gpu2_device, &joint_matrices_buffer, &joint_matrices_buffer_write_info);
+		}
 
 		Gpu2CommandBuffer command_buffer;
 		assert(gpu2_create_command_buffer(&gpu2_device, &command_buffer));
@@ -231,8 +369,13 @@ int main()
 		gpu2_begin_render_pass(&gpu2_device, &render_pass_create_info, &render_pass);
 		{
 			gpu2_render_pass_set_render_pipeline(&render_pass, &gpu2_render_pipeline);
-			gpu2_render_pass_set_bind_group(&render_pass, &gpu2_render_pipeline, &bind_group);
-			gpu2_render_pass_draw(&render_pass, 0, sb_count(gpu2_indices));
+
+			gpu2_render_pass_set_bind_group(&render_pass, &gpu2_render_pipeline, &static_bind_group);
+			gpu2_render_pass_draw(&render_pass, 0, static_model.num_indices);
+
+			gpu2_render_pass_set_bind_group(&render_pass, &gpu2_render_pipeline, &animated_bind_group);
+			gpu2_render_pass_draw(&render_pass, 0, animated_model.num_indices);
+
 		}
 		gpu2_end_render_pass(&render_pass);
 
@@ -243,95 +386,18 @@ int main()
 	}
 
 	// Cleanup
-	gpu2_destroy_buffer(&gpu2_device, &vertex_buffer);
-	gpu2_destroy_buffer(&gpu2_device, &index_buffer);
-	gpu2_destroy_buffer(&gpu2_device, &uniform_buffer);
+	static_model_free(&gpu2_device, &static_model);
+	gpu2_destroy_buffer(&gpu2_device, &static_uniform_buffer);
+	gpu2_destroy_buffer(&gpu2_device, &animated_uniform_buffer);
 
 	gpu2_destroy_texture(&gpu2_device, &depth_texture);
+
+	gpu2_destroy_bind_group(&gpu2_device, &static_bind_group);
+	gpu2_destroy_bind_group(&gpu2_device, &animated_bind_group);
+	gpu2_destroy_bind_group_layout(&gpu2_device, &bind_group_layout);
+
+	gpu2_destroy_device(&gpu2_device);
 
 	return 0;
 }
 
-void gpu2_test_append_box(const Vec3 axes[3], const float half_extents[3], sbuffer(Gpu2TestVertex)* out_vertices, sbuffer(u32)* out_indices)
-{
-	u32 index_offset = sb_count(*out_vertices);
-
-	Vec4 colors[6] = 
-	{
-		vec4_new(1,0,0,1),
-		vec4_new(0,1,0,1),
-		vec4_new(0,0,1,1),
-		vec4_new(1,1,0,1),
-		vec4_new(1,0,1,1),
-		vec4_new(0,1,1,1),
-	};
-
-	i32 current_color_idx = 0;
-
-	for (i32 axis_idx = 0; axis_idx < 3; ++axis_idx)
-	{
-		Vec3 positive_quad_center = vec3_scale(axes[axis_idx], half_extents[axis_idx]);
-		Vec3 negative_quad_center = vec3_scale(axes[axis_idx], -half_extents[axis_idx]);
-
-		i32 other_axis_a = (axis_idx + 1) % 3;
-		Vec3 offset_a = vec3_scale(axes[other_axis_a], half_extents[other_axis_a]);
-		
-		i32 other_axis_b = (axis_idx + 2) % 3;
-		Vec3 offset_b = vec3_scale(axes[other_axis_b], half_extents[other_axis_b]);
-
-		Vec3 positions[8] = 
-		{
-			vec3_add(vec3_add(positive_quad_center, offset_a), offset_b),
-			vec3_add(vec3_sub(positive_quad_center, offset_a), offset_b),
-			vec3_sub(vec3_add(positive_quad_center, offset_a), offset_b),
-			vec3_sub(vec3_sub(positive_quad_center, offset_a), offset_b),
-			vec3_add(vec3_add(negative_quad_center, offset_a), offset_b),
-			vec3_add(vec3_sub(negative_quad_center, offset_a), offset_b),
-			vec3_sub(vec3_add(negative_quad_center, offset_a), offset_b),
-			vec3_sub(vec3_sub(negative_quad_center, offset_a), offset_b),
-		};
-
-		Vec2 uvs[8] = 
-		{
-			vec2_new(1.0, 0.0),
-			vec2_new(1.0, 1.0),
-			vec2_new(0.0, 1.0),
-			vec2_new(0.0, 0.0),
-			vec2_new(1.0, 0.0),
-			vec2_new(1.0, 1.0),
-			vec2_new(0.0, 1.0),
-			vec2_new(0.0, 0.0),
-		};
-
-		for (i32 vtx_idx = 0; vtx_idx < 8; ++vtx_idx)
-		{
-			Vec4 color = colors[vtx_idx > 3 ? current_color_idx + 1: current_color_idx];
-
-			Gpu2TestVertex vtx = {
-				.position = vec4_from_vec3(positions[vtx_idx], 1.0),	// Set up later
-				.normal = vec4_from_vec3(axes[axis_idx], 0.0),			// Point in direction of axis
-				.color = color, 										// Color
-				.uv = uvs[vtx_idx], 									// Set Up Later
-			};
-			sb_push(*out_vertices, vtx);
-		}
-
-		current_color_idx += 2;
-
-		sb_push(*out_indices, index_offset + 0);
-		sb_push(*out_indices, index_offset + 1);
-		sb_push(*out_indices, index_offset + 2);
-		sb_push(*out_indices, index_offset + 1);
-		sb_push(*out_indices, index_offset + 2);
-		sb_push(*out_indices, index_offset + 3);
-		index_offset += 4;
-
-		sb_push(*out_indices, index_offset + 0);
-		sb_push(*out_indices, index_offset + 1);
-		sb_push(*out_indices, index_offset + 2);
-		sb_push(*out_indices, index_offset + 1);
-		sb_push(*out_indices, index_offset + 2);
-		sb_push(*out_indices, index_offset + 3);
-		index_offset += 4;
-	}
-}

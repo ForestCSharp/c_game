@@ -552,6 +552,19 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 	return true;
 }
 
+void gpu2_destroy_device(Gpu2Device* in_device)
+{
+	vkDeviceWaitIdle(in_device->vk_device);
+	vkDestroySwapchainKHR(in_device->vk_device, in_device->swapchain, NULL);
+	vkDestroyCommandPool(in_device->vk_device, in_device->graphics_command_pool, NULL);
+	vkDestroyDevice(in_device->vk_device, NULL);
+}
+
+u32 gpu2_get_swapchain_count(Gpu2Device* in_device)
+{
+	return in_device->swapchain_image_count;
+}
+
 void gpu2_vk_resize_swapchain(Gpu2Device* in_device, const Window* const in_window)
 {
     vkDeviceWaitIdle(in_device->vk_device);
@@ -714,9 +727,10 @@ VkDescriptorType gpu2_binding_type_to_vk_descriptor_type(Gpu2BindingType in_type
 	}
 }
 
-bool gpu2_create_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout)
+bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout)
 {
 	VkDescriptorSetLayoutBinding vk_bindings[in_create_info->num_bindings];
+	VkDescriptorBindingFlags vk_binding_flags[in_create_info->num_bindings];
 	for (i32 binding_idx = 0; binding_idx < in_create_info->num_bindings; ++binding_idx)
 	{
 		Gpu2ResourceBinding* binding = &in_create_info->bindings[binding_idx];
@@ -727,15 +741,30 @@ bool gpu2_create_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayoutCre
 			.stageFlags = gpu2_shader_stages_to_vk_shader_stages(binding->shader_stages),
 			.pImmutableSamplers = NULL,
 		};	
+
+		vk_binding_flags[binding_idx]	= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
+										| VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
 	}
+
+	VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+		.pNext = NULL,
+		.pBindingFlags = vk_binding_flags,
+		.bindingCount = in_create_info->num_bindings,
+	};
+
+	VkDescriptorSetLayoutCreateFlagBits descriptor_set_layout_create_flags	= in_create_info->update_after_bind
+																			? VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT
+																			: 0;
 
 	VkDescriptorSetLayoutCreateInfo vk_desc_layout_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = NULL,
-		.flags = 0,
+		.pNext = &binding_flags_create_info,
+		.flags = descriptor_set_layout_create_flags,
 		.bindingCount = in_create_info->num_bindings,
 		.pBindings = vk_bindings,
 	};
+
 	VkDescriptorSetLayout vk_descriptor_set_layout = VK_NULL_HANDLE;
 	VK_CHECK(vkCreateDescriptorSetLayout(in_device->vk_device, &vk_desc_layout_create_info, NULL, &vk_descriptor_set_layout));
 
@@ -747,7 +776,7 @@ bool gpu2_create_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayoutCre
 	return true;
 }
 
-bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group)
+bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group)
 {
 	Gpu2BindGroupLayout* layout = in_create_info->layout;
 	VkDescriptorPoolSize vk_pool_sizes[layout->num_bindings];
@@ -781,13 +810,24 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
 	VkDescriptorSet vk_descriptor_set = VK_NULL_HANDLE;
 	VK_CHECK(vkAllocateDescriptorSets(in_device->vk_device, &vk_descriptor_set_alloc_info, &vk_descriptor_set));
 
+	*out_bind_group = (Gpu2BindGroup) {
+		.layout = *layout, 
+		.vk_descriptor_pool = vk_descriptor_pool,
+		.vk_descriptor_set = vk_descriptor_set,
+	};
+	
+	return true;
+}
+
+void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo* in_update_info)
+{
 	// Go Ahead and write descriptor set as well
-	VkDescriptorBufferInfo vk_descriptor_buffer_infos[in_create_info->num_writes];
-	VkDescriptorImageInfo vk_descriptor_image_infos[in_create_info->num_writes];
-    VkWriteDescriptorSet vk_descriptor_writes[in_create_info->num_writes];
-	for (i32 write_idx = 0; write_idx < in_create_info->num_writes; ++write_idx)
+	VkDescriptorBufferInfo vk_descriptor_buffer_infos[in_update_info->num_writes];
+	VkDescriptorImageInfo vk_descriptor_image_infos[in_update_info->num_writes];
+    VkWriteDescriptorSet vk_descriptor_writes[in_update_info->num_writes];
+	for (i32 write_idx = 0; write_idx < in_update_info->num_writes; ++write_idx)
 	{
-		Gpu2ResourceWrite* resource_write = &in_create_info->writes[write_idx];
+		Gpu2ResourceWrite* resource_write = &in_update_info->writes[write_idx];
 
 		VkDescriptorType vk_descriptor_type;
 		switch (resource_write->type)
@@ -822,8 +862,8 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
 		vk_descriptor_writes[write_idx] = (VkWriteDescriptorSet) {	
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .pNext = NULL,
-            .dstSet = vk_descriptor_set,
-            .dstBinding = write_idx, // Write binding is assumed to be our write index (must write all resources...)
+            .dstSet = in_update_info->bind_group->vk_descriptor_set,
+            .dstBinding = resource_write->binding_index, 
             .dstArrayElement = 0,
             .descriptorCount = 1,
             .descriptorType = vk_descriptor_type,
@@ -832,15 +872,17 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, Gpu2BindGroupCreateInfo* in_c
             .pTexelBufferView = NULL,
 		};
 	}
-	vkUpdateDescriptorSets(in_device->vk_device, in_create_info->num_writes, vk_descriptor_writes, 0, NULL);
+	vkUpdateDescriptorSets(in_device->vk_device, in_update_info->num_writes, vk_descriptor_writes, 0, NULL);
+}
 
-	*out_bind_group = (Gpu2BindGroup) {
-		.layout = *layout, 
-		.vk_descriptor_pool = vk_descriptor_pool,
-		.vk_descriptor_set = vk_descriptor_set,
-	};
+void gpu2_destroy_bind_group(Gpu2Device* in_device, Gpu2BindGroup* in_bind_group)
+{
+	vkDestroyDescriptorPool(in_device->vk_device,in_bind_group->vk_descriptor_pool, NULL);
+}
 
-	return true;
+void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* in_bind_group_layout)
+{
+	vkDestroyDescriptorSetLayout(in_device->vk_device, in_bind_group_layout->vk_descriptor_set_layout, NULL);
 }
 
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline)
@@ -963,10 +1005,10 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 		.blendConstants = {0.0f, 0.0f, 0.0f, 0.0f}
 	};
 
-	VkDescriptorSetLayout set_layouts[in_create_info->num_bind_groups];
-	for (u32 bind_group_idx = 0; bind_group_idx < in_create_info->num_bind_groups; ++bind_group_idx)
+	VkDescriptorSetLayout set_layouts[in_create_info->num_bind_group_layouts];
+	for (u32 bind_group_idx = 0; bind_group_idx < in_create_info->num_bind_group_layouts; ++bind_group_idx)
 	{
-		set_layouts[bind_group_idx] = in_create_info->bind_groups[bind_group_idx]->layout.vk_descriptor_set_layout;
+		set_layouts[bind_group_idx] = in_create_info->bind_group_layouts[bind_group_idx]->vk_descriptor_set_layout;
 	}
 	const u32 num_set_layouts = ARRAY_COUNT(set_layouts); 
 
@@ -1328,7 +1370,6 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 	VkBuffer vk_buffer;
 	VK_CHECK(vkCreateBuffer(in_device->vk_device, &buffer_create_info, NULL, &vk_buffer));
 
-
 	VkMemoryPropertyFlags memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	if (in_create_info->is_cpu_visible)
 	{
@@ -1354,10 +1395,13 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 	);
 
 	//FCS TODO: Will need staging buffer for non-CPU addressable memory
-	void* pBufferData;
-	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
-	memcpy(pBufferData, in_create_info->data, in_create_info->size);
-	gpu2_vk_unmap_memory(in_device, memory);
+	if (in_create_info->data)
+	{
+		void* pBufferData;
+		gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
+		memcpy(pBufferData, in_create_info->data, in_create_info->size);
+		gpu2_vk_unmap_memory(in_device, memory);
+	}
 
 	*out_buffer = (Gpu2Buffer){
 		.vk_buffer = vk_buffer,
@@ -1380,6 +1424,15 @@ void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferW
 	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
 	memcpy(pBufferData, in_write_info->data, in_write_info->size);
 	gpu2_vk_unmap_memory(in_device, memory);
+}
+
+void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+{
+	Gpu2Memory* memory = in_buffer->memory;
+
+	void* pBufferData;
+	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
+	return pBufferData;
 }
 
 void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)

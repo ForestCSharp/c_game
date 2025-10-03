@@ -16,7 +16,6 @@ RegisterBuffer(std430, readonly, VertexBuffer, {
 		StaticVertex vertices[];
 });
 
-
 // Loads vertex data using gl_VertexIndex and bindless buffers
 // Must have included "uniforms.glsl" before this file (for object_ubo)
 StaticVertex load_static_vertex()

@@ -15,6 +15,6 @@ typedef struct GlobalUniformStruct
 typedef struct ObjectUniformStruct
 {
 	Mat4 model;
-	u32 vertex_buffer_idx;
-	u32 index_buffer_idx;
+	bool is_skinned;
+	uint padding[3];
 } ObjectUniformStruct;

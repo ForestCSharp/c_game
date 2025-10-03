@@ -9,17 +9,9 @@
 #define BindlessDescriptorSet 0
 // These are the bindings that we defined
 // in bindless descriptor layout
-#define BindlessUniformBinding 0
-#define BindlessStorageBinding 1
-#define BindlessSamplerBinding 2
+#define BindlessStorageBinding 0
 
 #define GetLayoutVariableName(Name) u##Name##Register
-
-// Register uniform
-#define RegisterUniform(Name, Struct) \
-  layout(set = BindlessDescriptorSet, binding = BindlessUniformBinding) \
-        uniform Name Struct \
-        GetLayoutVariableName(Name)[]
 
 // Register storage buffer
 #define RegisterBuffer(Layout, BufferAccess, Name, Struct) \
@@ -33,11 +25,4 @@
 // Register empty resources
 // to be compliant with the pipeline layout
 // even if the shader does not use all the descriptors
-RegisterUniform(DummyUniform, { uint ignore; });
 RegisterBuffer(std430, readonly, DummyBuffer, { uint ignore; });
-
-// Register textures
-// FCS TODO: MSL Conversion error...
-//layout(set = BindlessDescriptorSet, binding = BindlessSamplerBinding) uniform sampler2D uGlobalTextures2D[];
-//layout(set = BindlessDescriptorSet, binding = BindlessSamplerBinding) uniform samplerCube uGlobalTexturesCube[];
-
