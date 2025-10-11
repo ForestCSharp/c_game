@@ -335,12 +335,13 @@ void game_object_render_data_setup(GameObjectManager* manager, Gpu2Device* in_gp
 
 		// Create Uniform Buffer
 		Gpu2BufferCreateInfo uniform_buffer_create_info = {
+			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = sizeof(ObjectUniformStruct),
 			.data = &initial_uniform_data,
 		};
 		Gpu2Buffer uniform_buffer;
-		assert(gpu2_create_buffer(in_gpu_device, &uniform_buffer_create_info, &uniform_buffer));
+		gpu2_create_buffer(in_gpu_device, &uniform_buffer_create_info, &uniform_buffer);
 		sb_push(
 			object_render_data.uniform_buffers,
 			uniform_buffer
@@ -354,7 +355,6 @@ void game_object_render_data_setup(GameObjectManager* manager, Gpu2Device* in_gp
 
 		// Create Descriptor Set
 		Gpu2BindGroupCreateInfo per_object_bind_group_create_info = {
-			.index = 1,
 			.layout = per_object_bind_group_layout,
 		};
 		Gpu2BindGroup per_object_bind_group;

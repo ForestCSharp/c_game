@@ -59,7 +59,10 @@ struct Gpu2Device
 
 	// Queue
     VkQueue graphics_queue;
+
     VkCommandPool graphics_command_pool;
+
+	VkCommandPool staging_command_pool;
 
     // Debug Functionality
     VkDebugUtilsMessengerEXT debug_messenger;
@@ -123,12 +126,19 @@ struct Gpu2Buffer
 
 struct Gpu2Texture
 {
+	Gpu2Format format;
+	
 	VkImage vk_image;
 	VkImageView vk_image_view;
 	VkFormat vk_format;
 
 	// Null memory implies externally managed
 	Gpu2Memory* memory;
+};
+
+struct Gpu2Sampler
+{
+	VkSampler vk_sampler;
 };
 
 struct Gpu2CommandBuffer
@@ -315,7 +325,7 @@ void gpu2_cmd_vk_image_barrier(Gpu2CommandBuffer* in_command_buffer, Gpu2VkImage
 
 void gpu2_vk_resize_swapchain(Gpu2Device* in_device, const Window* const window);
 
-bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
+void gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 {	
     VkApplicationInfo app_info = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -516,6 +526,15 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
     VkCommandPool graphics_command_pool;
     vkCreateCommandPool(vk_device, &graphics_command_pool_create_info, NULL, &graphics_command_pool);
 
+    VkCommandPoolCreateInfo staging_command_pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = NULL,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = physical_device_data.graphics_family_index,
+    };
+    VkCommandPool staging_command_pool;
+    vkCreateCommandPool(vk_device, &staging_command_pool_create_info, NULL, &staging_command_pool);
+
     // Set up Memory Types
     VkPhysicalDeviceMemoryProperties2 vk_memory_properties = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
@@ -530,6 +549,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 		// Queue
 		.graphics_queue = graphics_queue,
 		.graphics_command_pool = graphics_command_pool,
+		.staging_command_pool = staging_command_pool,
 		// Debug Functionality
 		.debug_messenger = debug_messenger,
 		.pfn_set_object_name = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetInstanceProcAddr(vk_instance, "vkSetDebugUtilsObjectNameEXT"),
@@ -547,9 +567,7 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 		.pending_vk_present_info = {},
 	};
 
-    gpu2_vk_resize_swapchain(out_device, in_window);
-	
-	return true;
+    gpu2_vk_resize_swapchain(out_device, in_window);	
 }
 
 void gpu2_destroy_device(Gpu2Device* in_device)
@@ -712,12 +730,14 @@ VkDescriptorType gpu2_binding_type_to_vk_descriptor_type(Gpu2BindingType in_type
 		case GPU2_BINDING_TYPE_BUFFER:
 		{
 			return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-			break;
 		}
 		case GPU2_BINDING_TYPE_TEXTURE:
 		{
-			return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			break;
+			return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+		}
+		case GPU2_BINDING_TYPE_SAMPLER:
+		{
+			return VK_DESCRIPTOR_TYPE_SAMPLER;
 		}
 		default:
 		{
@@ -742,8 +762,7 @@ bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLay
 			.pImmutableSamplers = NULL,
 		};	
 
-		vk_binding_flags[binding_idx]	= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
-										| VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+		vk_binding_flags[binding_idx] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
 	}
 
 	VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_create_info = {
@@ -753,9 +772,7 @@ bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLay
 		.bindingCount = in_create_info->num_bindings,
 	};
 
-	VkDescriptorSetLayoutCreateFlagBits descriptor_set_layout_create_flags	= in_create_info->update_after_bind
-																			? VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT
-																			: 0;
+	VkDescriptorSetLayoutCreateFlagBits descriptor_set_layout_create_flags = 0; 
 
 	VkDescriptorSetLayoutCreateInfo vk_desc_layout_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -844,13 +861,22 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 			}
 			case GPU2_BINDING_TYPE_TEXTURE:
 			{
-				//vk_descriptor_type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				//vk_descriptor_image_infos[write_idx] = (VkDescriptorImageInfo) {
-				//	.sampler = TODO,
-				//	.imageView = TODO,
-				//	.imageLayout = TODO,
-				//};
-				assert(false);	
+				vk_descriptor_type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+				vk_descriptor_image_infos[write_idx] = (VkDescriptorImageInfo) {
+					.sampler = NULL,
+					.imageView = resource_write->texture_binding.texture->vk_image_view,
+					.imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+				};
+				break;
+			}
+			case GPU2_BINDING_TYPE_SAMPLER:
+			{
+				vk_descriptor_type = VK_DESCRIPTOR_TYPE_SAMPLER;
+				vk_descriptor_image_infos[write_idx] = (VkDescriptorImageInfo) {
+					.sampler = resource_write->sampler_binding.sampler->vk_sampler,
+					.imageView = NULL,
+					.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+				};
 				break;
 			}
 			default:
@@ -858,6 +884,10 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 				assert(false);
 			}
 		}
+
+		const bool use_image_info = resource_write->type == GPU2_BINDING_TYPE_TEXTURE
+									|| resource_write->type == GPU2_BINDING_TYPE_SAMPLER;
+		const bool use_buffer_info = resource_write->type == GPU2_BINDING_TYPE_BUFFER;
 
 		vk_descriptor_writes[write_idx] = (VkWriteDescriptorSet) {	
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -867,8 +897,8 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
             .dstArrayElement = 0,
             .descriptorCount = 1,
             .descriptorType = vk_descriptor_type,
-            .pImageInfo = resource_write->type == GPU2_BINDING_TYPE_TEXTURE ? &vk_descriptor_image_infos[write_idx] : NULL,
-            .pBufferInfo = resource_write->type == GPU2_BINDING_TYPE_BUFFER ? &vk_descriptor_buffer_infos[write_idx] : NULL,
+            .pImageInfo = use_image_info ? &vk_descriptor_image_infos[write_idx] : NULL,
+            .pBufferInfo = use_buffer_info ? &vk_descriptor_buffer_infos[write_idx] : NULL,
             .pTexelBufferView = NULL,
 		};
 	}
@@ -1034,8 +1064,8 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 		.viewMask = 0,
 		.colorAttachmentCount = ARRAY_COUNT(vk_color_attachment_formats),
 		.pColorAttachmentFormats = vk_color_attachment_formats,
-		.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT, // FCS TODO
-		.stencilAttachmentFormat = VK_FORMAT_UNDEFINED, //FCS TODO
+		.depthAttachmentFormat = in_create_info->depth_test_enabled ? VK_FORMAT_D32_SFLOAT : VK_FORMAT_UNDEFINED, 
+		.stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
 	};
 
 	VkGraphicsPipelineCreateInfo pipeline_create_info = {
@@ -1355,15 +1385,34 @@ void gpu2_vk_free_memory(Gpu2Device* in_device, Gpu2Memory *gpu_memory)
     }
 }
 
-//FCS TODO: Buffer Usage flags arg?
-static const VkBufferUsageFlags FIXME_VK_BUFFER_USAGE_FLAGS = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+VkBufferUsageFlags gpu2_buffer_usage_flags_to_vk_buffer_usage_flags(Gpu2BufferUsageFlags in_flags)
+{
+	VkBufferUsageFlags out_flags = 0;
+	
+	if (BIT_COMPARE(in_flags, GPU2_BUFFER_USAGE_TRANSFER_SRC))
+	{
+		out_flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	}
+	
+	if (BIT_COMPARE(in_flags, GPU2_BUFFER_USAGE_TRANSFER_DST))
+	{
+		out_flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	}
 
-bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer)
+	if (BIT_COMPARE(in_flags, GPU2_BUFFER_USAGE_STORAGE_BUFFER))
+	{
+		out_flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	}
+
+	return out_flags;
+}
+
+void gpu2_create_buffer(Gpu2Device* in_device, const Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer)
 {
 	VkBufferCreateInfo buffer_create_info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = in_create_info->size,
-		.usage = FIXME_VK_BUFFER_USAGE_FLAGS, 
+		.usage = gpu2_buffer_usage_flags_to_vk_buffer_usage_flags(in_create_info->usage), 
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
 
@@ -1407,13 +1456,11 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 		.vk_buffer = vk_buffer,
 		.memory = memory,
 	};
-
-	return true;
 }
 
-void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info)
+void gpu2_write_buffer(Gpu2Device* in_device, const Gpu2BufferWriteInfo* in_write_info)
 {
-	Gpu2Memory* memory = in_buffer->memory;
+	Gpu2Memory* memory = in_write_info->buffer->memory;
 
 	// Make Sure our memory is host-visible and host-coherent
 	VkMemoryPropertyFlags flags_to_check = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
@@ -1445,6 +1492,7 @@ VkFormat gpu2_format_to_vk_format(Gpu2Format in_format)
 {
 	switch(in_format)
 	{
+		case GPU2_FORMAT_RGBA8_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
 		case GPU2_FORMAT_D32_SFLOAT: return VK_FORMAT_D32_SFLOAT;
 		default: 
 			printf("gpu2_format_to_vk_format: Unimplemented Format\n");
@@ -1490,7 +1538,7 @@ VkImageUsageFlags gpu2_texture_usage_flags_to_vk_image_usage_flags(Gpu2TextureUs
 	return out_flags;
 }
 
-bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture)
+void gpu2_create_texture(Gpu2Device* in_device, const Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture)
 {
 	const Gpu2TextureExtent extent = in_create_info->extent;
     VkImageType vk_image_type 	= extent.depth > 1 	? 	VK_IMAGE_TYPE_3D
@@ -1506,11 +1554,11 @@ bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create
         .imageType = vk_image_type,
         .format = vk_format,
         .extent =
-            {
-                .width = extent.width,
-                .height = extent.height,
-                .depth = extent.depth,
-            },
+		{
+			.width = extent.width,
+			.height = extent.height,
+			.depth = extent.depth,
+		},
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -1582,13 +1630,142 @@ bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create
     VK_CHECK(vkCreateImageView(in_device->vk_device, &vk_image_view_create_info, NULL, &vk_image_view));
 
 	*out_texture = (Gpu2Texture) {
+		.format = in_create_info->format,
 		.vk_image = vk_image,
 		.vk_image_view = vk_image_view,
 		.vk_format = vk_format,
 		.memory = memory,
 	};
+}
 
-	return true;
+void gpu2_vk_memcpy(Gpu2Device* in_device, Gpu2Memory* memory, u64 upload_size, void *upload_data)
+{
+    void *pData;
+    gpu2_vk_map_memory(in_device, memory, 0, upload_size, &pData);
+    memcpy(pData, upload_data, upload_size);
+    gpu2_vk_unmap_memory(in_device, memory);
+}
+
+void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_upload_info)
+{
+	Gpu2Texture* texture = in_upload_info->texture;
+	u32 format_stride = gpu2_format_stride(texture->format);
+    u64 upload_size = in_upload_info->width * in_upload_info->height * format_stride;
+
+	Gpu2BufferCreateInfo texture_upload_buffer_create_info = {
+			.usage = GPU2_BUFFER_USAGE_TRANSFER_SRC,
+			.is_cpu_visible = true,
+			.size = upload_size,
+			.data = in_upload_info->data,
+		};
+	Gpu2Buffer texture_upload_buffer;
+	gpu2_create_buffer(in_device, &texture_upload_buffer_create_info, &texture_upload_buffer);
+
+    VkCommandBufferAllocateInfo stagic_command_buffer_alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = NULL,
+        .commandPool = in_device->staging_command_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    VkCommandBuffer vk_staging_command_buffer;
+    VK_CHECK(vkAllocateCommandBuffers(in_device->vk_device, &stagic_command_buffer_alloc_info, &vk_staging_command_buffer));
+
+	VK_CHECK(vkBeginCommandBuffer(vk_staging_command_buffer,
+	   &(VkCommandBufferBeginInfo){
+		   .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		   .pNext = NULL,
+		   .flags = 0,
+		   .pInheritanceInfo = NULL,
+	   }
+	));
+
+    VkBufferImageCopy vk_buffer_image_copy = {
+		.bufferOffset = 0,
+		.bufferRowLength = 0,
+		.bufferImageHeight = 0,
+		.imageSubresource =
+		  (VkImageSubresourceLayers){
+			  .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, 
+			  .mipLevel = 0,
+			  .baseArrayLayer = 0,
+			  .layerCount = 1,
+		  },
+		.imageOffset = {.x = 0, .y = 0, .z = 0},
+		.imageExtent = {
+		  .width = in_upload_info->width,
+		  .height = in_upload_info->height,
+		  .depth = 1,
+		}
+	};
+
+    vkCmdCopyBufferToImage(
+		vk_staging_command_buffer, 
+		texture_upload_buffer.vk_buffer, 
+		texture->vk_image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1,
+		&vk_buffer_image_copy
+	);
+
+	VkImageMemoryBarrier vk_image_memory_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .srcAccessMask = 0, // FCS TODO:
+        .dstAccessMask = 0, // FCS TODO:
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = texture->vk_image,
+        .subresourceRange =
+		{	
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		},
+    };
+
+    vkCmdPipelineBarrier(
+		vk_staging_command_buffer,
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, // srcStageMask
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, // dstStageMask
+		0,    // dependencyFlags
+		0,    // memoryBarrierCount
+		NULL, // pMemoryBarriers
+		0,    // bufferMemoryBarrierCount
+		NULL, // pBufferMemoryBarriers
+		1,    // imageMemoryBarrierCount
+		&vk_image_memory_barrier
+	);
+
+	VK_CHECK(vkEndCommandBuffer(vk_staging_command_buffer));
+    VkSubmitInfo vk_submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pNext = NULL,
+        .waitSemaphoreCount = 0, //wait_semaphore ? 1 : 0,
+        .pWaitSemaphores = NULL, //wait_semaphore ? &wait_semaphore->vk_semaphore : NULL,
+        .pWaitDstStageMask = NULL, //&wait_stage,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &vk_staging_command_buffer,
+        .signalSemaphoreCount = 0, //signal_semaphore != NULL ? 1 : 0,
+        .pSignalSemaphores = NULL, //signal_semaphore ? &signal_semaphore->vk_semaphore : NULL,
+    };
+
+    VK_CHECK(vkQueueSubmit(
+		in_device->graphics_queue, 
+		1, 
+		&vk_submit_info,           
+		VK_NULL_HANDLE //signal_fence ? signal_fence->vk_fence : VK_NULL_HANDLE
+	));
+
+	vkDeviceWaitIdle(in_device->vk_device);
+	vkFreeCommandBuffers(in_device->vk_device, in_device->staging_command_pool, 1, &vk_staging_command_buffer);
+
+	// Destroy our staging buffer
+	gpu2_destroy_buffer(in_device, &texture_upload_buffer);
 }
 
 void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture)
@@ -1596,6 +1773,62 @@ void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture)
 	vkDestroyImageView(in_device->vk_device, in_texture->vk_image_view, NULL);
 	vkDestroyImage(in_device->vk_device, in_texture->vk_image, NULL);
 	gpu2_vk_free_memory(in_device, in_texture->memory);	
+}
+
+VkFilter gpu2_filter_to_vk_filter(Gpu2Filter in_filter)
+{
+	switch (in_filter)
+	{
+		case GPU2_FILTER_NEAREST: return VK_FILTER_NEAREST;
+		case GPU2_FILTER_LINEAR: return VK_FILTER_LINEAR;
+	}
+	assert(false);
+}
+
+VkSamplerAddressMode gpu2_sampler_address_mode_to_vk_sampler_address_mode(Gpu2SamplerAddressMode in_mode)
+{
+	switch (in_mode)
+	{
+		case GPU2_SAMPLER_ADDRESS_MODE_REPEAT:				return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		case GPU2_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:		return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+		case GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:		return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		case GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:		return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	}
+	assert(false);
+}
+
+void gpu2_create_sampler(Gpu2Device* in_device, const Gpu2SamplerCreateInfo* in_create_info, Gpu2Sampler* out_sampler)
+{
+	VkSamplerCreateInfo vk_sampler_create_info = {
+		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0,
+		.magFilter = gpu2_filter_to_vk_filter(in_create_info->filters.mag),
+		.minFilter = gpu2_filter_to_vk_filter(in_create_info->filters.min),
+		.addressModeU = gpu2_sampler_address_mode_to_vk_sampler_address_mode(in_create_info->address_modes.u),
+		.addressModeV = gpu2_sampler_address_mode_to_vk_sampler_address_mode(in_create_info->address_modes.v),
+		.addressModeW = gpu2_sampler_address_mode_to_vk_sampler_address_mode(in_create_info->address_modes.w),
+        .mipLodBias = 0.0f,
+        .anisotropyEnable = in_create_info->max_anisotropy != 0,
+        .maxAnisotropy = (float)in_create_info->max_anisotropy,
+        .compareEnable = VK_FALSE,
+        .compareOp = VK_COMPARE_OP_NEVER,
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+        .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+        .unnormalizedCoordinates = VK_FALSE,
+	};
+
+    VkSampler vk_sampler = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateSampler(in_device->vk_device, &vk_sampler_create_info, NULL, &vk_sampler));
+    *out_sampler = (Gpu2Sampler){
+        .vk_sampler = vk_sampler,
+    };
+}
+
+void gpu2_destroy_sampler(Gpu2Device* in_device, Gpu2Sampler* in_sampler)
+{
+	vkDestroySampler(in_device->vk_device, in_sampler->vk_sampler, NULL);
 }
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)

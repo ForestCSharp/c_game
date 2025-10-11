@@ -493,36 +493,40 @@ bool animated_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, Anima
     // GPU Data Setup
     {
 		Gpu2BufferCreateInfo static_vertex_buffer_create_info = {
+				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = sizeof(StaticVertex) * out_model->num_vertices,
 				.data = out_model->static_vertices,
 			};
-		assert(gpu2_create_buffer(in_gpu_device, &static_vertex_buffer_create_info, &out_model->static_vertex_buffer));
+		gpu2_create_buffer(in_gpu_device, &static_vertex_buffer_create_info, &out_model->static_vertex_buffer);
 
 		Gpu2BufferCreateInfo skinned_vertex_buffer_create_info = {
+				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = sizeof(SkinnedVertex) * out_model->num_vertices,
 				.data = out_model->skinned_vertices,
 			};
-		assert(gpu2_create_buffer(in_gpu_device, &skinned_vertex_buffer_create_info, &out_model->skinned_vertex_buffer));
+		gpu2_create_buffer(in_gpu_device, &skinned_vertex_buffer_create_info, &out_model->skinned_vertex_buffer);
 
 		Gpu2BufferCreateInfo index_buffer_create_info = {
+				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = sizeof(u32) * out_model->num_indices,
 				.data = out_model->indices,
 			};
-		assert(gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer));
+		gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer);
 
 
 		// Size of our joint related matrices buffers
 		out_model->joints_buffer_size = out_model->num_joints * sizeof(Mat4);
 
 		Gpu2BufferCreateInfo joints_buffer_create_info = {
+				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = out_model->joints_buffer_size,
 				.data = out_model->inverse_bind_matrices,
 			};
-		assert(gpu2_create_buffer(in_gpu_device, &joints_buffer_create_info, &out_model->inverse_bind_matrices_buffer));
+		gpu2_create_buffer(in_gpu_device, &joints_buffer_create_info, &out_model->inverse_bind_matrices_buffer);
 
 		// Animated joint buffers will be setup later
     }

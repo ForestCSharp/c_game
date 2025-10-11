@@ -271,6 +271,7 @@ void collider_render_data_create(Gpu2Device* in_gpu_device,
 
 	// GPU Data Setup
 	Gpu2BufferCreateInfo vertex_buffer_create_info = {
+		.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,
 		.size = sizeof(StaticVertex) * sb_count(vertices),
 		.data = vertices,
@@ -279,6 +280,7 @@ void collider_render_data_create(Gpu2Device* in_gpu_device,
 	gpu2_create_buffer(in_gpu_device, &vertex_buffer_create_info, &vertex_buffer);
 
 	Gpu2BufferCreateInfo index_buffer_create_info = {
+		.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,
 		.size = sizeof(u32) * sb_count(indices),
 		.data = indices,

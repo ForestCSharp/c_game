@@ -4,6 +4,9 @@
 #include "app/app.h"
 
 typedef struct Gpu2Device Gpu2Device;
+typedef struct Gpu2Buffer Gpu2Buffer;
+typedef struct Gpu2Texture Gpu2Texture;
+typedef struct Gpu2Sampler Gpu2Sampler;
 
 typedef struct Gpu2ShaderCreateInfo
 {
@@ -11,9 +14,18 @@ typedef struct Gpu2ShaderCreateInfo
 } Gpu2ShaderCreateInfo;
 typedef struct Gpu2Shader Gpu2Shader;
 
+typedef enum Gpu2BufferUsageFlagBits
+{
+	GPU2_BUFFER_USAGE_TRANSFER_SRC		= 1 << 0,
+	GPU2_BUFFER_USAGE_TRANSFER_DST		= 1 << 1,
+	GPU2_BUFFER_USAGE_STORAGE_BUFFER	= 1 << 2,
+} Gpu2BufferUsageFlagBits;
+typedef u32 Gpu2BufferUsageFlags;
+
 //FCS TODO: Buffer Type (Storage / Uniform buffers)
 typedef struct Gpu2BufferCreateInfo
 {
+	Gpu2BufferUsageFlags usage;
 	bool is_cpu_visible;
 	u64 size;
 	void* data;
@@ -21,6 +33,7 @@ typedef struct Gpu2BufferCreateInfo
 
 typedef struct Gpu2BufferWriteInfo
 {
+	Gpu2Buffer* buffer;
 	u64 size;
 	void* data;
 } Gpu2BufferWriteInfo;
@@ -48,31 +61,66 @@ typedef enum Gpu2Format
 
 typedef enum Gpu2TextureUsageFlagBits
 {
-    GPU2_TEXTURE_USAGE_TRANSFER_SRC, 
-    GPU2_TEXTURE_USAGE_TRANSFER_DST,
-    GPU2_TEXTURE_USAGE_SAMPLED, 
-    GPU2_TEXTURE_USAGE_STORAGE, 
-    GPU2_TEXTURE_USAGE_COLOR_ATTACHMENT, 
-    GPU2_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT, 
+    GPU2_TEXTURE_USAGE_TRANSFER_SRC				= 1 << 0, 
+    GPU2_TEXTURE_USAGE_TRANSFER_DST				= 1 << 1,
+    GPU2_TEXTURE_USAGE_SAMPLED					= 1 << 2, 
+    GPU2_TEXTURE_USAGE_STORAGE					= 1 << 3, 
+    GPU2_TEXTURE_USAGE_COLOR_ATTACHMENT			= 1 << 4, 
+    GPU2_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT = 1 << 5, 
 } Gpu2TextureUsageFlagBits;
 typedef u32 Gpu2TextureUsageFlags;
+
+typedef enum Gpu2Filter
+{
+	GPU2_FILTER_NEAREST,
+	GPU2_FILTER_LINEAR,
+} Gpu2Filter;
+
+typedef enum Gpu2SamplerAddressMode
+{
+	GPU2_SAMPLER_ADDRESS_MODE_REPEAT,
+	GPU2_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
+	GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,	
+	GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+} Gpu2SamplerAddressMode;
+
+typedef struct Gpu2SamplerCreateInfo
+{
+	struct {
+		Gpu2Filter min;
+		Gpu2Filter mag;
+	} filters;
+	
+	struct {
+		Gpu2SamplerAddressMode u;
+		Gpu2SamplerAddressMode v;
+		Gpu2SamplerAddressMode w;
+	} address_modes;
+
+    u32 max_anisotropy;
+} Gpu2SamplerCreateInfo;
 
 typedef struct Gpu2TextureCreateInfo
 {
 	Gpu2Format format;
 	Gpu2TextureExtent extent;
-	Gpu2TextureUsageFlags usage; 
+	Gpu2TextureUsageFlags usage;
 	bool is_cpu_visible;
 } Gpu2TextureCreateInfo;
 
-typedef struct Gpu2Buffer Gpu2Buffer;
-
-typedef struct Gpu2Texture Gpu2Texture;
+typedef struct Gpu2TextureWriteInfo
+{
+	Gpu2Texture* texture;
+	u64 width;
+	u64 height;
+	void* data;
+} Gpu2TextureWriteInfo;
 
 typedef enum Gpu2BindingType
 {
 	GPU2_BINDING_TYPE_BUFFER, // Storage buffer
 	GPU2_BINDING_TYPE_TEXTURE,
+	GPU2_BINDING_TYPE_SAMPLER,
 } Gpu2BindingType;
 
 typedef enum Gpu2ShaderStage
@@ -94,7 +142,6 @@ typedef struct Gpu2BindGroupLayoutCreateInfo
 	u32 index;
 	u32 num_bindings;
 	Gpu2ResourceBinding* bindings;
-	bool update_after_bind;
 } Gpu2BindGroupLayoutCreateInfo;
 typedef struct Gpu2BindGroupLayout Gpu2BindGroupLayout;
 
@@ -108,6 +155,11 @@ typedef struct Gpu2TextureBinding
 	Gpu2Texture* texture;
 } Gpu2TextureBinding;
 
+typedef struct Gpu2SamplerBinding
+{
+	Gpu2Sampler* sampler;
+} Gpu2SamplerBinding;
+
 typedef struct Gpu2ResourceWrite
 {
 	u32 binding_index;
@@ -116,12 +168,12 @@ typedef struct Gpu2ResourceWrite
 	{
 		Gpu2BufferBinding buffer_binding;
 		Gpu2TextureBinding texture_binding;
+		Gpu2SamplerBinding sampler_binding;
 	};
 } Gpu2ResourceWrite;
 
 typedef struct Gpu2BindGroupCreateInfo 
 {
-	u32 index;
 	Gpu2BindGroupLayout* layout; 
 } Gpu2BindGroupCreateInfo;
 
@@ -187,7 +239,7 @@ typedef struct Gpu2RenderPassCreateInfo
 } Gpu2RenderPassCreateInfo;
 typedef struct Gpu2RenderPass Gpu2RenderPass;
 
-bool gpu2_create_device(Window* in_window, Gpu2Device* out_device);
+void gpu2_create_device(Window* in_window, Gpu2Device* out_device);
 void gpu2_destroy_device(Gpu2Device* in_device);
 
 u32 gpu2_get_swapchain_count(Gpu2Device* in_device);
@@ -202,13 +254,17 @@ void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* 
 
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline);
 
-bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer);
-void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info);
+void gpu2_create_buffer(Gpu2Device* in_device, const Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer);
+void gpu2_write_buffer(Gpu2Device* in_device, const Gpu2BufferWriteInfo* in_write_info);
 void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
 void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
 
-bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture);
+void gpu2_create_texture(Gpu2Device* in_device, const Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture);
+void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_upload_info);
 void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture);
+
+void gpu2_create_sampler(Gpu2Device* in_device, const Gpu2SamplerCreateInfo* in_create_info, Gpu2Sampler* out_sampler);
+void gpu2_destroy_sampler(Gpu2Device* in_device, Gpu2Sampler* in_sampler);
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer);
 
@@ -224,6 +280,9 @@ void gpu2_render_pass_draw(Gpu2RenderPass* in_render_pass, u32 vertex_start, u32
 
 void gpu2_present_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer, Gpu2Drawable* in_drawable);
 bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer);
+
+// Helper Functions
+u32 gpu2_format_stride(Gpu2Format format);
 
 // FCS TODO: Remove bool returns.
 // FCS TODO: Rename "drawable" to something else

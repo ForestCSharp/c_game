@@ -162,19 +162,21 @@ bool static_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, StaticM
     // GPU Data Setup
     {
 		Gpu2BufferCreateInfo vertex_buffer_create_info = {
+			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = sizeof(StaticVertex) * out_model->num_vertices,
 			.data = out_model->vertices,
 		};
-		assert(gpu2_create_buffer(in_gpu_device, &vertex_buffer_create_info, &out_model->vertex_buffer));
+		gpu2_create_buffer(in_gpu_device, &vertex_buffer_create_info, &out_model->vertex_buffer);
 
 		Gpu2BufferCreateInfo index_buffer_create_info = {
+			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = sizeof(u32) * out_model->num_indices,
 			.data = out_model->indices,
 		};
 		Gpu2Buffer index_buffer;
-		assert(gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer));
+		gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer);
     }
 
 

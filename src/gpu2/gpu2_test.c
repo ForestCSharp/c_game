@@ -31,7 +31,7 @@ int main()
     Window window = window_create("C Game", window_width, window_height);
 
 	Gpu2Device gpu2_device;
-	assert(gpu2_create_device(&window, &gpu2_device));
+	gpu2_create_device(&window, &gpu2_device);
 
 	// Set up Static Model
 	StaticModel static_model;
@@ -52,12 +52,13 @@ int main()
 	// Go ahead and allocate the buffer we use to animate our joints
 	Mat4* joint_matrices = calloc(animated_model.num_joints, sizeof(Mat4));
 	Gpu2BufferCreateInfo joints_buffer_create_info = {
+		.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,
 		.size = animated_model.joints_buffer_size,
 		.data = joint_matrices,
 	};
 	Gpu2Buffer joint_matrices_buffer;
-	assert(gpu2_create_buffer(&gpu2_device, &joints_buffer_create_info, &joint_matrices_buffer));
+	gpu2_create_buffer(&gpu2_device, &joints_buffer_create_info, &joint_matrices_buffer);
 
 	Gpu2ShaderCreateInfo vertex_shader_create_info = {
 		.filename = "bin/shaders/gpu2_test.vert",
@@ -102,12 +103,13 @@ int main()
 	};
 	
 	Gpu2BufferCreateInfo static_uniform_buffer_create_info = {
+		.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,
 		.size = sizeof(UniformStruct),
 		.data = &static_uniform_data,
 	};
 	Gpu2Buffer static_uniform_buffer;
-	assert(gpu2_create_buffer(&gpu2_device, &static_uniform_buffer_create_info, &static_uniform_buffer));
+	gpu2_create_buffer(&gpu2_device, &static_uniform_buffer_create_info, &static_uniform_buffer);
 
 	// Animated Uniform Data Setup
 	Quat animated_rotation = quat_new(vec3_new(0,1,0), 180.f * DEGREES_TO_RADIANS); 
@@ -129,12 +131,13 @@ int main()
 	};
 	
 	Gpu2BufferCreateInfo animated_uniform_buffer_create_info = {
+		.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,
 		.size = sizeof(UniformStruct),
 		.data = &animated_uniform_data,
 	};
 	Gpu2Buffer animated_uniform_buffer;
-	assert(gpu2_create_buffer(&gpu2_device, &animated_uniform_buffer_create_info, &animated_uniform_buffer));
+	gpu2_create_buffer(&gpu2_device, &animated_uniform_buffer_create_info, &animated_uniform_buffer);
 
 	//FCS TODO: HERE! Create Separate static and skinned vertex shaders, bind-group-layouts, etc.
 	
@@ -289,7 +292,7 @@ int main()
 		.usage = GPU2_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT,
 	};
 	Gpu2Texture depth_texture;
-	assert(gpu2_create_texture(&gpu2_device, &depth_texture_create_info, &depth_texture));
+	gpu2_create_texture(&gpu2_device, &depth_texture_create_info, &depth_texture);
 
 	u64 time = time_now();
 
@@ -308,10 +311,11 @@ int main()
 			static_rotation = quat_mul(static_rotation, quat_new(vec3_new(0,1,0), 0.01f));
 			static_uniform_data.model = mat4_mul_mat4(quat_to_mat4(static_rotation), mat4_translation(static_translation));
 			Gpu2BufferWriteInfo uniform_buffer_write_info = {
+				.buffer = &static_uniform_buffer,
 				.size = sizeof(UniformStruct),
 				.data = &static_uniform_data,
 			};
-			gpu2_write_buffer(&gpu2_device, &static_uniform_buffer, &uniform_buffer_write_info);
+			gpu2_write_buffer(&gpu2_device, &uniform_buffer_write_info);
 		}
 
 		{	// Updating Animated Model
@@ -329,10 +333,11 @@ int main()
 
 			animated_model_update_animation(&animated_model, current_anim_time, joint_matrices);
 			Gpu2BufferWriteInfo joint_matrices_buffer_write_info = {
+				.buffer = &joint_matrices_buffer,
 				.size = sizeof(Mat4) * animated_model.num_joints,
 				.data = joint_matrices,
 			};
-			gpu2_write_buffer(&gpu2_device, &joint_matrices_buffer, &joint_matrices_buffer_write_info);
+			gpu2_write_buffer(&gpu2_device, &joint_matrices_buffer_write_info);
 		}
 
 		Gpu2CommandBuffer command_buffer;

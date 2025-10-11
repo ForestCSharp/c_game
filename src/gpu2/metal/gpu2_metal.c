@@ -72,7 +72,7 @@ struct Gpu2Drawable
 	id<CAMetalDrawable> metal_drawable;
 };
 
-bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
+void gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 {
 	*out_device = (Gpu2Device){};
 
@@ -85,8 +85,6 @@ bool gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 
 	out_device->metal_queue = [out_device->metal_device newCommandQueue];
 	assert(out_device->metal_queue);
-
-	return true;
 }
 
 void gpu2_destroy_device(Gpu2Device* in_device)
@@ -275,7 +273,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 }
 
 //TODO: is_cpu_visible arg support
-bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer)
+void gpu2_create_buffer(Gpu2Device* in_device, const Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer)
 {
 	*out_buffer = (Gpu2Buffer){};
 
@@ -293,14 +291,12 @@ bool gpu2_create_buffer(Gpu2Device* in_device, Gpu2BufferCreateInfo* in_create_i
 	{
 		out_buffer->metal_buffer = [in_device->metal_device newBufferWithLength:in_create_info->size options:options];
 	}
-
-	return true;
 }
 
-void gpu2_write_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer, Gpu2BufferWriteInfo* in_write_info)
+void gpu2_write_buffer(Gpu2Device* in_device, const Gpu2BufferWriteInfo* in_write_info)
 {
-	assert(in_buffer->metal_buffer.contents != NULL);
-	memcpy(in_buffer->metal_buffer.contents, in_write_info->data, in_write_info->size);
+	assert(in_write_info->buffer->metal_buffer.contents != NULL);
+	memcpy(in_write_info->buffer->metal_buffer.contents, in_write_info->data, in_write_info->size);
 }
 
 void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
@@ -364,7 +360,7 @@ MTLTextureUsage gpu2_texture_usage_flags_to_mtl_texture_usage(Gpu2TextureUsageFl
 	return out_flags;
 }
 
-bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture)
+void gpu2_create_texture(Gpu2Device* in_device, const Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture)
 {
 	const Gpu2TextureExtent extent	= in_create_info->extent;
     MTLTextureType mtl_texture_type = extent.depth > 1 	?	MTLTextureType3D	
@@ -384,7 +380,6 @@ bool gpu2_create_texture(Gpu2Device* in_device, Gpu2TextureCreateInfo* in_create
 	texture_descriptor.usage = gpu2_texture_usage_flags_to_mtl_texture_usage(in_create_info->usage);
 	
 	out_texture->metal_texture = [in_device->metal_device newTextureWithDescriptor:texture_descriptor];
-	return true;
 }
 
 void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture)

@@ -31,6 +31,7 @@ typedef struct GuiVert
     Vec2 uv;
     Vec4 color;
     i32 has_texture;
+	u32 padding[3];
 } GuiVert;
 
 typedef struct GuiRect
@@ -217,7 +218,6 @@ bool gui_load_font(const char* filename, GuiFont* out_font)
 
 bool gui_font_get_uvs(const GuiFont* const in_font, char in_char, GuiRect* out_uv_rect)
 {
-
     i32 chars_per_row = in_font->image_width / in_font->cell_width;
     i32 chars_per_col = in_font->image_height / in_font->cell_height;
     i32 total_chars = chars_per_row * chars_per_col;
@@ -233,15 +233,18 @@ bool gui_font_get_uvs(const GuiFont* const in_font, char in_char, GuiRect* out_u
         float min_u = col * col_factor;
         float min_v = row * row_factor;
 
-        *out_uv_rect = (GuiRect){.position =
-                                     {
-                                         .x = min_u,
-                                         .y = min_v,
-                                     },
-            .size = {
-                .x = col_factor,
+        *out_uv_rect = (GuiRect){
+			.position =
+		 	{
+				.x = min_u,
+				.y = min_v,
+			},
+            .size =
+			{
+            	.x = col_factor,
                 .y = col_factor,
-            }};
+            }
+		};
 
         return true;
     }
@@ -256,7 +259,10 @@ void gui_free_font(GuiFont* in_font)
 
 bool gui_rect_intersects_point(const GuiRect in_rect, const Vec2 in_point)
 {
-    return in_point.x >= in_rect.position.x && in_point.x <= in_rect.position.x + in_rect.size.x && in_point.y >= in_rect.position.y && in_point.y <= in_rect.position.y + in_rect.size.y;
+    return in_point.x >= in_rect.position.x
+		&& in_point.x <= in_rect.position.x + in_rect.size.x
+		&& in_point.y >= in_rect.position.y
+		&& in_point.y <= in_rect.position.y + in_rect.size.y;
 }
 
 GuiRect gui_rect_scale(const GuiRect in_rect, const Vec2 in_scale)
@@ -332,9 +338,8 @@ GuiRect gui_make_fullscreen_rect(const GuiContext* const in_context, const u32 i
 }
 
 /* positions: [0,1] range */
-void gui_draw_tri(GuiDrawData* const in_draw_data, const GuiVert vertices[3])
+void gui_draw_tri(GuiDrawData* const in_draw_data, GuiVert vertices[3])
 {
-
     u32 next_vert_idx = sb_count(in_draw_data->vertices);
 
     // Indices
@@ -349,7 +354,7 @@ void gui_draw_tri(GuiDrawData* const in_draw_data, const GuiVert vertices[3])
 }
 
 /* positions: [0,1] range */
-void gui_draw_quad(GuiDrawData* const in_draw_data, const GuiVert vertices[4])
+void gui_draw_quad(GuiDrawData* const in_draw_data, GuiVert vertices[4])
 {
 
     u32 next_vert_idx = sb_count(in_draw_data->vertices);
@@ -383,32 +388,34 @@ void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect,
     const Vec2 uv_start = in_uv_rect ? in_uv_rect->position : vec2_new(-1, -1);
     const Vec2 uv_size = in_uv_rect ? in_uv_rect->size : vec2_new(0, 0);
 
-    gui_draw_quad(in_draw_data, (GuiVert[4]){
-                                    (GuiVert){
-                                        .position = position,
-                                        .uv = uv_start,
-                                        .color = *in_color,
-                                        .has_texture = has_uvs,
-                                    },
-                                    (GuiVert){
-                                        .position = vec2_add(position, vec2_new(size.x, 0)),
-                                        .uv = vec2_add(uv_start, vec2_new(uv_size.x, 0)),
-                                        .color = *in_color,
-                                        .has_texture = has_uvs,
-                                    },
-                                    (GuiVert){
-                                        .position = vec2_add(position, vec2_new(0, size.y)),
-                                        .uv = vec2_add(uv_start, vec2_new(0, uv_size.y)),
-                                        .color = *in_color,
-                                        .has_texture = has_uvs,
-                                    },
-                                    (GuiVert){
-                                        .position = vec2_add(position, size),
-                                        .uv = vec2_add(uv_start, uv_size),
-                                        .color = *in_color,
-                                        .has_texture = has_uvs,
-                                    },
-                                });
+    gui_draw_quad(in_draw_data, 
+		(GuiVert[4]){
+			(GuiVert){
+				.position = position,
+				.uv = uv_start,
+				.color = *in_color,
+				.has_texture = has_uvs,
+			},
+			(GuiVert){
+				.position = vec2_add(position, vec2_new(size.x, 0)),
+				.uv = vec2_add(uv_start, vec2_new(uv_size.x, 0)),
+				.color = *in_color,
+				.has_texture = has_uvs,
+			},
+			(GuiVert){
+				.position = vec2_add(position, vec2_new(0, size.y)),
+				.uv = vec2_add(uv_start, vec2_new(0, uv_size.y)),
+				.color = *in_color,
+				.has_texture = has_uvs,
+			},
+			(GuiVert){
+				.position = vec2_add(position, size),
+				.uv = vec2_add(uv_start, uv_size),
+				.color = *in_color,
+				.has_texture = has_uvs,
+			},
+		}
+	);
 }
 
 Vec2 recursive_bezier(const float t, const u32 num_points, const Vec2* in_points)
@@ -473,28 +480,30 @@ void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2
         const Vec2 pos_c = vec2_add(next_pos, vec2_scale(next_normal, width));
         const Vec2 pos_d = vec2_add(next_pos, vec2_scale(next_normal, -width));
 
-        gui_draw_quad(in_draw_data, (GuiVert[4]){
-                                        (GuiVert){
-                                            .position = pos_a,
-                                            .uv = invalid_uv,
-                                            .color = color,
-                                        },
-                                        (GuiVert){
-                                            .position = pos_b,
-                                            .uv = invalid_uv,
-                                            .color = color,
-                                        },
-                                        (GuiVert){
-                                            .position = pos_c,
-                                            .uv = invalid_uv,
-                                            .color = color,
-                                        },
-                                        (GuiVert){
-                                            .position = pos_d,
-                                            .uv = invalid_uv,
-                                            .color = color,
-                                        },
-                                    });
+        gui_draw_quad(in_draw_data, 
+			(GuiVert[4]){
+				(GuiVert){
+					.position = pos_a,
+					.uv = invalid_uv,
+					.color = color,
+				},
+				(GuiVert){
+					.position = pos_b,
+					.uv = invalid_uv,
+					.color = color,
+				},
+				(GuiVert){
+					.position = pos_c,
+					.uv = invalid_uv,
+					.color = color,
+				},
+				(GuiVert){
+					.position = pos_d,
+					.uv = invalid_uv,
+					.color = color,
+				},
+			}
+		);
 
         current_t += step_amount;
     }
