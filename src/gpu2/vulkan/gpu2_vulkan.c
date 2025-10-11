@@ -1711,9 +1711,9 @@ void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_up
 	VkImageMemoryBarrier vk_image_memory_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .pNext = NULL,
-        .srcAccessMask = 0, // FCS TODO:
-        .dstAccessMask = 0, // FCS TODO:
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcAccessMask = 0, 
+        .dstAccessMask = 0,
+		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_GENERAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -1728,10 +1728,11 @@ void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_up
 		},
     };
 
+	VkPipelineStageFlags vk_stage_flags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     vkCmdPipelineBarrier(
 		vk_staging_command_buffer,
-		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, // srcStageMask
-		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, // dstStageMask
+		vk_stage_flags, // srcStageMask
+		vk_stage_flags,	// dstStageMask
 		0,    // dependencyFlags
 		0,    // memoryBarrierCount
 		NULL, // pMemoryBarriers
@@ -1745,13 +1746,13 @@ void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_up
     VkSubmitInfo vk_submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .pNext = NULL,
-        .waitSemaphoreCount = 0, //wait_semaphore ? 1 : 0,
-        .pWaitSemaphores = NULL, //wait_semaphore ? &wait_semaphore->vk_semaphore : NULL,
-        .pWaitDstStageMask = NULL, //&wait_stage,
+        .waitSemaphoreCount = 0, 
+        .pWaitSemaphores = NULL,
+        .pWaitDstStageMask = NULL,
         .commandBufferCount = 1,
         .pCommandBuffers = &vk_staging_command_buffer,
-        .signalSemaphoreCount = 0, //signal_semaphore != NULL ? 1 : 0,
-        .pSignalSemaphores = NULL, //signal_semaphore ? &signal_semaphore->vk_semaphore : NULL,
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = NULL,
     };
 
     VK_CHECK(vkQueueSubmit(

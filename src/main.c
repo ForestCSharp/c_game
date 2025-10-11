@@ -596,7 +596,7 @@ int main()
     i32 mouse_x, mouse_y;
 	window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
-	bool show_mouse = true;
+	bool show_mouse = false;
 	window_show_mouse_cursor(&window, show_mouse);
 
 	while (window_handle_messages(&window))
