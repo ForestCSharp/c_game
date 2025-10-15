@@ -22,7 +22,6 @@ typedef enum Gpu2BufferUsageFlagBits
 } Gpu2BufferUsageFlagBits;
 typedef u32 Gpu2BufferUsageFlags;
 
-//FCS TODO: Buffer Type (Storage / Uniform buffers)
 typedef struct Gpu2BufferCreateInfo
 {
 	Gpu2BufferUsageFlags usage;
@@ -257,6 +256,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 void gpu2_create_buffer(Gpu2Device* in_device, const Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer);
 void gpu2_write_buffer(Gpu2Device* in_device, const Gpu2BufferWriteInfo* in_write_info);
 void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
+void gpu_unmap_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
 void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer);
 
 void gpu2_create_texture(Gpu2Device* in_device, const Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture);
@@ -283,8 +283,7 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
 
 // Helper Functions
 u32 gpu2_format_stride(Gpu2Format format);
+const char* gpu2_get_api_name();
 
-// FCS TODO: Remove bool returns.
+// FCS TODO: Remove bool returns on all functions
 // FCS TODO: Rename "drawable" to something else
-// FCS TODO: Rename BindGroup to ResourceGroup
-// FCS TODO: Resource/Object destroy functions 

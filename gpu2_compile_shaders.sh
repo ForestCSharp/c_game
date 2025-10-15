@@ -19,12 +19,16 @@ compile_shader_extension() {
     
     glslc "$f" -o "$spv_filename"
 
+	# Notes:
+	# --msl-force-active-argument-buffer-resources is used to make sure our argbuffers match on shader stages, even if some resources are unused for that stage
+
     spirv-cross "$spv_filename" \
     	--msl \
     	--msl-version 300000 \
     	--msl-argument-buffers \
     	--msl-decoration-binding \
 		--msl-argument-buffer-tier 1 \
+		--msl-force-active-argument-buffer-resources \
     	--output "$msl_filename"
 
   done

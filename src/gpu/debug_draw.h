@@ -1,6 +1,5 @@
 #pragma once
 
-#include "gpu/gpu.h"
 #include "math/matrix.h"
 #include "math/quat.h"
 #include "math/vec.h"

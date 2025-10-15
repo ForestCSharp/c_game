@@ -1,6 +1,23 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
+struct GuiVert
+{
+    vec2 position;
+    vec2 uv;
+    vec4 color;
+    int has_texture;
+	uint padding[3];
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer IndexBuffer {
+	uint data[];
+} index_buffer;
+
+layout(std430, set = 0, binding = 1) readonly buffer VertexBuffer {
+	GuiVert data[];
+} vertex_buffer;
+
 layout(set = 0, binding = 2) uniform texture2D gui_texture; 
 layout(set = 0, binding = 3) uniform sampler gui_sampler; 
 

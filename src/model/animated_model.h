@@ -6,7 +6,6 @@
 #include "math/quat.h"
 #include "model/static_model.h"
 #include "gltf.h"
-#include "gpu/gpu.h"
 #include "types.h"
 #include "assert.h"
 

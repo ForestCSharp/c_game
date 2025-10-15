@@ -22,17 +22,25 @@
 #include "gui.h"
 
 // FCS TODO: Gpu2 Porting Checklist
-// UI Port
+// UI Port - Metal 
+//	- Just need to fix color blending
 // Debug Draw Port
 // Delete old GPU directory
+// Delete main_old.c
 // Rename all 'Gpu2' to just 'Gpu'
 
 int main()
 {
-	// Create our window
+	// Create our window	
+	String window_title = string_new("C Game (");
+	string_append(&window_title, gpu2_get_api_name());
+	string_append(&window_title, ")");
+
 	i32 window_width = 1280;
 	i32 window_height = 720;
-    Window window = window_create("C Game", window_width, window_height);
+    Window window = window_create(window_title.data, window_width, window_height);
+
+	string_free(&window_title);
 
 	Gpu2Device gpu2_device;
 	gpu2_create_device(&window, &gpu2_device);
@@ -239,9 +247,8 @@ int main()
 				.animated_model = animated_model,
 				.joint_matrices_buffer = joint_matrices_buffer,
 				.mapped_buffer_data = gpu2_map_buffer(&gpu2_device, &joint_matrices_buffer),
-				.animation_rate = rand_f32(0.001f, 5.0f),
+				.animation_rate = rand_f32(0.0001f, 5.0f),
 			};
-
 			OBJECT_CREATE_COMPONENT(AnimatedModelComponent, game_object_manager_ptr, new_object_handle, animated_model_component_data);
 		}
 		else
@@ -249,11 +256,10 @@ int main()
 			StaticModelComponent static_model_component_data = {
 				.static_model = static_model,
 			};
-
 			OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, new_object_handle, static_model_component_data);
 		}
 
-		const float spawn_scale = create_animated_model ? OBJECTS_TO_CREATE / 50.0f : OBJECTS_TO_CREATE / 100.0f;
+		const float spawn_scale = create_animated_model ? OBJECTS_TO_CREATE / 25.0f : OBJECTS_TO_CREATE / 100.0f;
 		const Vec3 scale = vec3_new(spawn_scale, spawn_scale, spawn_scale);
 		
 		const float spawn_span = OBJECTS_TO_CREATE / 2.0f;

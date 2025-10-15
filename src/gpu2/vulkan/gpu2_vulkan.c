@@ -287,7 +287,7 @@ typedef struct Gpu2VkImageBarrier
 
 } Gpu2VkImageBarrier;
 
-void gpu2_cmd_vk_image_barrier(Gpu2CommandBuffer* in_command_buffer, Gpu2VkImageBarrier* in_barrier)
+void gpu2_cmd_vk_image_barrier(VkCommandBuffer in_vk_command_buffer, Gpu2VkImageBarrier* in_barrier)
 {
     VkImageMemoryBarrier vk_image_memory_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -310,7 +310,7 @@ void gpu2_cmd_vk_image_barrier(Gpu2CommandBuffer* in_command_buffer, Gpu2VkImage
     };
 
     vkCmdPipelineBarrier(
-		in_command_buffer->vk_command_buffer, 
+		in_vk_command_buffer, 
 		in_barrier->src_stage, 
 		in_barrier->dst_stage,
 		 0,    // dependencyFlags
@@ -1443,24 +1443,29 @@ void gpu2_create_buffer(Gpu2Device* in_device, const Gpu2BufferCreateInfo* in_cr
 		memory->memory_region->offset)
 	);
 
-	//FCS TODO: Will need staging buffer for non-CPU addressable memory
-	if (in_create_info->data)
-	{
-		void* pBufferData;
-		gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
-		memcpy(pBufferData, in_create_info->data, in_create_info->size);
-		gpu2_vk_unmap_memory(in_device, memory);
-	}
-
 	*out_buffer = (Gpu2Buffer){
 		.vk_buffer = vk_buffer,
 		.memory = memory,
 	};
+
+	// Write buffer now if we passed in inital data
+	if (in_create_info->data)
+	{
+		Gpu2BufferWriteInfo initial_buffer_write_info = {
+			.buffer = out_buffer,
+			.size = in_create_info->size,
+			.data = in_create_info->data,
+		};
+		gpu2_write_buffer(in_device, &initial_buffer_write_info);
+	}
 }
 
 void gpu2_write_buffer(Gpu2Device* in_device, const Gpu2BufferWriteInfo* in_write_info)
 {
 	Gpu2Memory* memory = in_write_info->buffer->memory;
+
+	//FCS TODO: Support Staging Buffer Writes for non-cpu-visible buffers
+	//FCS TODO: gpu2_write_texture in this file has a lot of staging buffer code that can likely be shared
 
 	// Make Sure our memory is host-visible and host-coherent
 	VkMemoryPropertyFlags flags_to_check = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
@@ -1480,6 +1485,12 @@ void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
 	void* pBufferData;
 	gpu2_vk_map_memory(in_device, memory, 0, memory->memory_region->size, &pBufferData);
 	return pBufferData;
+}
+
+void gpu_unmap_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+{
+	Gpu2Memory* memory = in_buffer->memory;
+    gpu2_vk_unmap_memory(in_device, memory);
 }
 
 void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
@@ -1708,38 +1719,16 @@ void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_up
 		&vk_buffer_image_copy
 	);
 
-	VkImageMemoryBarrier vk_image_memory_barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .pNext = NULL,
-        .srcAccessMask = 0, 
-        .dstAccessMask = 0,
-		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = texture->vk_image,
-        .subresourceRange =
-		{	
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.baseMipLevel = 0,
-			.levelCount = 1,
-			.baseArrayLayer = 0,
-			.layerCount = 1,
-		},
-    };
-
-	VkPipelineStageFlags vk_stage_flags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    vkCmdPipelineBarrier(
-		vk_staging_command_buffer,
-		vk_stage_flags, // srcStageMask
-		vk_stage_flags,	// dstStageMask
-		0,    // dependencyFlags
-		0,    // memoryBarrierCount
-		NULL, // pMemoryBarriers
-		0,    // bufferMemoryBarrierCount
-		NULL, // pBufferMemoryBarriers
-		1,    // imageMemoryBarrierCount
-		&vk_image_memory_barrier
+	gpu2_cmd_vk_image_barrier(
+		vk_staging_command_buffer, 
+		&(Gpu2VkImageBarrier){
+			.vk_image = texture->vk_image,
+			.src_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			.dst_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			.old_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.new_layout = VK_IMAGE_LAYOUT_GENERAL,
+			.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT,
+		}
 	);
 
 	VK_CHECK(vkEndCommandBuffer(vk_staging_command_buffer));
@@ -1762,7 +1751,9 @@ void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_up
 		VK_NULL_HANDLE //signal_fence ? signal_fence->vk_fence : VK_NULL_HANDLE
 	));
 
+	// FCS TODO: Need proper per-frame fencing setup so we don't have to stall here
 	vkDeviceWaitIdle(in_device->vk_device);
+
 	vkFreeCommandBuffers(in_device->vk_device, in_device->staging_command_pool, 1, &vk_staging_command_buffer);
 
 	// Destroy our staging buffer
@@ -1891,7 +1882,7 @@ bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command
 	};
 
 	gpu2_cmd_vk_image_barrier(
-		in_command_buffer, 
+		in_command_buffer->vk_command_buffer, 
 		&(Gpu2VkImageBarrier){
 			.vk_image = out_drawable->texture.vk_image,
 			.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -1989,7 +1980,7 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 		};
 
 		gpu2_cmd_vk_image_barrier(
-			in_create_info->command_buffer, 
+			in_create_info->command_buffer->vk_command_buffer, 
 			&(Gpu2VkImageBarrier){
 				.vk_image = depth_attachment_texture->vk_image,
 				.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -2109,7 +2100,7 @@ void gpu2_present_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_
     };
 
 	gpu2_cmd_vk_image_barrier(
-		in_command_buffer, 
+		in_command_buffer->vk_command_buffer, 
 		&(Gpu2VkImageBarrier){
 			.vk_image = in_drawable->texture.vk_image,
 			.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -2157,6 +2148,11 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
     vkDeviceWaitIdle(in_device->vk_device);
 
 	return true;
+}
+
+const char* gpu2_get_api_name()
+{
+	return "Vulkan";
 }
 
 // FCS TODO: Track previous layout (from previous image barrier call...)

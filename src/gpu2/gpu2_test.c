@@ -25,10 +25,14 @@
 
 int main()
 {
-	// Create our window
+	// Create our window	
+	String window_title = string_new("GPU Test (");
+	string_append(&window_title, gpu2_get_api_name());
+	string_append(&window_title, ")");
+
 	i32 window_width = 1280;
 	i32 window_height = 720;
-    Window window = window_create("C Game", window_width, window_height);
+    Window window = window_create(window_title.data, window_width, window_height);
 
 	Gpu2Device gpu2_device;
 	gpu2_create_device(&window, &gpu2_device);

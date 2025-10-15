@@ -18,6 +18,9 @@ layout(std430, set = 0, binding = 1) readonly buffer VertexBuffer {
 	GuiVert data[];
 } vertex_buffer;
 
+layout(set = 0, binding = 2) uniform texture2D gui_texture; 
+layout(set = 0, binding = 3) uniform sampler gui_sampler; 
+
 layout(location = 0) out vec2 out_position;
 layout(location = 1) out vec2 out_uv;
 layout(location = 2) out vec4 out_color;

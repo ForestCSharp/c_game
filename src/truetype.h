@@ -34,7 +34,6 @@ typedef struct TrueTypeFont
 
 bool truetype_read_file(const char* filename, size_t* out_file_size, u8** out_data)
 {
-
     FILE* file = fopen(filename, "rb");
     if (!file)
     {

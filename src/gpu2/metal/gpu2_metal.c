@@ -32,6 +32,7 @@ typedef struct Gpu2BindGroupWriteReference
 	Gpu2BindingType type;
 	id<MTLBuffer> metal_buffer;
 	id<MTLTexture> metal_texture;
+	id<MTLSamplerState> metal_sampler_state;
 } Gpu2BindGroupWriteReference;
 
 struct Gpu2BindGroup
@@ -59,7 +60,13 @@ struct Gpu2Buffer {
 
 struct Gpu2Texture
 {
+	Gpu2TextureCreateInfo create_info;
 	id<MTLTexture> metal_texture;
+};
+
+struct Gpu2Sampler
+{
+	id<MTLSamplerState> metal_sampler_state;
 };
 
 struct Gpu2CommandBuffer
@@ -139,8 +146,7 @@ bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLay
 {
 	out_bind_group_layout->index = in_create_info->index;
 	out_bind_group_layout->num_bindings = in_create_info->num_bindings;
-	memcpy(out_bind_group_layout->bindings, in_create_info->bindings, sizeof(Gpu2ResourceBinding) * in_create_info->num_bindings);
-	
+	memcpy(out_bind_group_layout->bindings, in_create_info->bindings, sizeof(Gpu2ResourceBinding) * in_create_info->num_bindings);	
 	return true;
 }
 
@@ -163,11 +169,13 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo
 		switch(resource_binding->type)
 		{
 			case GPU2_BINDING_TYPE_BUFFER:
-				argument_buffer_size += 1 * sizeof(u64);
+				argument_buffer_size += sizeof(u64);
 				break;
 			case GPU2_BINDING_TYPE_TEXTURE:
-				//FCS TODO:
-				assert(false);
+				argument_buffer_size += sizeof(MTLResourceID);
+				break;
+			case GPU2_BINDING_TYPE_SAMPLER:
+				argument_buffer_size += sizeof(MTLResourceID);
 				break;
 		}
 	}
@@ -205,10 +213,8 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 				Gpu2Buffer* buffer = resource_write->buffer_binding.buffer;
 				assert(buffer && buffer->metal_buffer);
 
-				// Get argbuffer contents
-				u8* argbuffer_contents = (u8*) bind_group->metal_argument_buffer.contents;
-				
-				// Account for binding offset
+				// Get argbuffer contents and apply offset
+				u8* argbuffer_contents = (u8*) bind_group->metal_argument_buffer.contents;		
 				argbuffer_contents += argbuffer_offset;
 
 				const u64 gpu_address = buffer->metal_buffer.gpuAddress;
@@ -223,9 +229,40 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 			}
 			case GPU2_BINDING_TYPE_TEXTURE:
 			{
-				//FCS TODO:
-				//FCS TODO: write_references info
-				assert(false);
+				Gpu2Texture* texture = resource_write->texture_binding.texture;
+				assert(texture && texture->metal_texture);
+
+				// Get argbuffer contents and apply offset
+				u8* argbuffer_contents = (u8*) bind_group->metal_argument_buffer.contents;
+				argbuffer_contents += argbuffer_offset;
+
+				const MTLResourceID tex_id = texture->metal_texture.gpuResourceID;
+				memcpy(argbuffer_contents, &tex_id, sizeof(MTLResourceID));
+
+				bind_group->write_references[resource_binding_index] = (Gpu2BindGroupWriteReference){
+					.is_valid = true,
+					.type = GPU2_BINDING_TYPE_TEXTURE,
+					.metal_texture = texture->metal_texture,
+				};
+				break;
+			}
+			case GPU2_BINDING_TYPE_SAMPLER:
+			{
+				Gpu2Sampler* sampler = resource_write->sampler_binding.sampler;
+				assert(sampler && sampler->metal_sampler_state);
+
+				// Get argbuffer contents and apply offset
+				u8* argbuffer_contents = (u8*) bind_group->metal_argument_buffer.contents;
+				argbuffer_contents += argbuffer_offset;
+
+				MTLResourceID sampler_id = sampler->metal_sampler_state.gpuResourceID;
+				memcpy(argbuffer_contents, &sampler_id, sizeof(MTLResourceID));
+
+				bind_group->write_references[resource_binding_index] = (Gpu2BindGroupWriteReference){
+					.is_valid = true,
+					.type = GPU2_BINDING_TYPE_SAMPLER,
+					.metal_sampler_state = sampler->metal_sampler_state,
+				};
 				break;
 			}
 		}
@@ -244,7 +281,6 @@ void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* 
 }
 
 //FCS TODO: currently just assumes a single MTLPixelFormatBGRA8Unorm color attachment
-//FCS TODO: need to pass color attachment and depth attachment info here...
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline)
 {	
 	MTLRenderPipelineDescriptor *metal_render_pipeline_descriptor = [[MTLRenderPipelineDescriptor alloc] init];
@@ -253,10 +289,19 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 	assert(in_create_info->fragment_shader);
 	metal_render_pipeline_descriptor.fragmentFunction = in_create_info->fragment_shader->metal_function;
 
-	//FCS TODO: CreateInfo Arg for color attachments...
-	metal_render_pipeline_descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-	//FCS TODO:
-	metal_render_pipeline_descriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+	MTLRenderPipelineColorAttachmentDescriptor* color_attachment = metal_render_pipeline_descriptor.colorAttachments[0];
+	color_attachment.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	color_attachment.blendingEnabled = YES;
+	// Color blending
+	color_attachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+	color_attachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+	color_attachment.rgbBlendOperation = MTLBlendOperationAdd;
+	// Alpha blending 
+	color_attachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
+	color_attachment.destinationAlphaBlendFactor = MTLBlendFactorZero;
+	color_attachment.alphaBlendOperation = MTLBlendOperationAdd;
+
+	metal_render_pipeline_descriptor.depthAttachmentPixelFormat = in_create_info->depth_test_enabled ? MTLPixelFormatDepth32Float : MTLPixelFormatInvalid;
 
 
     MTLDepthStencilDescriptor* metal_depth_stencil_desc = [[MTLDepthStencilDescriptor alloc] init];
@@ -304,6 +349,11 @@ void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
 	return in_buffer->metal_buffer.contents;
 }
 
+void gpu_unmap_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+{
+	// Nothing to do
+}
+
 void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
 {
 	_OBJC_RELEASE(in_buffer->metal_buffer);
@@ -313,6 +363,7 @@ MTLPixelFormat gpu2_format_to_mtl_format(Gpu2Format in_format)
 {
 	switch(in_format)
 	{
+		case GPU2_FORMAT_RGBA8_UNORM: return MTLPixelFormatRGBA8Unorm;
 		case GPU2_FORMAT_D32_SFLOAT: return MTLPixelFormatDepth32Float;
 		default: 
 			printf("gpu2_format_to_vk_format: Unimplemented Format\n");
@@ -379,12 +430,93 @@ void gpu2_create_texture(Gpu2Device* in_device, const Gpu2TextureCreateInfo* in_
 	texture_descriptor.storageMode = in_create_info->is_cpu_visible ? MTLStorageModeShared : MTLStorageModeManaged;
 	texture_descriptor.usage = gpu2_texture_usage_flags_to_mtl_texture_usage(in_create_info->usage);
 	
+	out_texture->create_info = *in_create_info;
 	out_texture->metal_texture = [in_device->metal_device newTextureWithDescriptor:texture_descriptor];
+}
+
+void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_upload_info)
+{
+	Gpu2Texture* texture = in_upload_info->texture;
+    id<MTLTexture> metal_texture = texture->metal_texture;
+    MTLRegion region = MTLRegionMake2D(0, 0, in_upload_info->width, in_upload_info->height);
+
+	const u32 format_stride = gpu2_format_stride(texture->create_info.format);
+	const u32 bytes_per_row = in_upload_info->width * format_stride;
+    
+    [metal_texture replaceRegion:region
+    	mipmapLevel:0
+    	withBytes:in_upload_info->data
+    	bytesPerRow:bytes_per_row
+	];
+
+	if (!texture->create_info.is_cpu_visible)
+	{
+		//TODO: Need to sync for non-cpu-visible textures
+		// after replaceRegion: (when using Managed storage on macOS)
+		//id<MTLCommandBuffer> cb = [in_device->metal_queue commandBuffer];
+		//id<MTLBlitCommandEncoder> bl = [cb blitCommandEncoder];
+		//[bl synchronizeResource: texture];     // ensure GPU sees CPU changes
+		//[bl endEncoding];
+		//[cb commit];
+		//[cb waitUntilCompleted]; // or do async
+	}
 }
 
 void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture)
 {
 	_OBJC_RELEASE(in_texture->metal_texture);
+}
+
+MTLSamplerMinMagFilter gpu2_filter_to_mtl_filter(Gpu2Filter in_filter)
+{
+	switch (in_filter)
+	{
+		case GPU2_FILTER_NEAREST: return MTLSamplerMinMagFilterNearest;
+		case GPU2_FILTER_LINEAR:  return MTLSamplerMinMagFilterLinear;
+	}
+	assert(false);
+	return MTLSamplerMinMagFilterNearest; // fallback to silence warnings
+}
+
+MTLSamplerAddressMode gpu2_sampler_address_mode_to_mtl_sampler_address_mode(Gpu2SamplerAddressMode in_mode)
+{
+	switch (in_mode)
+	{
+		case GPU2_SAMPLER_ADDRESS_MODE_REPEAT:
+			return MTLSamplerAddressModeRepeat;
+		case GPU2_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:
+			return MTLSamplerAddressModeMirrorRepeat;
+		case GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:
+			return MTLSamplerAddressModeClampToEdge;
+		case GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:
+			// Metal calls this "clamp to border color"
+			return MTLSamplerAddressModeClampToBorderColor;
+	}
+	assert(false);
+	return MTLSamplerAddressModeClampToEdge;
+}
+
+void gpu2_create_sampler(Gpu2Device* in_device, const Gpu2SamplerCreateInfo* in_create_info, Gpu2Sampler* out_sampler)
+{	
+	MTLSamplerDescriptor *metal_sampler_desc = [[MTLSamplerDescriptor alloc] init];
+	metal_sampler_desc.supportArgumentBuffers = YES;
+	metal_sampler_desc.magFilter     = gpu2_filter_to_mtl_filter(in_create_info->filters.mag);
+	metal_sampler_desc.minFilter     = gpu2_filter_to_mtl_filter(in_create_info->filters.min);
+	metal_sampler_desc.mipFilter     = MTLSamplerMipFilterLinear;
+	metal_sampler_desc.sAddressMode  = gpu2_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.u);
+	metal_sampler_desc.tAddressMode  = gpu2_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.v);
+	metal_sampler_desc.rAddressMode  = gpu2_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.w);
+
+	id<MTLSamplerState> metal_sampler_state = [in_device->metal_device newSamplerStateWithDescriptor:metal_sampler_desc];
+
+	*out_sampler = (Gpu2Sampler) {
+		.metal_sampler_state = metal_sampler_state,
+	};
+}
+
+void gpu2_destroy_sampler(Gpu2Device* in_device, Gpu2Sampler* in_sampler)
+{
+	_OBJC_RELEASE(in_sampler->metal_sampler_state);
 }
 
 bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)
@@ -519,13 +651,16 @@ void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderP
 	  				stages:metal_render_stages
 				];
 	  			break;
-	  		case GPU2_BINDING_TYPE_TEXTURE:
-				//[in_render_pass->metal_render_command_encoder 
-				//	useResource:write_reference->metal_texture
-				//	usage:MTLResourceUsageRead
-				//	stages:metal_render_stages
-				//];
-	  			break;
+			case GPU2_BINDING_TYPE_TEXTURE:
+				[in_render_pass->metal_render_command_encoder
+					useResource:write_reference->metal_texture
+					usage:MTLResourceUsageRead
+					stages:metal_render_stages];
+				break;
+
+			case GPU2_BINDING_TYPE_SAMPLER:
+				// Nothing to do for Samplers
+				break;
 		}
 	}
 
@@ -561,3 +696,7 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
 	return true;
 }
 
+const char* gpu2_get_api_name()
+{
+	return "Metal";
+}
