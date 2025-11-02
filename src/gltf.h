@@ -735,9 +735,9 @@ typedef struct GltfNode
 
 typedef enum GltfInterpolation
 {
-    GLTF_INTERPOLATION_LINEAR,
-    GLTF_INTERPOLATION_STEP,
-    GLTF_INTERPOLATION_CUBIC_SPLINE,
+    GLTF_INTERPOLATION_LINEAR		= 0,
+    GLTF_INTERPOLATION_STEP			= 1,
+    GLTF_INTERPOLATION_CUBIC_SPLINE	= 2,
 } GltfInterpolation;
 
 typedef struct GltfAnimationSampler

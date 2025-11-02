@@ -60,7 +60,9 @@ int main()
 
 	// Set up Animated Model 
 	AnimatedModel animated_model;
-	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu2_device, &animated_model))
+	//if (!animated_model_load("data/meshes/cesium_man.glb", &gpu2_device, &animated_model))
+	//if (!animated_model_load("data/meshes/blender_simple.glb", &gpu2_device, &animated_model))
+	if (!animated_model_load("data/meshes/running.glb", &gpu2_device, &animated_model))
 	{
 		printf("Failed to Load Animated Model\n");
 		return 1;

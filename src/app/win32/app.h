@@ -160,8 +160,7 @@ bool window_handle_messages(Window* window)
 					RAWINPUT raw;
 					if (GetRawInputData((HRAWINPUT)msg.lParam, RID_INPUT, &raw, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize)
 					{
-						//FCS TODO: REMOVE THIS CHECK.... and printf
-						printf("GetRawInputData does not return correct size !\n");
+						break;
 					}
 
 					if (raw.header.dwType == RIM_TYPEMOUSE)

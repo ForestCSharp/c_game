@@ -100,10 +100,26 @@ Quat quat_add(const Quat a, const Quat b)
 	};
 }
 
-Quat quat_nlerp(float t, const Quat a, const Quat b)
+Quat quat_nlerp(float t, Quat a, Quat b)
 {
-	t = CLAMP(t, 0.0f, 1.0f);
-	return quat_add(quat_scale(a,1.0f - t), quat_scale(b, t));	
+    t = CLAMP(t, 0.0f, 1.0f);
+
+    // Ensure shortest path — if quaternions are opposite, flip one
+    if (quat_dot(a, b) < 0.0f)
+	{
+        b = quat_scale(b, -1.0f);
+	}
+
+    // Linear interpolation
+    const Quat r =
+		quat_normalize(
+			quat_add(
+				quat_scale(a, 1.0f - t),
+				quat_scale(b, t)
+			)
+		);
+
+    return r;
 }
 
 Quat quat_slerp(float t, Quat a, Quat b)

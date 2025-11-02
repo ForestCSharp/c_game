@@ -25,6 +25,7 @@ typedef struct SourceAnimationChannel
 {
     GltfNode* node;
     GltfAnimationPath path;
+	GltfInterpolation interpolation;
 
     i32 num_keyframes;
     SourceAnimationKeyframe* keyframes;
@@ -118,7 +119,13 @@ void anim_data_set(NodeAnimData* anim_data, GltfAnimationPath path, SourceAnimat
 	}
 }
 
-void anim_data_lerp_and_set(NodeAnimData* anim_data, GltfAnimationPath path, SourceAnimationKeyframe* in_left_keyframe, SourceAnimationKeyframe* in_right_keyframe, float t)
+void anim_data_lerp_and_set(
+	NodeAnimData* anim_data, 
+	GltfAnimationPath path, 
+	SourceAnimationKeyframe* in_left_keyframe, 
+	SourceAnimationKeyframe* in_right_keyframe, 
+	float t
+)
 {
 	switch (path)
 	{
@@ -162,12 +169,23 @@ void anim_data_compute_from_channel(NodeAnimData* anim_data, SourceAnimationChan
 		SourceAnimationKeyframe* next_keyframe = &in_channel->keyframes[keyframe_idx + 1];
 		if (in_time >= current_keyframe->time && in_time <= next_keyframe->time)
 		{
-			SourceAnimationKeyframe* next_keyframe = &in_channel->keyframes[keyframe_idx + 1];
 			const float numerator = in_time - current_keyframe->time;
 			const float denominator = (next_keyframe->time - current_keyframe->time);
 			const float t = numerator / denominator;
-			//FCS TODO: Need to determine appropriate lerp method from source data (see GltfInterpolation Enum)
-    		anim_data_lerp_and_set(anim_data, in_channel->path, current_keyframe, next_keyframe, t);
+
+			switch (in_channel->interpolation)
+			{
+				case GLTF_INTERPOLATION_LINEAR:
+					anim_data_lerp_and_set(anim_data, in_channel->path, current_keyframe, next_keyframe, t);
+					break;
+				case GLTF_INTERPOLATION_STEP:
+					anim_data_set(anim_data, in_channel->path, current_keyframe);
+					break;
+				case GLTF_INTERPOLATION_CUBIC_SPLINE:
+					//FCS TODO:
+					assert(false);
+					break;
+			}
 			return;
 		}
 	}
@@ -349,7 +367,6 @@ bool animated_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, Anima
         index_offset += primitive_indices_count;
     }
 
-
     // Skeleton + Animation Setup
     {
         GltfSkin* skin = animated_node->skin;
@@ -392,9 +409,7 @@ bool animated_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, Anima
             GltfAnimationChannel* gltf_channel = &animation->channels[channel_idx];
             GltfAnimationSampler* gltf_sampler = gltf_channel->sampler;
 
-			//FCS TODO: Support other interpolation methods
-			assert(gltf_sampler->interpolation == GLTF_INTERPOLATION_LINEAR);
-
+			source_channel->interpolation = gltf_sampler->interpolation;
             source_channel->node = gltf_channel->target.node;
             source_channel->path = gltf_channel->target.path;
 
