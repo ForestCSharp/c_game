@@ -23,11 +23,6 @@
 #include "debug_draw.h"
 
 // FCS TODO: Gpu2 Porting Checklist
-// UI Port - Metal 
-//	- Just need to fix color blending
-// Debug Draw Port
-// Delete old GPU directory
-// Delete main_old.c
 // Delete all old shaders (fragment, vertex, include directories)
 // Rename all 'Gpu2' to just 'Gpu'
 

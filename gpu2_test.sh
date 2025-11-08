@@ -1,7 +1,7 @@
 rm -r ./bin/
 mkdir ./bin/
 
-./gpu2_compile_shaders.sh data/shaders/gpu2
+./compile_shaders.sh data/shaders
 
 export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1
 export MVK_CONFIG_LOG_LEVEL=3

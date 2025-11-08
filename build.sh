@@ -1,13 +1,8 @@
 
-# working on gpu2 code for now...
-#./gpu2_test.sh $1
-#echo "REMOVE ME: TEMP: Just ran gpu2_test from build.sh"
-#exit 0
-
 rm -r ./bin/
 mkdir ./bin/
 
-./gpu2_compile_shaders.sh data/shaders/gpu2
+./compile_shaders.sh data/shaders
 
 # Metal Debugging Options 
 export MTL_DEBUG_LAYER=1
