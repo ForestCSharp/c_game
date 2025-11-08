@@ -20,6 +20,7 @@
 #include "game_object/game_object.h"
 #include "uniforms.h"
 #include "gui.h"
+#include "debug_draw.h"
 
 // FCS TODO: Gpu2 Porting Checklist
 // UI Port - Metal 
@@ -27,6 +28,7 @@
 // Debug Draw Port
 // Delete old GPU directory
 // Delete main_old.c
+// Delete all old shaders (fragment, vertex, include directories)
 // Rename all 'Gpu2' to just 'Gpu'
 
 int main()
@@ -60,9 +62,9 @@ int main()
 
 	// Set up Animated Model 
 	AnimatedModel animated_model;
-	//if (!animated_model_load("data/meshes/cesium_man.glb", &gpu2_device, &animated_model))
+	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu2_device, &animated_model))
 	//if (!animated_model_load("data/meshes/blender_simple.glb", &gpu2_device, &animated_model))
-	if (!animated_model_load("data/meshes/running.glb", &gpu2_device, &animated_model))
+	//if (!animated_model_load("data/meshes/running.glb", &gpu2_device, &animated_model))
 	{
 		printf("Failed to Load Animated Model\n");
 		return 1;
@@ -350,13 +352,13 @@ int main()
 		.filename = "bin/shaders/mesh_render.vert",
 	};
 	Gpu2Shader geometry_vertex_shader;
-	assert(gpu2_create_shader(&gpu2_device, &vertex_shader_create_info, &geometry_vertex_shader));
+	gpu2_create_shader(&gpu2_device, &vertex_shader_create_info, &geometry_vertex_shader);
 
 	Gpu2ShaderCreateInfo fragment_shader_create_info = {
 		.filename = "bin/shaders/mesh_render.frag",
 	};
 	Gpu2Shader geometry_fragment_shader;
-	assert(gpu2_create_shader(&gpu2_device, &fragment_shader_create_info, &geometry_fragment_shader));	
+	gpu2_create_shader(&gpu2_device, &fragment_shader_create_info, &geometry_fragment_shader);
 
 	GlobalUniformStruct global_uniform_data = {
 		.view = mat4_identity,
@@ -573,13 +575,13 @@ int main()
 			.filename = "bin/shaders/gui.vert",
 		};
 	Gpu2Shader gui_vertex_shader;
-	assert(gpu2_create_shader(&gpu2_device, &gui_vertex_shader_create_info, &gui_vertex_shader));
+	gpu2_create_shader(&gpu2_device, &gui_vertex_shader_create_info, &gui_vertex_shader);
 
 	Gpu2ShaderCreateInfo gui_fragment_shader_create_info = {
 			.filename = "bin/shaders/gui.frag",
 		};
 	Gpu2Shader gui_fragment_shader;
-	assert(gpu2_create_shader(&gpu2_device, &gui_fragment_shader_create_info, &gui_fragment_shader));
+	gpu2_create_shader(&gpu2_device, &gui_fragment_shader_create_info, &gui_fragment_shader);
 
 	Gpu2BindGroupLayout* gui_pipeline_bind_group_layouts[] = { &gui_bind_group_layout };
 	Gpu2RenderPipelineCreateInfo gui_render_pipeline_create_info = {
@@ -590,9 +592,17 @@ int main()
 		.depth_test_enabled = false,
 	};
 	Gpu2RenderPipeline gui_render_pipeline;
-	assert(gpu2_create_render_pipeline(&gpu2_device, &gui_render_pipeline_create_info, &gui_render_pipeline));	
+	assert(gpu2_create_render_pipeline(&gpu2_device, &gui_render_pipeline_create_info, &gui_render_pipeline));
+
+	gpu2_destroy_shader(&gpu2_device, &gui_vertex_shader);
+	gpu2_destroy_shader(&gpu2_device, &gui_fragment_shader);
 
 	// END GUI SETUP
+
+	// BEGIN DEBUG DRAW SETUP
+	DebugDrawContext debug_draw_context;
+	debug_draw_init(&gpu2_device, &debug_draw_context);
+	// END DEBUG DRAW SETUP
 
 	const u32 swapchain_count = gpu2_get_swapchain_count(&gpu2_device);
 	u64 time = time_now();
@@ -660,6 +670,8 @@ int main()
 			},
 		};
 		gui_begin_frame(&gui_context, gui_frame_state);
+		debug_draw_begin_frame(&debug_draw_context, current_frame);
+
 		if (show_mouse)
 		{
 			if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
@@ -1045,8 +1057,28 @@ int main()
 					}
 				}
 			}
-
 			gpu2_end_render_pass(&geometry_render_pass);
+		}
+
+		// Debug Draw Pass
+		{
+			debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
+				.center = vec3_new(0,0,0),
+				.radius = 25,
+				.latitudes = 12,
+				.longitudes = 12,
+				.color = vec4_new(1,0,0,1),
+			});
+
+			debug_draw_end_frame(&debug_draw_context, &gpu2_device, &global_uniform_data.view, &global_uniform_data.projection);
+
+			DebugDrawRecordInfo debug_draw_record_info = {
+				.gpu_device = &gpu2_device,
+				.command_buffer = &command_buffer,
+				.color_texture = &drawable_texture,
+				.depth_texture = &depth_texture,
+			};
+			debug_draw_record_commands(&debug_draw_context, &debug_draw_record_info);
 		}
 
 		// GUI Pass

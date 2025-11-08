@@ -68,13 +68,13 @@ int main()
 		.filename = "bin/shaders/gpu2_test.vert",
 	};
 	Gpu2Shader gpu2_vertex_shader;
-	assert(gpu2_create_shader(&gpu2_device, &vertex_shader_create_info, &gpu2_vertex_shader));
+	gpu2_create_shader(&gpu2_device, &vertex_shader_create_info, &gpu2_vertex_shader);
 
 	Gpu2ShaderCreateInfo fragment_shader_create_info = {
 		.filename = "bin/shaders/gpu2_test.frag",
 	};
 	Gpu2Shader gpu2_fragment_shader;
-	assert(gpu2_create_shader(&gpu2_device, &fragment_shader_create_info, &gpu2_fragment_shader));
+	gpu2_create_shader(&gpu2_device, &fragment_shader_create_info, &gpu2_fragment_shader);
 
 	typedef struct UniformStruct {
 		Mat4 model;

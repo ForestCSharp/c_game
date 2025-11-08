@@ -47,6 +47,7 @@ struct Gpu2BindGroup
 struct Gpu2RenderPipeline {
 	id<MTLRenderPipelineState> metal_render_pipeline_state;	
 	id<MTLDepthStencilState> metal_depth_stencil_state;
+	MTLTriangleFillMode metal_triangle_fill_mode;
 };
 
 struct Gpu2RenderPass
@@ -106,7 +107,7 @@ u32 gpu2_get_swapchain_count(Gpu2Device* in_device)
 	return in_device->metal_layer.maximumDrawableCount;
 }
 
-bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader)
+void gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader)
 {
 	String filename_string = string_new(in_create_info->filename);
 	string_append(&filename_string, ".msl");
@@ -138,8 +139,12 @@ bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_i
 	};
 
 	free(shader_source);
+}
 
-	return true;
+void gpu2_destroy_shader(Gpu2Device* in_device, Gpu2Shader* in_shader)
+{
+	in_shader->metal_library = nil;
+	in_shader->metal_function = nil;
 }
 
 bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout)
@@ -280,6 +285,16 @@ void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* 
 	*in_bind_group_layout = (Gpu2BindGroupLayout){};
 }
 
+MTLTriangleFillMode gpu2_polygon_mode_to_mtl_triangle_fill_mode(Gpu2PolygonMode in_mode)
+{
+	switch (in_mode)
+	{
+		case GPU2_POLYGON_MODE_FILL: return MTLTriangleFillModeFill;
+		case GPU2_POLYGON_MODE_LINE: return MTLTriangleFillModeLines;
+		default: assert(false);
+	}
+}
+
 //FCS TODO: currently just assumes a single MTLPixelFormatBGRA8Unorm color attachment
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline)
 {	
@@ -312,6 +327,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 	*out_render_pipeline = (Gpu2RenderPipeline){
 		.metal_render_pipeline_state = [in_device->metal_device newRenderPipelineStateWithDescriptor:metal_render_pipeline_descriptor error:nil],
 		.metal_depth_stencil_state = metal_depth_stencil_state,
+		.metal_triangle_fill_mode = gpu2_polygon_mode_to_mtl_triangle_fill_mode(in_create_info->polygon_mode),
 	};
 
 	return true;
@@ -615,6 +631,7 @@ void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2Re
 {
 	[in_render_pass->metal_render_command_encoder setRenderPipelineState:in_render_pipeline->metal_render_pipeline_state];
 	[in_render_pass->metal_render_command_encoder setDepthStencilState:in_render_pipeline->metal_depth_stencil_state];
+	[in_render_pass->metal_render_command_encoder setTriangleFillMode:in_render_pipeline->metal_triangle_fill_mode];
 }
 
 void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)

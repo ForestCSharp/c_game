@@ -596,7 +596,7 @@ void animated_model_update_animation(AnimatedModel* in_model, float in_anim_time
 			const float numerator = in_anim_time - keyframe->time;
 			const float denominator = (next_keyframe->time - keyframe->time);
 			const float t = numerator / denominator;
-
+	
 			// Matrix Lerp. Not ideal but should be acceptable at our sampling rate
 			for (i32 joint_idx = 0; joint_idx < in_model->num_joints; ++joint_idx)
 			{

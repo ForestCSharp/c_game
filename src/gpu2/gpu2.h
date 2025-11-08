@@ -187,12 +187,19 @@ typedef struct Gpu2BindGroupUpdateInfo
 
 static const u32 GPU2_BIND_GROUP_MAX_BINDINGS = 16;
 
+typedef enum Gpu2PolygonMode
+{
+	GPU2_POLYGON_MODE_FILL	= 0,
+	GPU2_POLYGON_MODE_LINE	= 1,
+} Gpu2PolygonMode;
+
 typedef struct Gpu2RenderPipelineCreateInfo
 {
 	Gpu2Shader* vertex_shader;
 	Gpu2Shader* fragment_shader;
 	u32 num_bind_group_layouts;
 	Gpu2BindGroupLayout** bind_group_layouts; 
+	Gpu2PolygonMode polygon_mode;
 	bool depth_test_enabled;
 } Gpu2RenderPipelineCreateInfo;
 typedef struct Gpu2RenderPipeline Gpu2RenderPipeline;
@@ -243,7 +250,8 @@ void gpu2_destroy_device(Gpu2Device* in_device);
 
 u32 gpu2_get_swapchain_count(Gpu2Device* in_device);
 
-bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader);
+void gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader);
+void gpu2_destroy_shader(Gpu2Device* in_device, Gpu2Shader* in_shader);
 
 bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout);
 bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group);

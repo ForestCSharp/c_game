@@ -678,7 +678,7 @@ void gpu2_vk_resize_swapchain(Gpu2Device* in_device, const Window* const in_wind
     in_device->swapchain_image_count = swapchain_image_count;
 }
 
-bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader)
+void gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader)
 {
 	String filename_string = string_new(in_create_info->filename);
 	string_append(&filename_string, ".spv");
@@ -701,8 +701,11 @@ bool gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_i
     *out_shader = (Gpu2Shader){
         .vk_shader_module = vk_shader_module,
     };
+}
 
-	return true;
+void gpu2_destroy_shader(Gpu2Device* in_device, Gpu2Shader* in_shader)
+{
+	vkDestroyShaderModule(in_device->vk_device, in_shader->vk_shader_module, NULL);
 }
 
 VkShaderStageFlags gpu2_shader_stages_to_vk_shader_stages(Gpu2ShaderStageFlags in_flags)
@@ -915,6 +918,16 @@ void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* 
 	vkDestroyDescriptorSetLayout(in_device->vk_device, in_bind_group_layout->vk_descriptor_set_layout, NULL);
 }
 
+VkPolygonMode gpu2_polygon_mode_to_vk_polygon_mode(Gpu2PolygonMode in_mode)
+{
+	switch (in_mode)
+	{
+		case GPU2_POLYGON_MODE_FILL: return VK_POLYGON_MODE_FILL;
+		case GPU2_POLYGON_MODE_LINE: return VK_POLYGON_MODE_LINE;
+		default: assert(false);
+	}
+}
+
 bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline)
 {
 	VkPipelineShaderStageCreateInfo vertex_shader_stage_create_info = {
@@ -973,7 +986,7 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 		.flags = 0,
 		.depthClampEnable = VK_FALSE,
 		.rasterizerDiscardEnable = VK_FALSE,
-		.polygonMode = VK_POLYGON_MODE_FILL,
+		.polygonMode = gpu2_polygon_mode_to_vk_polygon_mode(in_create_info->polygon_mode),
 		.cullMode = VK_CULL_MODE_NONE,
 		.frontFace = VK_FRONT_FACE_CLOCKWISE,
 		.depthBiasEnable = VK_FALSE,
