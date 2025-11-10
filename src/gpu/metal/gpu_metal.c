@@ -4,85 +4,85 @@
 
 #define _OBJC_RELEASE(obj) { [obj release]; obj = nil; }
 
-struct Gpu2Device
+struct GpuDevice
 {
 	id<MTLDevice> metal_device;
 	CAMetalLayer* metal_layer;
 	id<MTLCommandQueue> metal_queue;
 };
 
-struct Gpu2Shader
+struct GpuShader
 {
 	id<MTLLibrary> metal_library;
 	id<MTLFunction> metal_function;
 };
 
-struct Gpu2BindGroupLayout
+struct GpuBindGroupLayout
 {
 	u32 index;
 	u32 num_bindings;
-	Gpu2ResourceBinding bindings[GPU2_BIND_GROUP_MAX_BINDINGS];
+	GpuResourceBinding bindings[GPU_BIND_GROUP_MAX_BINDINGS];
 };
 
 // Stores a reference to the last write at a given binding offset
 //FCS TODO: Rename to denote it's metal-specific
-typedef struct Gpu2BindGroupWriteReference
+typedef struct GpuBindGroupWriteReference
 {
 	bool is_valid;
-	Gpu2BindingType type;
+	GpuBindingType type;
 	id<MTLBuffer> metal_buffer;
 	id<MTLTexture> metal_texture;
 	id<MTLSamplerState> metal_sampler_state;
-} Gpu2BindGroupWriteReference;
+} GpuBindGroupWriteReference;
 
-struct Gpu2BindGroup
+struct GpuBindGroup
 {
-	Gpu2BindGroupLayout layout;
-	u64 binding_offsets[GPU2_BIND_GROUP_MAX_BINDINGS];
-	Gpu2BindGroupWriteReference write_references[GPU2_BIND_GROUP_MAX_BINDINGS];
+	GpuBindGroupLayout layout;
+	u64 binding_offsets[GPU_BIND_GROUP_MAX_BINDINGS];
+	GpuBindGroupWriteReference write_references[GPU_BIND_GROUP_MAX_BINDINGS];
 
 	id<MTLBuffer> metal_argument_buffer;
 };
 
-struct Gpu2RenderPipeline {
+struct GpuRenderPipeline {
 	id<MTLRenderPipelineState> metal_render_pipeline_state;	
 	id<MTLDepthStencilState> metal_depth_stencil_state;
 	MTLTriangleFillMode metal_triangle_fill_mode;
 };
 
-struct Gpu2RenderPass
+struct GpuRenderPass
 {
 	id<MTLRenderCommandEncoder> metal_render_command_encoder;
 };
 
-struct Gpu2Buffer {
+struct GpuBuffer {
 	id<MTLBuffer> metal_buffer;
 };
 
-struct Gpu2Texture
+struct GpuTexture
 {
-	Gpu2TextureCreateInfo create_info;
+	GpuTextureCreateInfo create_info;
 	id<MTLTexture> metal_texture;
 };
 
-struct Gpu2Sampler
+struct GpuSampler
 {
 	id<MTLSamplerState> metal_sampler_state;
 };
 
-struct Gpu2CommandBuffer
+struct GpuCommandBuffer
 {
 	id<MTLCommandBuffer> metal_command_buffer;
 };
 
-struct Gpu2Drawable
+struct GpuDrawable
 {
 	id<CAMetalDrawable> metal_drawable;
 };
 
-void gpu2_create_device(Window* in_window, Gpu2Device* out_device)
+void gpu_create_device(Window* in_window, GpuDevice* out_device)
 {
-	*out_device = (Gpu2Device){};
+	*out_device = (GpuDevice){};
 
 	out_device->metal_device = MTLCreateSystemDefaultDevice();
 	assert(out_device->metal_device);
@@ -95,19 +95,19 @@ void gpu2_create_device(Window* in_window, Gpu2Device* out_device)
 	assert(out_device->metal_queue);
 }
 
-void gpu2_destroy_device(Gpu2Device* in_device)
+void gpu_destroy_device(GpuDevice* in_device)
 {
 	in_device->metal_device = nil;
 	in_device->metal_layer = nil;
 	in_device->metal_queue = nil;
 }
 
-u32 gpu2_get_swapchain_count(Gpu2Device* in_device)
+u32 gpu_get_swapchain_count(GpuDevice* in_device)
 {
 	return in_device->metal_layer.maximumDrawableCount;
 }
 
-void gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_info, Gpu2Shader* out_shader)
+void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info, GpuShader* out_shader)
 {
 	String filename_string = string_new(in_create_info->filename);
 	string_append(&filename_string, ".msl");
@@ -133,7 +133,7 @@ void gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_i
 	id<MTLFunction> function = [library newFunctionWithName:[NSString stringWithUTF8String:entry_point]];
 	assert(function);
 
-	*out_shader = (Gpu2Shader){
+	*out_shader = (GpuShader){
 		.metal_library = library,
 		.metal_function = function,
 	};
@@ -141,25 +141,25 @@ void gpu2_create_shader(Gpu2Device* in_device, Gpu2ShaderCreateInfo* in_create_i
 	free(shader_source);
 }
 
-void gpu2_destroy_shader(Gpu2Device* in_device, Gpu2Shader* in_shader)
+void gpu_destroy_shader(GpuDevice* in_device, GpuShader* in_shader)
 {
 	in_shader->metal_library = nil;
 	in_shader->metal_function = nil;
 }
 
-bool gpu2_create_bind_group_layout(Gpu2Device* in_device, const Gpu2BindGroupLayoutCreateInfo* in_create_info, Gpu2BindGroupLayout* out_bind_group_layout)
+bool gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout)
 {
 	out_bind_group_layout->index = in_create_info->index;
 	out_bind_group_layout->num_bindings = in_create_info->num_bindings;
-	memcpy(out_bind_group_layout->bindings, in_create_info->bindings, sizeof(Gpu2ResourceBinding) * in_create_info->num_bindings);	
+	memcpy(out_bind_group_layout->bindings, in_create_info->bindings, sizeof(GpuResourceBinding) * in_create_info->num_bindings);	
 	return true;
 }
 
-bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo* in_create_info, Gpu2BindGroup* out_bind_group)
+bool gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* in_create_info, GpuBindGroup* out_bind_group)
 {
-	*out_bind_group = (Gpu2BindGroup) {};	
+	*out_bind_group = (GpuBindGroup) {};	
 
-	Gpu2BindGroupLayout* layout = in_create_info->layout;
+	GpuBindGroupLayout* layout = in_create_info->layout;
 
 	out_bind_group->layout = *layout;
 
@@ -167,19 +167,19 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo
 	u64 argument_buffer_size = 0;
 	for (i32 binding_index = 0; binding_index < layout->num_bindings; ++binding_index)
 	{
-		Gpu2ResourceBinding* resource_binding = &layout->bindings[binding_index];
+		GpuResourceBinding* resource_binding = &layout->bindings[binding_index];
 
 		// Store offset to this binding
 		out_bind_group->binding_offsets[binding_index] = argument_buffer_size;
 		switch(resource_binding->type)
 		{
-			case GPU2_BINDING_TYPE_BUFFER:
+			case GPU_BINDING_TYPE_BUFFER:
 				argument_buffer_size += sizeof(u64);
 				break;
-			case GPU2_BINDING_TYPE_TEXTURE:
+			case GPU_BINDING_TYPE_TEXTURE:
 				argument_buffer_size += sizeof(MTLResourceID);
 				break;
-			case GPU2_BINDING_TYPE_SAMPLER:
+			case GPU_BINDING_TYPE_SAMPLER:
 				argument_buffer_size += sizeof(MTLResourceID);
 				break;
 		}
@@ -195,27 +195,27 @@ bool gpu2_create_bind_group(Gpu2Device* in_device, const Gpu2BindGroupCreateInfo
 	return true;
 }
 
-void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo* in_update_info)
+void gpu_update_bind_group(GpuDevice* in_device, const GpuBindGroupUpdateInfo* in_update_info)
 {
 	// Write Resources into Argument Buffer
-	Gpu2BindGroup* bind_group = in_update_info->bind_group;
-	Gpu2BindGroupLayout* layout = &bind_group->layout;
+	GpuBindGroup* bind_group = in_update_info->bind_group;
+	GpuBindGroupLayout* layout = &bind_group->layout;
 	for (i32 write_index = 0; write_index < in_update_info->num_writes; ++write_index)
 	{
-		Gpu2ResourceWrite* resource_write = &in_update_info->writes[write_index];	
+		GpuResourceWrite* resource_write = &in_update_info->writes[write_index];	
 		u32 resource_binding_index = resource_write->binding_index;
 
 		assert(resource_binding_index < layout->num_bindings);
-		Gpu2ResourceBinding* resource_binding = &layout->bindings[resource_binding_index];
+		GpuResourceBinding* resource_binding = &layout->bindings[resource_binding_index];
 		assert(resource_write->type == resource_binding->type);
 
 		u32 argbuffer_offset = bind_group->binding_offsets[resource_binding_index];	
 
 		switch (resource_write->type)
 		{
-			case GPU2_BINDING_TYPE_BUFFER:
+			case GPU_BINDING_TYPE_BUFFER:
 			{
-				Gpu2Buffer* buffer = resource_write->buffer_binding.buffer;
+				GpuBuffer* buffer = resource_write->buffer_binding.buffer;
 				assert(buffer && buffer->metal_buffer);
 
 				// Get argbuffer contents and apply offset
@@ -225,16 +225,16 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 				const u64 gpu_address = buffer->metal_buffer.gpuAddress;
 				memcpy(argbuffer_contents, &gpu_address, sizeof(u64));
 
-				bind_group->write_references[resource_binding_index] = (Gpu2BindGroupWriteReference){
+				bind_group->write_references[resource_binding_index] = (GpuBindGroupWriteReference){
 					.is_valid = true,
-					.type = GPU2_BINDING_TYPE_BUFFER,
+					.type = GPU_BINDING_TYPE_BUFFER,
 					.metal_buffer = buffer->metal_buffer,
 				};
 				break;
 			}
-			case GPU2_BINDING_TYPE_TEXTURE:
+			case GPU_BINDING_TYPE_TEXTURE:
 			{
-				Gpu2Texture* texture = resource_write->texture_binding.texture;
+				GpuTexture* texture = resource_write->texture_binding.texture;
 				assert(texture && texture->metal_texture);
 
 				// Get argbuffer contents and apply offset
@@ -244,16 +244,16 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 				const MTLResourceID tex_id = texture->metal_texture.gpuResourceID;
 				memcpy(argbuffer_contents, &tex_id, sizeof(MTLResourceID));
 
-				bind_group->write_references[resource_binding_index] = (Gpu2BindGroupWriteReference){
+				bind_group->write_references[resource_binding_index] = (GpuBindGroupWriteReference){
 					.is_valid = true,
-					.type = GPU2_BINDING_TYPE_TEXTURE,
+					.type = GPU_BINDING_TYPE_TEXTURE,
 					.metal_texture = texture->metal_texture,
 				};
 				break;
 			}
-			case GPU2_BINDING_TYPE_SAMPLER:
+			case GPU_BINDING_TYPE_SAMPLER:
 			{
-				Gpu2Sampler* sampler = resource_write->sampler_binding.sampler;
+				GpuSampler* sampler = resource_write->sampler_binding.sampler;
 				assert(sampler && sampler->metal_sampler_state);
 
 				// Get argbuffer contents and apply offset
@@ -263,9 +263,9 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 				MTLResourceID sampler_id = sampler->metal_sampler_state.gpuResourceID;
 				memcpy(argbuffer_contents, &sampler_id, sizeof(MTLResourceID));
 
-				bind_group->write_references[resource_binding_index] = (Gpu2BindGroupWriteReference){
+				bind_group->write_references[resource_binding_index] = (GpuBindGroupWriteReference){
 					.is_valid = true,
-					.type = GPU2_BINDING_TYPE_SAMPLER,
+					.type = GPU_BINDING_TYPE_SAMPLER,
 					.metal_sampler_state = sampler->metal_sampler_state,
 				};
 				break;
@@ -274,29 +274,29 @@ void gpu2_update_bind_group(Gpu2Device* in_device, const Gpu2BindGroupUpdateInfo
 	}
 }
 
-void gpu2_destroy_bind_group(Gpu2Device* in_device, Gpu2BindGroup* in_bind_group)
+void gpu_destroy_bind_group(GpuDevice* in_device, GpuBindGroup* in_bind_group)
 {
 	in_bind_group->metal_argument_buffer = nil;
-	*in_bind_group = (Gpu2BindGroup){};
+	*in_bind_group = (GpuBindGroup){};
 }
 
-void gpu2_destroy_bind_group_layout(Gpu2Device* in_device, Gpu2BindGroupLayout* in_bind_group_layout)
+void gpu_destroy_bind_group_layout(GpuDevice* in_device, GpuBindGroupLayout* in_bind_group_layout)
 {
-	*in_bind_group_layout = (Gpu2BindGroupLayout){};
+	*in_bind_group_layout = (GpuBindGroupLayout){};
 }
 
-MTLTriangleFillMode gpu2_polygon_mode_to_mtl_triangle_fill_mode(Gpu2PolygonMode in_mode)
+MTLTriangleFillMode gpu_polygon_mode_to_mtl_triangle_fill_mode(GpuPolygonMode in_mode)
 {
 	switch (in_mode)
 	{
-		case GPU2_POLYGON_MODE_FILL: return MTLTriangleFillModeFill;
-		case GPU2_POLYGON_MODE_LINE: return MTLTriangleFillModeLines;
+		case GPU_POLYGON_MODE_FILL: return MTLTriangleFillModeFill;
+		case GPU_POLYGON_MODE_LINE: return MTLTriangleFillModeLines;
 		default: assert(false);
 	}
 }
 
 //FCS TODO: currently just assumes a single MTLPixelFormatBGRA8Unorm color attachment
-bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreateInfo* in_create_info, Gpu2RenderPipeline* out_render_pipeline)
+bool gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInfo* in_create_info, GpuRenderPipeline* out_render_pipeline)
 {	
 	MTLRenderPipelineDescriptor *metal_render_pipeline_descriptor = [[MTLRenderPipelineDescriptor alloc] init];
 	assert(in_create_info->vertex_shader);
@@ -324,19 +324,19 @@ bool gpu2_create_render_pipeline(Gpu2Device* in_device, Gpu2RenderPipelineCreate
 	metal_depth_stencil_desc.depthWriteEnabled = in_create_info->depth_test_enabled;
 	id<MTLDepthStencilState> metal_depth_stencil_state = [in_device->metal_device newDepthStencilStateWithDescriptor:metal_depth_stencil_desc];
 
-	*out_render_pipeline = (Gpu2RenderPipeline){
+	*out_render_pipeline = (GpuRenderPipeline){
 		.metal_render_pipeline_state = [in_device->metal_device newRenderPipelineStateWithDescriptor:metal_render_pipeline_descriptor error:nil],
 		.metal_depth_stencil_state = metal_depth_stencil_state,
-		.metal_triangle_fill_mode = gpu2_polygon_mode_to_mtl_triangle_fill_mode(in_create_info->polygon_mode),
+		.metal_triangle_fill_mode = gpu_polygon_mode_to_mtl_triangle_fill_mode(in_create_info->polygon_mode),
 	};
 
 	return true;
 }
 
 //TODO: is_cpu_visible arg support
-void gpu2_create_buffer(Gpu2Device* in_device, const Gpu2BufferCreateInfo* in_create_info, Gpu2Buffer* out_buffer)
+void gpu_create_buffer(GpuDevice* in_device, const GpuBufferCreateInfo* in_create_info, GpuBuffer* out_buffer)
 {
-	*out_buffer = (Gpu2Buffer){};
+	*out_buffer = (GpuBuffer){};
 
 	MTLResourceOptions options = MTLResourceCPUCacheModeDefaultCache;
 	if (in_create_info->is_cpu_visible)
@@ -354,72 +354,72 @@ void gpu2_create_buffer(Gpu2Device* in_device, const Gpu2BufferCreateInfo* in_cr
 	}
 }
 
-void gpu2_write_buffer(Gpu2Device* in_device, const Gpu2BufferWriteInfo* in_write_info)
+void gpu_write_buffer(GpuDevice* in_device, const GpuBufferWriteInfo* in_write_info)
 {
 	assert(in_write_info->buffer->metal_buffer.contents != NULL);
 	memcpy(in_write_info->buffer->metal_buffer.contents, in_write_info->data, in_write_info->size);
 }
 
-void* gpu2_map_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+void* gpu_map_buffer(GpuDevice* in_device, GpuBuffer* in_buffer)
 {
 	return in_buffer->metal_buffer.contents;
 }
 
-void gpu_unmap_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+void gpu_unmap_buffer(GpuDevice* in_device, GpuBuffer* in_buffer)
 {
 	// Nothing to do
 }
 
-void gpu2_destroy_buffer(Gpu2Device* in_device, Gpu2Buffer* in_buffer)
+void gpu_destroy_buffer(GpuDevice* in_device, GpuBuffer* in_buffer)
 {
 	_OBJC_RELEASE(in_buffer->metal_buffer);
 }
 
-MTLPixelFormat gpu2_format_to_mtl_format(Gpu2Format in_format)
+MTLPixelFormat gpu_format_to_mtl_format(GpuFormat in_format)
 {
 	switch(in_format)
 	{
-		case GPU2_FORMAT_RGBA8_UNORM: return MTLPixelFormatRGBA8Unorm;
-		case GPU2_FORMAT_D32_SFLOAT: return MTLPixelFormatDepth32Float;
+		case GPU_FORMAT_RGBA8_UNORM: return MTLPixelFormatRGBA8Unorm;
+		case GPU_FORMAT_D32_SFLOAT: return MTLPixelFormatDepth32Float;
 		default: 
-			printf("gpu2_format_to_vk_format: Unimplemented Format\n");
+			printf("gpu_format_to_vk_format: Unimplemented Format\n");
 			exit(0);
 			return 0;
 	}
 }
 
 
-MTLTextureUsage gpu2_texture_usage_flags_to_mtl_texture_usage(Gpu2TextureUsageFlags in_flags)
+MTLTextureUsage gpu_texture_usage_flags_to_mtl_texture_usage(GpuTextureUsageFlags in_flags)
 {
 	MTLTextureUsage out_flags = 0;
 	
-	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_TRANSFER_SRC))
+	if (BIT_COMPARE(in_flags, GPU_TEXTURE_USAGE_TRANSFER_SRC))
 	{
 		//
 	}
 
-	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_TRANSFER_DST))
+	if (BIT_COMPARE(in_flags, GPU_TEXTURE_USAGE_TRANSFER_DST))
 	{
 		//
 	}
 
-	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_SAMPLED))
+	if (BIT_COMPARE(in_flags, GPU_TEXTURE_USAGE_SAMPLED))
 	{
 		out_flags |= MTLTextureUsageShaderRead;
 	}
 
-	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_STORAGE))
+	if (BIT_COMPARE(in_flags, GPU_TEXTURE_USAGE_STORAGE))
 	{
 		out_flags |= MTLTextureUsageShaderRead;
 		out_flags |= MTLTextureUsageShaderWrite;
 	}
 
-	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_COLOR_ATTACHMENT))
+	if (BIT_COMPARE(in_flags, GPU_TEXTURE_USAGE_COLOR_ATTACHMENT))
 	{
 		out_flags |= MTLTextureUsageRenderTarget;
 	}
 
-	if (BIT_COMPARE(in_flags, GPU2_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT))
+	if (BIT_COMPARE(in_flags, GPU_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT))
 	{
 		//
 	}
@@ -427,16 +427,16 @@ MTLTextureUsage gpu2_texture_usage_flags_to_mtl_texture_usage(Gpu2TextureUsageFl
 	return out_flags;
 }
 
-void gpu2_create_texture(Gpu2Device* in_device, const Gpu2TextureCreateInfo* in_create_info, Gpu2Texture* out_texture)
+void gpu_create_texture(GpuDevice* in_device, const GpuTextureCreateInfo* in_create_info, GpuTexture* out_texture)
 {
-	const Gpu2TextureExtent extent	= in_create_info->extent;
+	const GpuTextureExtent extent	= in_create_info->extent;
     MTLTextureType mtl_texture_type = extent.depth > 1 	?	MTLTextureType3D	
 									: extent.height > 1	? 	MTLTextureType2D
 									: 						MTLTextureType1D;
 
 	MTLTextureDescriptor *texture_descriptor = [[MTLTextureDescriptor alloc] init];
 	texture_descriptor.textureType = mtl_texture_type;
-	texture_descriptor.pixelFormat = gpu2_format_to_mtl_format(in_create_info->format);
+	texture_descriptor.pixelFormat = gpu_format_to_mtl_format(in_create_info->format);
 	texture_descriptor.width = extent.width;
 	texture_descriptor.height = extent.height;
 	texture_descriptor.depth = extent.depth;
@@ -444,19 +444,19 @@ void gpu2_create_texture(Gpu2Device* in_device, const Gpu2TextureCreateInfo* in_
 	texture_descriptor.sampleCount = 1;
 	texture_descriptor.arrayLength = 1;
 	texture_descriptor.storageMode = in_create_info->is_cpu_visible ? MTLStorageModeShared : MTLStorageModeManaged;
-	texture_descriptor.usage = gpu2_texture_usage_flags_to_mtl_texture_usage(in_create_info->usage);
+	texture_descriptor.usage = gpu_texture_usage_flags_to_mtl_texture_usage(in_create_info->usage);
 	
 	out_texture->create_info = *in_create_info;
 	out_texture->metal_texture = [in_device->metal_device newTextureWithDescriptor:texture_descriptor];
 }
 
-void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_upload_info)
+void gpu_write_texture(GpuDevice* in_device, const GpuTextureWriteInfo* in_upload_info)
 {
-	Gpu2Texture* texture = in_upload_info->texture;
+	GpuTexture* texture = in_upload_info->texture;
     id<MTLTexture> metal_texture = texture->metal_texture;
     MTLRegion region = MTLRegionMake2D(0, 0, in_upload_info->width, in_upload_info->height);
 
-	const u32 format_stride = gpu2_format_stride(texture->create_info.format);
+	const u32 format_stride = gpu_format_stride(texture->create_info.format);
 	const u32 bytes_per_row = in_upload_info->width * format_stride;
     
     [metal_texture replaceRegion:region
@@ -478,33 +478,33 @@ void gpu2_write_texture(Gpu2Device* in_device, const Gpu2TextureWriteInfo* in_up
 	}
 }
 
-void gpu2_destroy_texture(Gpu2Device* in_device, Gpu2Texture* in_texture)
+void gpu_destroy_texture(GpuDevice* in_device, GpuTexture* in_texture)
 {
 	_OBJC_RELEASE(in_texture->metal_texture);
 }
 
-MTLSamplerMinMagFilter gpu2_filter_to_mtl_filter(Gpu2Filter in_filter)
+MTLSamplerMinMagFilter gpu_filter_to_mtl_filter(GpuFilter in_filter)
 {
 	switch (in_filter)
 	{
-		case GPU2_FILTER_NEAREST: return MTLSamplerMinMagFilterNearest;
-		case GPU2_FILTER_LINEAR:  return MTLSamplerMinMagFilterLinear;
+		case GPU_FILTER_NEAREST: return MTLSamplerMinMagFilterNearest;
+		case GPU_FILTER_LINEAR:  return MTLSamplerMinMagFilterLinear;
 	}
 	assert(false);
 	return MTLSamplerMinMagFilterNearest; // fallback to silence warnings
 }
 
-MTLSamplerAddressMode gpu2_sampler_address_mode_to_mtl_sampler_address_mode(Gpu2SamplerAddressMode in_mode)
+MTLSamplerAddressMode gpu_sampler_address_mode_to_mtl_sampler_address_mode(GpuSamplerAddressMode in_mode)
 {
 	switch (in_mode)
 	{
-		case GPU2_SAMPLER_ADDRESS_MODE_REPEAT:
+		case GPU_SAMPLER_ADDRESS_MODE_REPEAT:
 			return MTLSamplerAddressModeRepeat;
-		case GPU2_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:
+		case GPU_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:
 			return MTLSamplerAddressModeMirrorRepeat;
-		case GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:
+		case GPU_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:
 			return MTLSamplerAddressModeClampToEdge;
-		case GPU2_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:
+		case GPU_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:
 			// Metal calls this "clamp to border color"
 			return MTLSamplerAddressModeClampToBorderColor;
 	}
@@ -512,95 +512,95 @@ MTLSamplerAddressMode gpu2_sampler_address_mode_to_mtl_sampler_address_mode(Gpu2
 	return MTLSamplerAddressModeClampToEdge;
 }
 
-void gpu2_create_sampler(Gpu2Device* in_device, const Gpu2SamplerCreateInfo* in_create_info, Gpu2Sampler* out_sampler)
+void gpu_create_sampler(GpuDevice* in_device, const GpuSamplerCreateInfo* in_create_info, GpuSampler* out_sampler)
 {	
 	MTLSamplerDescriptor *metal_sampler_desc = [[MTLSamplerDescriptor alloc] init];
 	metal_sampler_desc.supportArgumentBuffers = YES;
-	metal_sampler_desc.magFilter     = gpu2_filter_to_mtl_filter(in_create_info->filters.mag);
-	metal_sampler_desc.minFilter     = gpu2_filter_to_mtl_filter(in_create_info->filters.min);
+	metal_sampler_desc.magFilter     = gpu_filter_to_mtl_filter(in_create_info->filters.mag);
+	metal_sampler_desc.minFilter     = gpu_filter_to_mtl_filter(in_create_info->filters.min);
 	metal_sampler_desc.mipFilter     = MTLSamplerMipFilterLinear;
-	metal_sampler_desc.sAddressMode  = gpu2_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.u);
-	metal_sampler_desc.tAddressMode  = gpu2_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.v);
-	metal_sampler_desc.rAddressMode  = gpu2_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.w);
+	metal_sampler_desc.sAddressMode  = gpu_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.u);
+	metal_sampler_desc.tAddressMode  = gpu_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.v);
+	metal_sampler_desc.rAddressMode  = gpu_sampler_address_mode_to_mtl_sampler_address_mode(in_create_info->address_modes.w);
 
 	id<MTLSamplerState> metal_sampler_state = [in_device->metal_device newSamplerStateWithDescriptor:metal_sampler_desc];
 
-	*out_sampler = (Gpu2Sampler) {
+	*out_sampler = (GpuSampler) {
 		.metal_sampler_state = metal_sampler_state,
 	};
 }
 
-void gpu2_destroy_sampler(Gpu2Device* in_device, Gpu2Sampler* in_sampler)
+void gpu_destroy_sampler(GpuDevice* in_device, GpuSampler* in_sampler)
 {
 	_OBJC_RELEASE(in_sampler->metal_sampler_state);
 }
 
-bool gpu2_create_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* out_command_buffer)
+bool gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer)
 {
-	*out_command_buffer = (Gpu2CommandBuffer){};
+	*out_command_buffer = (GpuCommandBuffer){};
 	out_command_buffer->metal_command_buffer = [in_device->metal_queue commandBuffer];
 	return true;
 }
 
-bool gpu2_get_next_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer, Gpu2Drawable* out_drawable)
+bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* out_drawable)
 {
-	*out_drawable = (Gpu2Drawable) {
+	*out_drawable = (GpuDrawable) {
 		.metal_drawable = [in_device->metal_layer nextDrawable],
 	};
 	return true; 
 }
 
-bool gpu2_drawable_get_texture(Gpu2Drawable* in_drawable, Gpu2Texture* out_texture)
+bool gpu_drawable_get_texture(GpuDrawable* in_drawable, GpuTexture* out_texture)
 {
 	assert(in_drawable);
 	assert(out_texture);
 
-	*out_texture = (Gpu2Texture) {
+	*out_texture = (GpuTexture) {
 		.metal_texture = in_drawable->metal_drawable.texture,
 	};
 
 	return true;
 }
 
-MTLLoadAction gpu2_load_action_to_metal_load_action(Gpu2LoadAction in_load_action)
+MTLLoadAction gpu_load_action_to_metal_load_action(GpuLoadAction in_load_action)
 {
 	switch (in_load_action)
 	{
-		case GPU2_LOAD_ACTION_DONT_CARE:	return MTLLoadActionDontCare;
-		case GPU2_LOAD_ACTION_LOAD: 		return MTLLoadActionLoad;
-		case GPU2_LOAD_ACTION_CLEAR:		return MTLLoadActionClear;
+		case GPU_LOAD_ACTION_DONT_CARE:	return MTLLoadActionDontCare;
+		case GPU_LOAD_ACTION_LOAD: 		return MTLLoadActionLoad;
+		case GPU_LOAD_ACTION_CLEAR:		return MTLLoadActionClear;
 	}
 	assert(false);
 }
 
-MTLStoreAction gpu2_store_action_to_metal_store_action(Gpu2StoreAction in_store_action)
+MTLStoreAction gpu_store_action_to_metal_store_action(GpuStoreAction in_store_action)
 {
 	switch (in_store_action)
 	{
-		case GPU2_STORE_ACTION_DONT_CARE: 	return MTLStoreActionDontCare;
-		case GPU2_STORE_ACTION_STORE:		return MTLStoreActionStore;
+		case GPU_STORE_ACTION_DONT_CARE: 	return MTLStoreActionDontCare;
+		case GPU_STORE_ACTION_STORE:		return MTLStoreActionStore;
 	}
 	assert(false);
 }
 
-void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_create_info, Gpu2RenderPass* out_render_pass)
+void gpu_begin_render_pass(GpuDevice* in_device, GpuRenderPassCreateInfo* in_create_info, GpuRenderPass* out_render_pass)
 {
 	assert(in_device);
 	assert(in_create_info);
 	assert(out_render_pass);
 
-	*out_render_pass = (Gpu2RenderPass){};
+	*out_render_pass = (GpuRenderPass){};
 	MTLRenderPassDescriptor* metal_render_pass_descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
 
 
 	for (i32 i = 0; i < in_create_info->num_color_attachments; ++i)
 	{
-		Gpu2ColorAttachmentDescriptor* color_attachment = &in_create_info->color_attachments[i];
+		GpuColorAttachmentDescriptor* color_attachment = &in_create_info->color_attachments[i];
 		if (color_attachment->texture)
 		{
 			metal_render_pass_descriptor.colorAttachments[i].texture = color_attachment->texture->metal_texture;
-			metal_render_pass_descriptor.colorAttachments[i].loadAction = gpu2_load_action_to_metal_load_action(color_attachment->load_action);
-			metal_render_pass_descriptor.colorAttachments[i].storeAction = gpu2_store_action_to_metal_store_action(color_attachment->store_action);
+			metal_render_pass_descriptor.colorAttachments[i].loadAction = gpu_load_action_to_metal_load_action(color_attachment->load_action);
+			metal_render_pass_descriptor.colorAttachments[i].storeAction = gpu_store_action_to_metal_store_action(color_attachment->store_action);
 			metal_render_pass_descriptor.colorAttachments[i].clearColor = MTLClearColorMake(
 				color_attachment->clear_color[0],
 				color_attachment->clear_color[1],
@@ -610,72 +610,72 @@ void gpu2_begin_render_pass(Gpu2Device* in_device, Gpu2RenderPassCreateInfo* in_
 		}
 	}
 
-	Gpu2DepthAttachmentDescriptor* depth_attachment = in_create_info->depth_attachment;
+	GpuDepthAttachmentDescriptor* depth_attachment = in_create_info->depth_attachment;
 	if (depth_attachment)
 	{
 		metal_render_pass_descriptor.depthAttachment.texture = depth_attachment->texture->metal_texture;
-		metal_render_pass_descriptor.depthAttachment.loadAction = gpu2_load_action_to_metal_load_action(depth_attachment->load_action);
-		metal_render_pass_descriptor.depthAttachment.storeAction = gpu2_store_action_to_metal_store_action(depth_attachment->store_action);
+		metal_render_pass_descriptor.depthAttachment.loadAction = gpu_load_action_to_metal_load_action(depth_attachment->load_action);
+		metal_render_pass_descriptor.depthAttachment.storeAction = gpu_store_action_to_metal_store_action(depth_attachment->store_action);
 		metal_render_pass_descriptor.depthAttachment.clearDepth = depth_attachment->clear_depth;
 	}
 
 	out_render_pass->metal_render_command_encoder = [in_create_info->command_buffer->metal_command_buffer renderCommandEncoderWithDescriptor:metal_render_pass_descriptor];	
 }
 
-void gpu2_end_render_pass(Gpu2RenderPass* in_render_pass)
+void gpu_end_render_pass(GpuRenderPass* in_render_pass)
 {
 	[in_render_pass->metal_render_command_encoder endEncoding];
 }
 
-void gpu2_render_pass_set_render_pipeline(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline)
+void gpu_render_pass_set_render_pipeline(GpuRenderPass* in_render_pass, GpuRenderPipeline* in_render_pipeline)
 {
 	[in_render_pass->metal_render_command_encoder setRenderPipelineState:in_render_pipeline->metal_render_pipeline_state];
 	[in_render_pass->metal_render_command_encoder setDepthStencilState:in_render_pipeline->metal_depth_stencil_state];
 	[in_render_pass->metal_render_command_encoder setTriangleFillMode:in_render_pipeline->metal_triangle_fill_mode];
 }
 
-void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderPipeline* in_render_pipeline, Gpu2BindGroup* in_bind_group)
+void gpu_render_pass_set_bind_group(GpuRenderPass* in_render_pass, GpuRenderPipeline* in_render_pipeline, GpuBindGroup* in_bind_group)
 {
 	assert(in_render_pass);
 	assert(in_bind_group);
 	
-	Gpu2BindGroupLayout* layout = &in_bind_group->layout;
+	GpuBindGroupLayout* layout = &in_bind_group->layout;
 	for (i32 binding_index = 0; binding_index < layout->num_bindings; ++binding_index)
 	{
-		Gpu2BindGroupWriteReference* write_reference = &in_bind_group->write_references[binding_index];
+		GpuBindGroupWriteReference* write_reference = &in_bind_group->write_references[binding_index];
 		if (!write_reference->is_valid)
 		{
 			continue;
 		}
 
-		Gpu2ResourceBinding* resource_binding = &layout->bindings[binding_index];
+		GpuResourceBinding* resource_binding = &layout->bindings[binding_index];
 		MTLRenderStages metal_render_stages = 0;	
-		if (BIT_COMPARE(resource_binding->shader_stages, GPU2_SHADER_STAGE_VERTEX))
+		if (BIT_COMPARE(resource_binding->shader_stages, GPU_SHADER_STAGE_VERTEX))
 		{
 			metal_render_stages |= MTLRenderStageVertex;
 		}
-		if (BIT_COMPARE(resource_binding->shader_stages, GPU2_SHADER_STAGE_FRAGMENT))
+		if (BIT_COMPARE(resource_binding->shader_stages, GPU_SHADER_STAGE_FRAGMENT))
 		{
 			metal_render_stages |= MTLRenderStageFragment;
 	  	}
 	  		
 	  	switch(write_reference->type)
 		{
-			case GPU2_BINDING_TYPE_BUFFER:
+			case GPU_BINDING_TYPE_BUFFER:
 				[in_render_pass->metal_render_command_encoder 
 					useResource:write_reference->metal_buffer 
 					usage:MTLResourceUsageRead
 	  				stages:metal_render_stages
 				];
 	  			break;
-			case GPU2_BINDING_TYPE_TEXTURE:
+			case GPU_BINDING_TYPE_TEXTURE:
 				[in_render_pass->metal_render_command_encoder
 					useResource:write_reference->metal_texture
 					usage:MTLResourceUsageRead
 					stages:metal_render_stages];
 				break;
 
-			case GPU2_BINDING_TYPE_SAMPLER:
+			case GPU_BINDING_TYPE_SAMPLER:
 				// Nothing to do for Samplers
 				break;
 		}
@@ -694,17 +694,17 @@ void gpu2_render_pass_set_bind_group(Gpu2RenderPass* in_render_pass, Gpu2RenderP
 	];	
 }
 
-void gpu2_render_pass_draw(Gpu2RenderPass* in_render_pass, u32 vertex_start, u32 vertex_count)
+void gpu_render_pass_draw(GpuRenderPass* in_render_pass, u32 vertex_start, u32 vertex_count)
 {
 	[in_render_pass->metal_render_command_encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:vertex_start vertexCount:vertex_count];
 }
 
-void gpu2_present_drawable(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer, Gpu2Drawable* in_drawable)
+void gpu_present_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* in_drawable)
 {
 	[in_command_buffer->metal_command_buffer presentDrawable:in_drawable->metal_drawable];
 }
 
-bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_command_buffer)
+bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
 {
 	[in_command_buffer->metal_command_buffer commit];
 
@@ -713,7 +713,7 @@ bool gpu2_commit_command_buffer(Gpu2Device* in_device, Gpu2CommandBuffer* in_com
 	return true;
 }
 
-const char* gpu2_get_api_name()
+const char* gpu_get_api_name()
 {
 	return "Metal";
 }

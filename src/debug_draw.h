@@ -24,16 +24,16 @@ typedef struct DebugDrawUniformStruct
 
 typedef struct DebugDrawData
 {
-	Gpu2Buffer uniform_buffer; 
+	GpuBuffer uniform_buffer; 
 	DebugDrawUniformStruct* uniform_data;
 
 	sbuffer(DebugDrawVertex) vertices;
-	Gpu2Buffer vertex_buffer;
+	GpuBuffer vertex_buffer;
 
 	sbuffer(u32) indices;
-	Gpu2Buffer index_buffer;
+	GpuBuffer index_buffer;
 
-	Gpu2BindGroup bind_group;
+	GpuBindGroup bind_group;
 } DebugDrawData;
 
 typedef struct DebugDrawContext
@@ -42,158 +42,158 @@ typedef struct DebugDrawContext
 	i32 current_swapchain_index;
 	sbuffer(DebugDrawData) draw_data;
 
-	Gpu2BindGroupLayout bind_group_layout;
-	Gpu2RenderPipeline render_pipeline;
+	GpuBindGroupLayout bind_group_layout;
+	GpuRenderPipeline render_pipeline;
 } DebugDrawContext;
 
 typedef struct DebugDrawRecordInfo
 {
-	Gpu2Device* gpu_device;
-	Gpu2CommandBuffer* command_buffer;
-	Gpu2Texture* color_texture;
-	Gpu2Texture* depth_texture;
+	GpuDevice* gpu_device;
+	GpuCommandBuffer* command_buffer;
+	GpuTexture* color_texture;
+	GpuTexture* depth_texture;
 
 } DebugDrawRecordInfo;
 
 // Debug Drawing... essentially ImGui but for 3D Objects (all verts are in world space...)
 
-void debug_draw_init(Gpu2Device* in_gpu_device, DebugDrawContext* out_debug_draw_context)
+void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_context)
 {
 	assert(in_gpu_device);
 	assert(out_debug_draw_context);
 
 	*out_debug_draw_context = (DebugDrawContext){};
 
-	Gpu2ShaderCreateInfo vertex_shader_create_info = {
+	GpuShaderCreateInfo vertex_shader_create_info = {
 		.filename = "bin/shaders/debug_draw.vert",
 	};
-	Gpu2Shader vertex_shader;
-	gpu2_create_shader(in_gpu_device, &vertex_shader_create_info, &vertex_shader);
+	GpuShader vertex_shader;
+	gpu_create_shader(in_gpu_device, &vertex_shader_create_info, &vertex_shader);
 
-	Gpu2ShaderCreateInfo fragment_shader_create_info = {
+	GpuShaderCreateInfo fragment_shader_create_info = {
 		.filename = "bin/shaders/debug_draw.frag",
 	};
-	Gpu2Shader fragment_shader;
-	gpu2_create_shader(in_gpu_device, &fragment_shader_create_info, &fragment_shader);
+	GpuShader fragment_shader;
+	gpu_create_shader(in_gpu_device, &fragment_shader_create_info, &fragment_shader);
 
-	Gpu2BindGroupLayoutCreateInfo bind_group_layout_create_info = {
+	GpuBindGroupLayoutCreateInfo bind_group_layout_create_info = {
 		.index = 0,
 		.num_bindings = 3,
-		.bindings = (Gpu2ResourceBinding[3]){
+		.bindings = (GpuResourceBinding[3]){
 			{
-				.type = GPU2_BINDING_TYPE_BUFFER,
-				.shader_stages = GPU2_SHADER_STAGE_VERTEX,	
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU_SHADER_STAGE_VERTEX,	
 			},
 			{
-				.type = GPU2_BINDING_TYPE_BUFFER,
-				.shader_stages = GPU2_SHADER_STAGE_VERTEX,	
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU_SHADER_STAGE_VERTEX,	
 			},
 			{
-				.type = GPU2_BINDING_TYPE_BUFFER,
-				.shader_stages = GPU2_SHADER_STAGE_VERTEX,	
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU_SHADER_STAGE_VERTEX,	
 			},
 		},
 	};
-	assert(gpu2_create_bind_group_layout(in_gpu_device, &bind_group_layout_create_info, &out_debug_draw_context->bind_group_layout));
+	assert(gpu_create_bind_group_layout(in_gpu_device, &bind_group_layout_create_info, &out_debug_draw_context->bind_group_layout));
 
-	Gpu2BindGroupLayout* pipeline_bind_group_layouts[] = { &out_debug_draw_context->bind_group_layout };
+	GpuBindGroupLayout* pipeline_bind_group_layouts[] = { &out_debug_draw_context->bind_group_layout };
 
-	Gpu2RenderPipelineCreateInfo render_pipeline_create_info = {
+	GpuRenderPipelineCreateInfo render_pipeline_create_info = {
 		.vertex_shader = &vertex_shader,
 		.fragment_shader = &fragment_shader,
 		.num_bind_group_layouts = ARRAY_COUNT(pipeline_bind_group_layouts),
 		.bind_group_layouts = pipeline_bind_group_layouts,
-		.polygon_mode = GPU2_POLYGON_MODE_LINE,
+		.polygon_mode = GPU_POLYGON_MODE_LINE,
 		.depth_test_enabled = true,
 	};
-	assert(gpu2_create_render_pipeline(in_gpu_device, &render_pipeline_create_info, &out_debug_draw_context->render_pipeline));
+	assert(gpu_create_render_pipeline(in_gpu_device, &render_pipeline_create_info, &out_debug_draw_context->render_pipeline));
 
-    gpu2_destroy_shader(in_gpu_device, &vertex_shader);
-    gpu2_destroy_shader(in_gpu_device, &fragment_shader);
+    gpu_destroy_shader(in_gpu_device, &vertex_shader);
+    gpu_destroy_shader(in_gpu_device, &fragment_shader);
 
-	const u32 swapchain_count = gpu2_get_swapchain_count(in_gpu_device);
+	const u32 swapchain_count = gpu_get_swapchain_count(in_gpu_device);
 	for (i32 i = 0; i < swapchain_count; ++i)
 	{
 		// uniform buffer create info
-		Gpu2BufferCreateInfo uniform_buffer_create_info = {
-			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo uniform_buffer_create_info = {
+			.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = sizeof(DebugDrawUniformStruct),
 			.data = NULL,
 		};
-		Gpu2Buffer uniform_buffer;
-		gpu2_create_buffer(in_gpu_device, &uniform_buffer_create_info, &uniform_buffer);
+		GpuBuffer uniform_buffer;
+		gpu_create_buffer(in_gpu_device, &uniform_buffer_create_info, &uniform_buffer);
 
 		// vertex storage buffer create info
 		const u32 max_vertices_size = sizeof(DebugDrawVertex) * DEBUG_DRAW_MAX_VERTICES;
-		Gpu2BufferCreateInfo vertex_buffer_create_info = {
-			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo vertex_buffer_create_info = {
+			.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = max_vertices_size,
 			.data = NULL,
 		};
-		Gpu2Buffer vertex_buffer;
-		gpu2_create_buffer(in_gpu_device, &vertex_buffer_create_info, &vertex_buffer);
+		GpuBuffer vertex_buffer;
+		gpu_create_buffer(in_gpu_device, &vertex_buffer_create_info, &vertex_buffer);
 
 		// index storage buffer create info
 		const u32 max_indices_size = sizeof(u32) * DEBUG_DRAW_MAX_VERTICES;
-		Gpu2BufferCreateInfo index_buffer_create_info = {
-			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo index_buffer_create_info = {
+			.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = max_indices_size,
 			.data = NULL,
 		};
-		Gpu2Buffer index_buffer;
-		gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &index_buffer);
+		GpuBuffer index_buffer;
+		gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &index_buffer);
 
 		// Create Global Bind Group per swapchain
-		Gpu2BindGroupCreateInfo bind_group_create_info = {
+		GpuBindGroupCreateInfo bind_group_create_info = {
 			.layout = &out_debug_draw_context->bind_group_layout,
 		};
-		Gpu2BindGroup bind_group;
-		assert(gpu2_create_bind_group(in_gpu_device, &bind_group_create_info, &bind_group));
+		GpuBindGroup bind_group;
+		assert(gpu_create_bind_group(in_gpu_device, &bind_group_create_info, &bind_group));
 
-		const Gpu2BindGroupUpdateInfo bind_group_update_info = {
+		const GpuBindGroupUpdateInfo bind_group_update_info = {
 			.bind_group = &bind_group,
 			.num_writes = 3,
-			.writes = (Gpu2ResourceWrite[3]){
+			.writes = (GpuResourceWrite[3]){
 				{
 					.binding_index = 0,
-					.type = GPU2_BINDING_TYPE_BUFFER,
+					.type = GPU_BINDING_TYPE_BUFFER,
 					.buffer_binding = {
 						.buffer = &uniform_buffer,
 					},
 				},
 				{
 					.binding_index = 1,
-					.type = GPU2_BINDING_TYPE_BUFFER,
+					.type = GPU_BINDING_TYPE_BUFFER,
 					.buffer_binding = {
 						.buffer = &vertex_buffer,
 					},
 				},
 				{
 					.binding_index = 2,
-					.type = GPU2_BINDING_TYPE_BUFFER,
+					.type = GPU_BINDING_TYPE_BUFFER,
 					.buffer_binding = {
 						.buffer = &index_buffer,
 					},
 				},
 			},
 		};
-		gpu2_update_bind_group(in_gpu_device, &bind_group_update_info);
+		gpu_update_bind_group(in_gpu_device, &bind_group_update_info);
 
 		DebugDrawData new_draw_data = {
 			.uniform_buffer = uniform_buffer,
 			.vertex_buffer = vertex_buffer,
 			.index_buffer = index_buffer,
-			.uniform_data = gpu2_map_buffer(in_gpu_device, &uniform_buffer),
+			.uniform_data = gpu_map_buffer(in_gpu_device, &uniform_buffer),
 			.bind_group = bind_group,
 		};
 		sb_push(out_debug_draw_context->draw_data, new_draw_data);
 	}
 }
 
-void debug_draw_shutdown(Gpu2Device* in_gpu_device, DebugDrawContext* debug_draw_context)
+void debug_draw_shutdown(GpuDevice* in_gpu_device, DebugDrawContext* debug_draw_context)
 {
 	//for (i32 i = 0; i < sb_count(debug_draw_context->draw_data); ++i)
 	//{
@@ -223,7 +223,7 @@ DebugDrawData* debug_draw_get_current_draw_data(DebugDrawContext* debug_draw_con
 	return &debug_draw_context->draw_data[debug_draw_context->current_swapchain_index];
 }
 
-void debug_draw_end_frame(DebugDrawContext* debug_draw_context, Gpu2Device* in_gpu_device, Mat4* view, Mat4* projection)
+void debug_draw_end_frame(DebugDrawContext* debug_draw_context, GpuDevice* in_gpu_device, Mat4* view, Mat4* projection)
 {
 	DebugDrawData* draw_data = debug_draw_get_current_draw_data(debug_draw_context);
 
@@ -232,53 +232,53 @@ void debug_draw_end_frame(DebugDrawContext* debug_draw_context, Gpu2Device* in_g
 	uniform_data->projection = *projection;
 
 	//FCS TODO: Just persistently map vtx and idx buffers?
-	Gpu2BufferWriteInfo vertex_buffer_write_info = {
+	GpuBufferWriteInfo vertex_buffer_write_info = {
 		.buffer = &draw_data->vertex_buffer,
 		.size = sizeof(DebugDrawVertex) * sb_count(draw_data->vertices),
 		.data = draw_data->vertices,
 	};
-	gpu2_write_buffer(in_gpu_device, &vertex_buffer_write_info);
+	gpu_write_buffer(in_gpu_device, &vertex_buffer_write_info);
 
-	Gpu2BufferWriteInfo index_buffer_write_info = {
+	GpuBufferWriteInfo index_buffer_write_info = {
 		.buffer = &draw_data->index_buffer,
 		.size = sizeof(u32) * sb_count(draw_data->indices),
 		.data = draw_data->indices,
 	};
-	gpu2_write_buffer(in_gpu_device, &index_buffer_write_info);
+	gpu_write_buffer(in_gpu_device, &index_buffer_write_info);
 }
 
 void debug_draw_record_commands(DebugDrawContext* debug_draw_context, DebugDrawRecordInfo* record_info)
 {
 	DebugDrawData* draw_data = debug_draw_get_current_draw_data(debug_draw_context);
 
-	Gpu2ColorAttachmentDescriptor render_pass_color_attachments[] = {
+	GpuColorAttachmentDescriptor render_pass_color_attachments[] = {
 		{
 			.texture = record_info->color_texture, 
 			.clear_color = {0.392f, 0.584f, 0.929f, 0.f},
-			.load_action = GPU2_LOAD_ACTION_LOAD,
-			.store_action = GPU2_STORE_ACTION_STORE,
+			.load_action = GPU_LOAD_ACTION_LOAD,
+			.store_action = GPU_STORE_ACTION_STORE,
 		},
 	};
 
-	Gpu2DepthAttachmentDescriptor render_pass_depth_attachment = {
+	GpuDepthAttachmentDescriptor render_pass_depth_attachment = {
 		.texture = record_info->depth_texture,
 		.clear_depth = 1.0f,
-		.load_action = GPU2_LOAD_ACTION_LOAD,
-		.store_action = GPU2_STORE_ACTION_STORE,
+		.load_action = GPU_LOAD_ACTION_LOAD,
+		.store_action = GPU_STORE_ACTION_STORE,
 	};
 
-	Gpu2RenderPassCreateInfo render_pass_create_info = {
+	GpuRenderPassCreateInfo render_pass_create_info = {
 		.num_color_attachments = ARRAY_COUNT(render_pass_color_attachments), 
 		.color_attachments = render_pass_color_attachments,
 		.depth_attachment = &render_pass_depth_attachment,
 		.command_buffer = record_info->command_buffer,
 	};
-	Gpu2RenderPass render_pass;
-	gpu2_begin_render_pass(record_info->gpu_device, &render_pass_create_info, &render_pass);
-	gpu2_render_pass_set_render_pipeline(&render_pass, &debug_draw_context->render_pipeline);
-	gpu2_render_pass_set_bind_group(&render_pass, &debug_draw_context->render_pipeline, &draw_data->bind_group);
-	gpu2_render_pass_draw(&render_pass, 0, sb_count(draw_data->indices));
-	gpu2_end_render_pass(&render_pass);
+	GpuRenderPass render_pass;
+	gpu_begin_render_pass(record_info->gpu_device, &render_pass_create_info, &render_pass);
+	gpu_render_pass_set_render_pipeline(&render_pass, &debug_draw_context->render_pipeline);
+	gpu_render_pass_set_bind_group(&render_pass, &debug_draw_context->render_pipeline, &draw_data->bind_group);
+	gpu_render_pass_draw(&render_pass, 0, sb_count(draw_data->indices));
+	gpu_end_render_pass(&render_pass);
 }
 
 typedef struct DebugDrawSphere

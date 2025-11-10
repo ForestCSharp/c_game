@@ -15,12 +15,12 @@ export MVK_CONFIG_LOG_METAL_SHADER_COMPILE=1
 export MVK_DEBUG=1
 
 if [ "$1" = "metal" ] || [ "$1" = "mtl" ]; then 
-	render_backend_define=GPU2_IMPLEMENTATION_METAL
+	render_backend_define=GPU_IMPLEMENTATION_METAL
 elif [ "$1" = "vulkan" ] || [ "$1" = "vk" ]; then
-	render_backend_define=GPU2_IMPLEMENTATION_VULKAN
+	render_backend_define=GPU_IMPLEMENTATION_VULKAN
 else
-	render_backend_define=GPU2_IMPLEMENTATION_VULKAN
-	echo "No render backend specified, defaulting to GPU2_IMPLEMENTATION_VULKAN"
+	render_backend_define=GPU_IMPLEMENTATION_VULKAN
+	echo "No render backend specified, defaulting to GPU_IMPLEMENTATION_VULKAN"
 fi
 
 unameOut="$(uname -s)"

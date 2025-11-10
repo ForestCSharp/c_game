@@ -8,12 +8,12 @@ export MVK_CONFIG_LOG_LEVEL=3
 export MVK_DEBUG=1
 
 if [ "$1" = "metal" ] || [ "$1" = "mtl" ]; then 
-	render_backend_define=GPU2_IMPLEMENTATION_METAL
+	render_backend_define=GPU_IMPLEMENTATION_METAL
 elif [ "$1" = "vulkan" ] || [ "$1" = "vk" ]; then
-	render_backend_define=GPU2_IMPLEMENTATION_VULKAN
+	render_backend_define=GPU_IMPLEMENTATION_VULKAN
 else
-	render_backend_define=GPU2_IMPLEMENTATION_VULKAN
-	echo "No render backend specified, defaulting to GPU2_IMPLEMENTATION_VULKAN"
+	render_backend_define=GPU_IMPLEMENTATION_VULKAN
+	echo "No render backend specified, defaulting to GPU_IMPLEMENTATION_VULKAN"
 fi
 
 unameOut="$(uname -s)"
@@ -31,8 +31,8 @@ if [ $machine = Mac ]; then
 
 	#Build and Run for Mac
 	cp /usr/local/lib/libvulkan.dylib ./bin/
-	clang -ObjC -g ./src/gpu2/gpu2_test.c ./bin/libvulkan.dylib \
-		-o bin/gpu2_test \
+	clang -ObjC -g ./src/gpu/gpu_test.c ./bin/libvulkan.dylib \
+		-o bin/gpu_test \
 		-I /usr/local/include/vulkan \
 		-I ./src/ \
 		-framework Cocoa \
@@ -42,18 +42,18 @@ if [ $machine = Mac ]; then
 		-rpath /usr/local/lib \
 		-D $render_backend_define
 
-	./bin/gpu2_test
+	./bin/gpu_test
 
 elif [ $machine = MinGW ]; then
 
 	#Build and Run for Windows
-	clang -g -gcodeview src/gpu2/gpu2_test.c \
-		-o ./bin/gpu2_test.exe \
+	clang -g -gcodeview src/gpu/gpu_test.c \
+		-o ./bin/gpu_test.exe \
 		-l user32.lib ${VULKAN_SDK}/Lib/vulkan-1.lib \
 		-I ${VULKAN_SDK}/Include \
 		-I src \
 		-D $render_backend_define
 
-	./bin/gpu2_test.exe
+	./bin/gpu_test.exe
 fi
 

@@ -79,12 +79,12 @@ typedef struct AnimatedModel
 	BakedAnimation baked_animation;
 
 	// GPU DATA
-    Gpu2Buffer static_vertex_buffer;
-	Gpu2Buffer skinned_vertex_buffer;
-    Gpu2Buffer index_buffer;
+    GpuBuffer static_vertex_buffer;
+	GpuBuffer skinned_vertex_buffer;
+    GpuBuffer index_buffer;
 
 	size_t joints_buffer_size;
-	Gpu2Buffer inverse_bind_matrices_buffer;
+	GpuBuffer inverse_bind_matrices_buffer;
 } AnimatedModel;
 
 typedef struct NodeAnimData 
@@ -239,7 +239,7 @@ Mat4 compute_animated_node_transform(GltfNode* target_node, GltfNode* nodes_arra
 	}
 }
 
-bool animated_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, AnimatedModel* out_model)
+bool animated_model_load(const char* gltf_path, GpuDevice* in_gpu_device, AnimatedModel* out_model)
 {
     assert(out_model);
     memset(out_model, 0, sizeof(AnimatedModel));
@@ -506,41 +506,41 @@ bool animated_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, Anima
 
     // GPU Data Setup
     {
-		Gpu2BufferCreateInfo static_vertex_buffer_create_info = {
-				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo static_vertex_buffer_create_info = {
+				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = sizeof(StaticVertex) * out_model->num_vertices,
 				.data = out_model->static_vertices,
 			};
-		gpu2_create_buffer(in_gpu_device, &static_vertex_buffer_create_info, &out_model->static_vertex_buffer);
+		gpu_create_buffer(in_gpu_device, &static_vertex_buffer_create_info, &out_model->static_vertex_buffer);
 
-		Gpu2BufferCreateInfo skinned_vertex_buffer_create_info = {
-				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo skinned_vertex_buffer_create_info = {
+				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = sizeof(SkinnedVertex) * out_model->num_vertices,
 				.data = out_model->skinned_vertices,
 			};
-		gpu2_create_buffer(in_gpu_device, &skinned_vertex_buffer_create_info, &out_model->skinned_vertex_buffer);
+		gpu_create_buffer(in_gpu_device, &skinned_vertex_buffer_create_info, &out_model->skinned_vertex_buffer);
 
-		Gpu2BufferCreateInfo index_buffer_create_info = {
-				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo index_buffer_create_info = {
+				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = sizeof(u32) * out_model->num_indices,
 				.data = out_model->indices,
 			};
-		gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer);
+		gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer);
 
 
 		// Size of our joint related matrices buffers
 		out_model->joints_buffer_size = out_model->num_joints * sizeof(Mat4);
 
-		Gpu2BufferCreateInfo joints_buffer_create_info = {
-				.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo joints_buffer_create_info = {
+				.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 				.is_cpu_visible = true,
 				.size = out_model->joints_buffer_size,
 				.data = out_model->inverse_bind_matrices,
 			};
-		gpu2_create_buffer(in_gpu_device, &joints_buffer_create_info, &out_model->inverse_bind_matrices_buffer);
+		gpu_create_buffer(in_gpu_device, &joints_buffer_create_info, &out_model->inverse_bind_matrices_buffer);
 
 		// Animated joint buffers will be setup later
     }
@@ -548,7 +548,7 @@ bool animated_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, Anima
     return true;
 }
 
-void animated_model_free(Gpu2Device* in_gpu_device, AnimatedModel* in_model)
+void animated_model_free(GpuDevice* in_gpu_device, AnimatedModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
@@ -558,10 +558,10 @@ void animated_model_free(Gpu2Device* in_gpu_device, AnimatedModel* in_model)
 	free(in_model->inverse_bind_matrices);
 
 	// Unregister and destroy bindless resources
-	gpu2_destroy_buffer(in_gpu_device, &in_model->static_vertex_buffer);	
-	gpu2_destroy_buffer(in_gpu_device, &in_model->skinned_vertex_buffer);	
-	gpu2_destroy_buffer(in_gpu_device, &in_model->index_buffer);
-	gpu2_destroy_buffer(in_gpu_device, &in_model->inverse_bind_matrices_buffer);
+	gpu_destroy_buffer(in_gpu_device, &in_model->static_vertex_buffer);	
+	gpu_destroy_buffer(in_gpu_device, &in_model->skinned_vertex_buffer);	
+	gpu_destroy_buffer(in_gpu_device, &in_model->index_buffer);
+	gpu_destroy_buffer(in_gpu_device, &in_model->inverse_bind_matrices_buffer);
 
 	for (i32 keyframe_idx = 0; keyframe_idx < in_model->baked_animation.num_keyframes; ++keyframe_idx)
 	{

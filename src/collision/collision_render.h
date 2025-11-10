@@ -2,16 +2,16 @@
 
 //Collision Render Data 
 #include "collision.h"
-#include "gpu2/gpu2.h"
+#include "gpu/gpu.h"
 #include "model/static_model.h"
 #include "stretchy_buffer.h"
 
 typedef struct ColliderRenderData
 {
 	i32 num_vertices;
-	Gpu2Buffer vertex_buffer;
+	GpuBuffer vertex_buffer;
 	i32 num_indices;
-	Gpu2Buffer index_buffer;
+	GpuBuffer index_buffer;
 } ColliderRenderData;
 
 
@@ -232,7 +232,7 @@ void append_box(const Vec3 axes[3], const float half_extents[3], sbuffer(StaticV
 }
 
 //FCS TODO: Draw Colliders using debug drawing framework
-void collider_render_data_create(Gpu2Device* in_gpu_device, 
+void collider_render_data_create(GpuDevice* in_gpu_device, 
 								 const Collider* in_collider,
 								 ColliderRenderData* out_render_data)
 {
@@ -270,23 +270,23 @@ void collider_render_data_create(Gpu2Device* in_gpu_device,
 	}
 
 	// GPU Data Setup
-	Gpu2BufferCreateInfo vertex_buffer_create_info = {
-		.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+	GpuBufferCreateInfo vertex_buffer_create_info = {
+		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,
 		.size = sizeof(StaticVertex) * sb_count(vertices),
 		.data = vertices,
 	};
-	Gpu2Buffer vertex_buffer;
-	gpu2_create_buffer(in_gpu_device, &vertex_buffer_create_info, &vertex_buffer);
+	GpuBuffer vertex_buffer;
+	gpu_create_buffer(in_gpu_device, &vertex_buffer_create_info, &vertex_buffer);
 
-	Gpu2BufferCreateInfo index_buffer_create_info = {
-		.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+	GpuBufferCreateInfo index_buffer_create_info = {
+		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,
 		.size = sizeof(u32) * sb_count(indices),
 		.data = indices,
 	};
-	Gpu2Buffer index_buffer;
-	gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &index_buffer);
+	GpuBuffer index_buffer;
+	gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &index_buffer);
 
 	*out_render_data = (ColliderRenderData) {
 		.num_vertices = sb_count(vertices),
@@ -296,9 +296,9 @@ void collider_render_data_create(Gpu2Device* in_gpu_device,
 	};
 }
 
-void collider_render_data_free(Gpu2Device* in_gpu_device, ColliderRenderData* in_render_data)
+void collider_render_data_free(GpuDevice* in_gpu_device, ColliderRenderData* in_render_data)
 {
 	assert(in_render_data);
-	gpu2_destroy_buffer(in_gpu_device, &in_render_data->vertex_buffer);
-	gpu2_destroy_buffer(in_gpu_device, &in_render_data->index_buffer);
+	gpu_destroy_buffer(in_gpu_device, &in_render_data->vertex_buffer);
+	gpu_destroy_buffer(in_gpu_device, &in_render_data->index_buffer);
 }

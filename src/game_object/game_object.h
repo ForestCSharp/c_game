@@ -2,7 +2,7 @@
 
 #include "collision/collision.h"
 #include "collision/collision_render.h"
-#include "gpu2/gpu2.h"
+#include "gpu/gpu.h"
 #include "math/matrix.h"
 #include "model/static_model.h"
 #include "model/animated_model.h"
@@ -139,7 +139,7 @@ typedef struct StaticModelComponent
 typedef struct AnimatedModelComponent
 {
 	AnimatedModel animated_model;
-	Gpu2Buffer joint_matrices_buffer;
+	GpuBuffer joint_matrices_buffer;
 	Mat4* mapped_buffer_data;
 	float animation_rate;
 	float current_anim_time;
@@ -147,9 +147,9 @@ typedef struct AnimatedModelComponent
 
 typedef struct ObjectRenderDataComponent
 {
-	sbuffer(Gpu2Buffer) uniform_buffers;
+	sbuffer(GpuBuffer) uniform_buffers;
 	sbuffer(ObjectUniformStruct*) uniform_data;
-	sbuffer(Gpu2BindGroup) bind_groups;
+	sbuffer(GpuBindGroup) bind_groups;
 } ObjectRenderDataComponent;
 
 typedef struct PlayerControlComponent
@@ -310,12 +310,12 @@ TRS game_object_compute_global_transform(GameObjectManager* manager, GameObjectH
 	return trs_combine(parent_trs, my_trs);
 }
 
-void game_object_render_data_setup(GameObjectManager* manager, Gpu2Device* in_gpu_device, GameObjectHandle object_handle, Gpu2BindGroupLayout* per_object_bind_group_layout)
+void game_object_render_data_setup(GameObjectManager* manager, GpuDevice* in_gpu_device, GameObjectHandle object_handle, GpuBindGroupLayout* per_object_bind_group_layout)
 {
 	ObjectRenderDataComponent object_render_data = {};
 
 	//For each backbuffer...
-	u32 swapchain_count = gpu2_get_swapchain_count(in_gpu_device);
+	u32 swapchain_count = gpu_get_swapchain_count(in_gpu_device);
 	for (i32 swapchain_idx = 0; swapchain_idx < swapchain_count; ++swapchain_idx)
 	{
 		StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, manager, object_handle);
@@ -334,14 +334,14 @@ void game_object_render_data_setup(GameObjectManager* manager, Gpu2Device* in_gp
 		};
 
 		// Create Uniform Buffer
-		Gpu2BufferCreateInfo uniform_buffer_create_info = {
-			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo uniform_buffer_create_info = {
+			.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = sizeof(ObjectUniformStruct),
 			.data = &initial_uniform_data,
 		};
-		Gpu2Buffer uniform_buffer;
-		gpu2_create_buffer(in_gpu_device, &uniform_buffer_create_info, &uniform_buffer);
+		GpuBuffer uniform_buffer;
+		gpu_create_buffer(in_gpu_device, &uniform_buffer_create_info, &uniform_buffer);
 		sb_push(
 			object_render_data.uniform_buffers,
 			uniform_buffer
@@ -350,22 +350,22 @@ void game_object_render_data_setup(GameObjectManager* manager, Gpu2Device* in_gp
 		// Map Uniform Buffer
 		sb_push(
 			object_render_data.uniform_data,
-			(ObjectUniformStruct*) gpu2_map_buffer(in_gpu_device, &uniform_buffer)
+			(ObjectUniformStruct*) gpu_map_buffer(in_gpu_device, &uniform_buffer)
 		);
 
 		// Create Descriptor Set
-		Gpu2BindGroupCreateInfo per_object_bind_group_create_info = {
+		GpuBindGroupCreateInfo per_object_bind_group_create_info = {
 			.layout = per_object_bind_group_layout,
 		};
-		Gpu2BindGroup per_object_bind_group;
-		assert(gpu2_create_bind_group(in_gpu_device, &per_object_bind_group_create_info, &per_object_bind_group));
+		GpuBindGroup per_object_bind_group;
+		assert(gpu_create_bind_group(in_gpu_device, &per_object_bind_group_create_info, &per_object_bind_group));
 
 		// Write uniform buffer to descriptor set
-	   sbuffer(Gpu2ResourceWrite) resource_writes = NULL;
+	   sbuffer(GpuResourceWrite) resource_writes = NULL;
 
-		sb_push(resource_writes, ((Gpu2ResourceWrite){
+		sb_push(resource_writes, ((GpuResourceWrite){
 			.binding_index = 0,
-			.type = GPU2_BINDING_TYPE_BUFFER,
+			.type = GPU_BINDING_TYPE_BUFFER,
 			.buffer_binding = {
 				.buffer = &uniform_buffer,
 			},
@@ -373,17 +373,17 @@ void game_object_render_data_setup(GameObjectManager* manager, Gpu2Device* in_gp
 
 		if (static_model_component)
 		{
-			sb_push(resource_writes, ((Gpu2ResourceWrite){
+			sb_push(resource_writes, ((GpuResourceWrite){
 				.binding_index = 1,
-				.type = GPU2_BINDING_TYPE_BUFFER,
+				.type = GPU_BINDING_TYPE_BUFFER,
 				.buffer_binding = {
 					.buffer = &static_model_component->static_model.vertex_buffer,
 				},
 			}));
 			
-			sb_push(resource_writes, ((Gpu2ResourceWrite){
+			sb_push(resource_writes, ((GpuResourceWrite){
 				.binding_index = 2,
-				.type = GPU2_BINDING_TYPE_BUFFER,
+				.type = GPU_BINDING_TYPE_BUFFER,
 				.buffer_binding = {
 					.buffer = &static_model_component->static_model.index_buffer,
 				},
@@ -391,53 +391,53 @@ void game_object_render_data_setup(GameObjectManager* manager, Gpu2Device* in_gp
 		}
 		else if(animated_model_component)
 		{
-			sb_push(resource_writes, ((Gpu2ResourceWrite){
+			sb_push(resource_writes, ((GpuResourceWrite){
 				.binding_index = 1,
-				.type = GPU2_BINDING_TYPE_BUFFER,
+				.type = GPU_BINDING_TYPE_BUFFER,
 				.buffer_binding = {
 					.buffer = &animated_model_component->animated_model.static_vertex_buffer,
 				},
 			}));
 			
-			sb_push(resource_writes, ((Gpu2ResourceWrite){
+			sb_push(resource_writes, ((GpuResourceWrite){
 				.binding_index = 2,
-				.type = GPU2_BINDING_TYPE_BUFFER,
+				.type = GPU_BINDING_TYPE_BUFFER,
 				.buffer_binding = {
 					.buffer = &animated_model_component->animated_model.index_buffer,
 				},
 			}));
 
-			sb_push(resource_writes, ((Gpu2ResourceWrite){
+			sb_push(resource_writes, ((GpuResourceWrite){
 				.binding_index = 3,
-				.type = GPU2_BINDING_TYPE_BUFFER,
+				.type = GPU_BINDING_TYPE_BUFFER,
 				.buffer_binding = {
 					.buffer = &animated_model_component->animated_model.skinned_vertex_buffer,
 				},
 			}));
 
-			sb_push(resource_writes, ((Gpu2ResourceWrite){
+			sb_push(resource_writes, ((GpuResourceWrite){
 				.binding_index = 4,
-				.type = GPU2_BINDING_TYPE_BUFFER,
+				.type = GPU_BINDING_TYPE_BUFFER,
 				.buffer_binding = {
 					.buffer = &animated_model_component->animated_model.inverse_bind_matrices_buffer,
 				},
 			}));
 
-			sb_push(resource_writes, ((Gpu2ResourceWrite){	
+			sb_push(resource_writes, ((GpuResourceWrite){	
 				.binding_index = 5,
-				.type = GPU2_BINDING_TYPE_BUFFER,
+				.type = GPU_BINDING_TYPE_BUFFER,
 				.buffer_binding = {
 					.buffer = &animated_model_component->joint_matrices_buffer,
 				},	
 			}));
 		}
 
-		const Gpu2BindGroupUpdateInfo per_object_bind_group_update_info = {
+		const GpuBindGroupUpdateInfo per_object_bind_group_update_info = {
 			.bind_group = &per_object_bind_group,
 			.num_writes = sb_count(resource_writes),
 			.writes = resource_writes,
 		};
-		gpu2_update_bind_group(in_gpu_device, &per_object_bind_group_update_info);
+		gpu_update_bind_group(in_gpu_device, &per_object_bind_group_update_info);
 		sb_push(object_render_data.bind_groups, per_object_bind_group);	
 		sb_free(resource_writes);
 	}

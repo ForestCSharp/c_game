@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gltf.h"
-#include "gpu2/gpu2.h"
+#include "gpu/gpu.h"
 #include "types.h"
 #include "assert.h"
 
@@ -24,8 +24,8 @@ typedef struct StaticModel
     i32 num_indices;
     u32* indices;
 
-    Gpu2Buffer vertex_buffer;
-    Gpu2Buffer index_buffer;
+    GpuBuffer vertex_buffer;
+    GpuBuffer index_buffer;
 } StaticModel;
 
 Mat4 compute_static_node_transform(GltfNode* target_node, GltfNode* nodes_array, i32 num_nodes)
@@ -42,7 +42,7 @@ Mat4 compute_static_node_transform(GltfNode* target_node, GltfNode* nodes_array,
 	return computed_transform;
 }
 
-bool static_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, StaticModel* out_model)
+bool static_model_load(const char* gltf_path, GpuDevice* in_gpu_device, StaticModel* out_model)
 {
     assert(out_model);
     memset(out_model, 0, sizeof(StaticModel));
@@ -161,34 +161,34 @@ bool static_model_load(const char* gltf_path, Gpu2Device* in_gpu_device, StaticM
 
     // GPU Data Setup
     {
-		Gpu2BufferCreateInfo vertex_buffer_create_info = {
-			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo vertex_buffer_create_info = {
+			.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = sizeof(StaticVertex) * out_model->num_vertices,
 			.data = out_model->vertices,
 		};
-		gpu2_create_buffer(in_gpu_device, &vertex_buffer_create_info, &out_model->vertex_buffer);
+		gpu_create_buffer(in_gpu_device, &vertex_buffer_create_info, &out_model->vertex_buffer);
 
-		Gpu2BufferCreateInfo index_buffer_create_info = {
-			.usage = GPU2_BUFFER_USAGE_STORAGE_BUFFER,
+		GpuBufferCreateInfo index_buffer_create_info = {
+			.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 			.is_cpu_visible = true,
 			.size = sizeof(u32) * out_model->num_indices,
 			.data = out_model->indices,
 		};
-		Gpu2Buffer index_buffer;
-		gpu2_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer);
+		GpuBuffer index_buffer;
+		gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &out_model->index_buffer);
     }
 
 
     return true;
 }
 
-void static_model_free(Gpu2Device* in_gpu_device, StaticModel* in_model)
+void static_model_free(GpuDevice* in_gpu_device, StaticModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
     free(in_model->vertices);
     free(in_model->indices);
-	gpu2_destroy_buffer(in_gpu_device, &in_model->vertex_buffer);	
-	gpu2_destroy_buffer(in_gpu_device, &in_model->index_buffer);
+	gpu_destroy_buffer(in_gpu_device, &in_model->vertex_buffer);	
+	gpu_destroy_buffer(in_gpu_device, &in_model->index_buffer);
 }
