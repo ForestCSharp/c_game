@@ -259,3 +259,4 @@ bool window_input_pressed(const Window* const window, int key_code)
 {
     return window->is_mouse_in_window && GetKeyState(translate_win32_key_code(key_code)) < 0;
 }
+

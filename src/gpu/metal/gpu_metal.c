@@ -709,7 +709,7 @@ bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comman
 	[in_command_buffer->metal_command_buffer commit];
 
 	//FCS TODO: remove this, we shouldn't wait
-	[in_command_buffer->metal_command_buffer waitUntilCompleted];
+	//[in_command_buffer->metal_command_buffer waitUntilCompleted];
 	return true;
 }
 

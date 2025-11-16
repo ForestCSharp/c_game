@@ -1,3 +1,6 @@
+// Pulled from https://github.com/nothings/stb deprecated stretchy_buffer.h 
+// Some functionality has been added from stb_ds
+
 #ifndef STB_STRETCHY_BUFFER_H_INCLUDED
 #define STB_STRETCHY_BUFFER_H_INCLUDED
 

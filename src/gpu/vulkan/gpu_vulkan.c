@@ -1765,7 +1765,7 @@ void gpu_write_texture(GpuDevice* in_device, const GpuTextureWriteInfo* in_uploa
 	));
 
 	// FCS TODO: Need proper per-frame fencing setup so we don't have to stall here
-	vkDeviceWaitIdle(in_device->vk_device);
+	//vkDeviceWaitIdle(in_device->vk_device);
 
 	vkFreeCommandBuffers(in_device->vk_device, in_device->staging_command_pool, 1, &vk_staging_command_buffer);
 

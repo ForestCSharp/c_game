@@ -1,4 +1,4 @@
-#define _CRT_SECURE_NO_WARNINGS
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -21,9 +21,59 @@
 #include "uniforms.h"
 #include "gui.h"
 #include "debug_draw.h"
+#include "task/task.h"
+
+typedef struct AnimationUpdateTaskData
+{
+	AnimatedModel* animated_model;
+	float delta_time;
+	float global_animation_rate;
+	sbuffer(AnimatedModelComponent*) components_to_update;
+} AnimationUpdateTaskData;
+
+void animation_update_task(void* in_arg)
+{
+	AnimationUpdateTaskData* task_data = (AnimationUpdateTaskData*) in_arg;
+	AnimatedModel* animated_model = task_data->animated_model;
+	float delta_time = task_data->delta_time;
+	float global_animation_rate = task_data->global_animation_rate;
+
+	for (i32 component_idx = 0; component_idx < sb_count(task_data->components_to_update); ++component_idx)
+	{
+		AnimatedModelComponent* animated_model_component = task_data->components_to_update[component_idx];	
+		if (animated_model_component)
+		{
+			animated_model_component->current_anim_time += (delta_time * animated_model_component->animation_rate * global_animation_rate);
+			if (animated_model_component->current_anim_time > animated_model->baked_animation.end_time)
+			{ 
+				animated_model_component->current_anim_time = animated_model->baked_animation.start_time;
+			}
+			if (animated_model_component->current_anim_time < animated_model->baked_animation.start_time)
+			{ 
+				animated_model_component->current_anim_time = animated_model->baked_animation.end_time;
+			}
+			animated_model_update_animation(
+				animated_model, 
+				animated_model_component->current_anim_time,
+				animated_model_component->mapped_buffer_data
+			);
+		}
+	}
+
+	sb_free(task_data->components_to_update);
+	free(task_data);
+}
+
+// FCS TODO:
+// need to n-buffer resources for frames in flight...
+// Remove gpu wait idle on command buffer submission
 
 int main()
 {
+	// Init multithreaded task system
+	TaskSystem task_system;
+	task_system_init(&task_system);
+
 	// Create our window	
 	String window_title = string_new("C Game (");
 	string_append(&window_title, gpu_get_api_name());
@@ -221,12 +271,12 @@ int main()
 	}
 
 	// Generate some random animated + static meshes
-	const i32 OBJECTS_TO_CREATE = 500;
+	const i32 OBJECTS_TO_CREATE = 1000;
 	for (i32 i = 0; i < OBJECTS_TO_CREATE; ++i)
 	{
 		GameObjectHandle new_object_handle = ADD_OBJECT(game_object_manager_ptr);
 
-		const bool create_animated_model = (i % 4) != 0;
+		const bool create_animated_model = true; //(i % 2) != 0;
 		if (create_animated_model)
 		{
 			GpuBufferCreateInfo joints_buffer_create_info = {
@@ -936,6 +986,69 @@ int main()
 			}
 		}
 
+		// Animation Update
+		sbuffer(Task*) animation_tasks = NULL;
+
+		//FCS TODO: Way of counting components by type in game_object.h, so then num_updates_per_task could equal total_components / num_task_threads
+		//const i32 num_task_threads = task_system_num_threads(&task_system);
+		const i32 num_updates_per_task = 50;
+		AnimationUpdateTaskData* current_task_data = NULL;
+
+		u64 anim_update_start_time = time_now();
+
+		for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
+		{
+			GameObjectHandle object_handle = {.idx = obj_idx, };
+			if (!OBJECT_IS_VALID(&game_object_manager, object_handle)) 
+			{
+				continue;
+			}
+
+			AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, object_handle);
+			if (!animated_model_component)
+			{
+				continue;
+			}
+
+			if (!current_task_data)
+			{
+				current_task_data = calloc(1, sizeof(AnimationUpdateTaskData));
+				*current_task_data = (AnimationUpdateTaskData) {
+					.animated_model = &animated_model,
+					.delta_time = delta_time,
+					.global_animation_rate = global_animation_rate,
+				};
+			}
+
+			sb_push(current_task_data->components_to_update, animated_model_component);
+
+			if (sb_count(current_task_data->components_to_update) > num_updates_per_task)
+			{
+				const bool multithread = true;
+				if (multithread)
+				{
+					TaskDesc animation_task_desc = {
+						.task_function = animation_update_task,
+						.argument = current_task_data,
+					};
+					Task* new_animation_task = task_system_add_task(&task_system, &animation_task_desc);
+					sb_push(animation_tasks, new_animation_task);
+				}
+				else
+				{
+					animation_update_task(current_task_data);
+				}
+
+				current_task_data = NULL;
+			}	
+		}
+
+		// Need to wait on animation update
+		task_system_wait_tasks(&task_system, animation_tasks);
+
+		u64 anim_update_end_time = time_now();
+		printf("Anim Update Time: %f ms\n", time_seconds(anim_update_end_time - anim_update_start_time) * 1000);
+
 		{	// Update Global Uniforms...	
 			Mat4 root_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, root_object_handle));
 			Vec3 root_position = mat4_get_translation(root_transform);
@@ -1030,20 +1143,6 @@ int main()
 					}
 					else if (animated_model_component)
 					{
-						animated_model_component->current_anim_time += (delta_time * animated_model_component->animation_rate * global_animation_rate);
-						if (animated_model_component->current_anim_time > animated_model.baked_animation.end_time)
-						{ 
-							animated_model_component->current_anim_time = animated_model.baked_animation.start_time;
-						}
-						if (animated_model_component->current_anim_time < animated_model.baked_animation.start_time)
-						{ 
-							animated_model_component->current_anim_time = animated_model.baked_animation.end_time;
-						}
-						animated_model_update_animation(
-							&animated_model, 
-							animated_model_component->current_anim_time,
-							animated_model_component->mapped_buffer_data
-						);
 						gpu_render_pass_draw(&geometry_render_pass, 0, animated_model_component->animated_model.num_indices);
 					}
 				}
@@ -1098,8 +1197,6 @@ int main()
 			gpu_end_render_pass(&gui_render_pass);
 		}
 
-
-
 		gpu_present_drawable(&gpu_device, &command_buffer, &drawable);
 		assert(gpu_commit_command_buffer(&gpu_device, &command_buffer));
 
@@ -1118,6 +1215,8 @@ int main()
     gui_shutdown(&gui_context);
 
 	gpu_destroy_device(&gpu_device);
+
+	task_system_shutdown(&task_system);
 
 	return 0;
 }
