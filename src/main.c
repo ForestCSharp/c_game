@@ -88,6 +88,8 @@ int main()
 	GpuDevice gpu_device;
 	gpu_create_device(&window, &gpu_device);
 
+	const u32 swapchain_count = gpu_get_swapchain_count(&gpu_device);
+
 	//GameObject + Components Setup
 	GameObjectManager game_object_manager = {};
 	GameObjectManager* game_object_manager_ptr = &game_object_manager;
@@ -645,7 +647,6 @@ int main()
 	debug_draw_init(&gpu_device, &debug_draw_context);
 	// END DEBUG DRAW SETUP
 
-	const u32 swapchain_count = gpu_get_swapchain_count(&gpu_device);
 	u64 time = time_now();
     u32 current_frame = 0;
 
@@ -657,6 +658,12 @@ int main()
 
 	bool show_mouse = false;
 	window_show_mouse_cursor(&window, show_mouse);
+
+	GpuCommandBuffer command_buffers[swapchain_count];
+	for (i32 command_buffer_idx = 0; command_buffer_idx < swapchain_count; ++command_buffer_idx)
+	{
+		gpu_create_command_buffer(&gpu_device, &command_buffers[command_buffer_idx]);
+	}
 
 	while (window_handle_messages(&window))
 	{
@@ -1075,11 +1082,12 @@ int main()
 			gpu_write_buffer(&gpu_device, &global_uniform_buffer_write_info);
 		}
 
-		GpuCommandBuffer command_buffer;
-		assert(gpu_create_command_buffer(&gpu_device, &command_buffer));
+		// gpu_reset_command_buffer will wait on the command buffer if its still in-flight
+		GpuCommandBuffer* command_buffer = &command_buffers[current_frame];
+		gpu_reset_command_buffer(&gpu_device, command_buffer);
 
 		GpuDrawable drawable;
-		assert(gpu_get_next_drawable(&gpu_device, &command_buffer, &drawable));
+		assert(gpu_get_next_drawable(&gpu_device, command_buffer, &drawable));
 		GpuTexture drawable_texture;
 		assert(gpu_drawable_get_texture(&drawable, &drawable_texture));
 
@@ -1105,7 +1113,7 @@ int main()
 				.num_color_attachments = ARRAY_COUNT(geometry_pass_color_attachments), 
 				.color_attachments = geometry_pass_color_attachments,
 				.depth_attachment = &geometry_pass_depth_attachment,
-				.command_buffer = &command_buffer,
+				.command_buffer = command_buffer,
 			};
 			GpuRenderPass geometry_render_pass;
 			gpu_begin_render_pass(&gpu_device, &geometry_render_pass_create_info, &geometry_render_pass);
@@ -1164,7 +1172,7 @@ int main()
 
 			DebugDrawRecordInfo debug_draw_record_info = {
 				.gpu_device = &gpu_device,
-				.command_buffer = &command_buffer,
+				.command_buffer = command_buffer,
 				.color_texture = &drawable_texture,
 				.depth_texture = &depth_texture,
 			};
@@ -1185,7 +1193,7 @@ int main()
 				.num_color_attachments = ARRAY_COUNT(gui_color_attachments), 
 				.color_attachments = gui_color_attachments,
 				.depth_attachment = NULL, 
-				.command_buffer = &command_buffer,
+				.command_buffer = command_buffer,
 			};
 			GpuRenderPass gui_render_pass;
 			gpu_begin_render_pass(&gpu_device, &gui_render_pass_create_info, &gui_render_pass);
@@ -1197,11 +1205,13 @@ int main()
 			gpu_end_render_pass(&gui_render_pass);
 		}
 
-		gpu_present_drawable(&gpu_device, &command_buffer, &drawable);
-		assert(gpu_commit_command_buffer(&gpu_device, &command_buffer));
+		gpu_present_drawable(&gpu_device, command_buffer, &drawable);
+		assert(gpu_commit_command_buffer(&gpu_device, command_buffer));
 
 		current_frame = (current_frame + 1) % swapchain_count;
 	}
+
+	gpu_device_wait_idle(&gpu_device);
 
 	// Cleanup
 	static_model_free(&gpu_device, &static_model);

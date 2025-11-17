@@ -247,6 +247,7 @@ typedef struct GpuRenderPass GpuRenderPass;
 
 void gpu_create_device(Window* in_window, GpuDevice* out_device);
 void gpu_destroy_device(GpuDevice* in_device);
+void gpu_device_wait_idle(GpuDevice* in_device);
 
 u32 gpu_get_swapchain_count(GpuDevice* in_device);
 
@@ -274,7 +275,9 @@ void gpu_destroy_texture(GpuDevice* in_device, GpuTexture* in_texture);
 void gpu_create_sampler(GpuDevice* in_device, const GpuSamplerCreateInfo* in_create_info, GpuSampler* out_sampler);
 void gpu_destroy_sampler(GpuDevice* in_device, GpuSampler* in_sampler);
 
-bool gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer);
+void gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer);
+void gpu_reset_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer);
+void gpu_destroy_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer);
 
 bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* out_drawable);
 bool gpu_drawable_get_texture(GpuDrawable* in_drawable, GpuTexture* out_texture);

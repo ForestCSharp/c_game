@@ -61,7 +61,6 @@ struct GpuDevice
     VkQueue graphics_queue;
 
     VkCommandPool graphics_command_pool;
-
 	VkCommandPool staging_command_pool;
 
     // Debug Functionality
@@ -144,6 +143,8 @@ struct GpuSampler
 struct GpuCommandBuffer
 {
 	VkCommandBuffer vk_command_buffer;
+	bool is_submitted;
+	VkFence submission_fence;
 };
 
 struct GpuRenderPass
@@ -572,10 +573,15 @@ void gpu_create_device(Window* in_window, GpuDevice* out_device)
 
 void gpu_destroy_device(GpuDevice* in_device)
 {
-	vkDeviceWaitIdle(in_device->vk_device);
+	gpu_device_wait_idle(in_device);
 	vkDestroySwapchainKHR(in_device->vk_device, in_device->swapchain, NULL);
 	vkDestroyCommandPool(in_device->vk_device, in_device->graphics_command_pool, NULL);
 	vkDestroyDevice(in_device->vk_device, NULL);
+}
+
+void gpu_device_wait_idle(GpuDevice* in_device)
+{
+    vkDeviceWaitIdle(in_device->vk_device);
 }
 
 u32 gpu_get_swapchain_count(GpuDevice* in_device)
@@ -585,7 +591,7 @@ u32 gpu_get_swapchain_count(GpuDevice* in_device)
 
 void gpu_vk_resize_swapchain(GpuDevice* in_device, const Window* const in_window)
 {
-    vkDeviceWaitIdle(in_device->vk_device);
+	gpu_device_wait_idle(in_device);
 
     if (in_device->swapchain != VK_NULL_HANDLE)
     {
@@ -1764,8 +1770,7 @@ void gpu_write_texture(GpuDevice* in_device, const GpuTextureWriteInfo* in_uploa
 		VK_NULL_HANDLE //signal_fence ? signal_fence->vk_fence : VK_NULL_HANDLE
 	));
 
-	// FCS TODO: Need proper per-frame fencing setup so we don't have to stall here
-	//vkDeviceWaitIdle(in_device->vk_device);
+	gpu_device_wait_idle(in_device);
 
 	vkFreeCommandBuffers(in_device->vk_device, in_device->staging_command_pool, 1, &vk_staging_command_buffer);
 
@@ -1836,7 +1841,7 @@ void gpu_destroy_sampler(GpuDevice* in_device, GpuSampler* in_sampler)
 	vkDestroySampler(in_device->vk_device, in_sampler->vk_sampler, NULL);
 }
 
-bool gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer)
+void gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer)
 {
     VkCommandBufferAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -1848,11 +1853,39 @@ bool gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_comma
     VkCommandBuffer vk_command_buffer;
     VK_CHECK(vkAllocateCommandBuffers(in_device->vk_device, &alloc_info, &vk_command_buffer));
 
+	VkFenceCreateInfo fence_create_info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0, 
+	};
+
+	VkFence submission_fence;
+	VK_CHECK(vkCreateFence(in_device->vk_device, &fence_create_info, NULL, &submission_fence));
+
     *out_command_buffer = (GpuCommandBuffer) {
         .vk_command_buffer = vk_command_buffer,
+		.submission_fence = submission_fence,
     };
 
-	VK_CHECK(vkBeginCommandBuffer(out_command_buffer->vk_command_buffer,
+	gpu_reset_command_buffer(in_device, out_command_buffer);
+}
+
+void gpu_reset_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
+{
+	// Wait for pending command buffer to complete
+	if (in_command_buffer->is_submitted)
+	{
+		VkResult submission_status = vkGetFenceStatus(in_device->vk_device, in_command_buffer->submission_fence);
+		if (submission_status == VK_NOT_READY)
+		{
+			vkWaitForFences(in_device->vk_device, 1, &in_command_buffer->submission_fence, VK_TRUE, UINT64_MAX);
+		}
+	}
+
+	vkResetCommandBuffer(in_command_buffer->vk_command_buffer, 0);
+	vkResetFences(in_device->vk_device, 1, &in_command_buffer->submission_fence);
+
+	VK_CHECK(vkBeginCommandBuffer(in_command_buffer->vk_command_buffer,
 	   &(VkCommandBufferBeginInfo){
 		   .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		   .pNext = NULL,
@@ -1860,8 +1893,12 @@ bool gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_comma
 		   .pInheritanceInfo = NULL,
 	   }
 	));
+}
 
-	return true;
+void gpu_destroy_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
+{
+	vkFreeCommandBuffers(in_device->vk_device, in_device->graphics_command_pool, 1, &in_command_buffer->vk_command_buffer);
+	vkDestroyFence(in_device->vk_device, in_command_buffer->submission_fence, NULL);
 }
 
 bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* out_drawable)
@@ -2143,11 +2180,12 @@ bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comman
         .pSignalSemaphores = NULL, //signal_semaphore ? &signal_semaphore->vk_semaphore : NULL,
     };
 
+	in_command_buffer->is_submitted = true;
     VK_CHECK(vkQueueSubmit(
 		in_device->graphics_queue, 
 		1, 
 		&vk_submit_info,           
-		VK_NULL_HANDLE //signal_fence ? signal_fence->vk_fence : VK_NULL_HANDLE
+		in_command_buffer->submission_fence
 	));
 
 	if (in_device->has_pending_present_info)
@@ -2157,9 +2195,6 @@ bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comman
 		/*VK_CHECK*/(vkQueuePresentKHR(in_device->graphics_queue, &in_device->pending_vk_present_info));
 	}
 	
-	//FCS TODO: Actually handle synchronization 
-    vkDeviceWaitIdle(in_device->vk_device);
-
 	return true;
 }
 
@@ -2168,6 +2203,3 @@ const char* gpu_get_api_name()
 	return "Vulkan";
 }
 
-// FCS TODO: Track previous layout (from previous image barrier call...)
-// FCS TODO: Verify we need viewport flip to match Metal Backend
-// FCS TODO: No triangle... 

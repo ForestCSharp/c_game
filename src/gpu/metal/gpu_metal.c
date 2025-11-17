@@ -102,6 +102,14 @@ void gpu_destroy_device(GpuDevice* in_device)
 	in_device->metal_queue = nil;
 }
 
+void gpu_device_wait_idle(GpuDevice* in_device)
+{
+	GpuCommandBuffer command_buffer;
+	gpu_create_command_buffer(in_device, &command_buffer);
+	gpu_commit_command_buffer(in_device, &command_buffer);
+	[command_buffer.metal_command_buffer waitUntilCompleted];
+}
+
 u32 gpu_get_swapchain_count(GpuDevice* in_device)
 {
 	return in_device->metal_layer.maximumDrawableCount;
@@ -535,11 +543,29 @@ void gpu_destroy_sampler(GpuDevice* in_device, GpuSampler* in_sampler)
 	_OBJC_RELEASE(in_sampler->metal_sampler_state);
 }
 
-bool gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer)
+void gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer)
 {
 	*out_command_buffer = (GpuCommandBuffer){};
 	out_command_buffer->metal_command_buffer = [in_device->metal_queue commandBuffer];
-	return true;
+}
+
+void gpu_reset_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
+{
+	if (in_command_buffer->metal_command_buffer != nil)
+	{
+		const bool is_committed = (in_command_buffer->metal_command_buffer.status != MTLCommandBufferStatusNotEnqueued);
+		if (is_committed)
+		{
+			[in_command_buffer->metal_command_buffer waitUntilCompleted];
+		}
+		gpu_create_command_buffer(in_device, in_command_buffer);
+	}
+}
+
+void gpu_destroy_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
+{
+	_OBJC_RELEASE(in_command_buffer->metal_command_buffer);
+	in_command_buffer->metal_command_buffer = nil;
 }
 
 bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* out_drawable)

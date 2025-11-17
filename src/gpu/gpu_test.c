@@ -299,6 +299,14 @@ int main()
 
 	u64 time = time_now();
 
+    u32 current_frame = 0;
+	const u32 swapchain_count = gpu_get_swapchain_count(&gpu_device);
+	GpuCommandBuffer command_buffers[swapchain_count];
+	for (i32 command_buffer_idx = 0; command_buffer_idx < swapchain_count; ++command_buffer_idx)
+	{
+		gpu_create_command_buffer(&gpu_device, &command_buffers[command_buffer_idx]);
+	}
+
 	while (window_handle_messages(&window))
 	{
 		if (window_input_pressed(&window, KEY_ESCAPE))
@@ -343,11 +351,12 @@ int main()
 			gpu_write_buffer(&gpu_device, &joint_matrices_buffer_write_info);
 		}
 
-		GpuCommandBuffer command_buffer;
-		assert(gpu_create_command_buffer(&gpu_device, &command_buffer));
+		// gpu_reset_command_buffer will wait on the command buffer if its still in-flight
+		GpuCommandBuffer* command_buffer = &command_buffers[current_frame];
+		gpu_reset_command_buffer(&gpu_device, command_buffer);
 
 		GpuDrawable drawable;
-		assert(gpu_get_next_drawable(&gpu_device, &command_buffer, &drawable));
+		assert(gpu_get_next_drawable(&gpu_device, command_buffer, &drawable));
 		GpuTexture drawable_texture;
 		assert(gpu_drawable_get_texture(&drawable, &drawable_texture));
 
@@ -371,7 +380,7 @@ int main()
 			.num_color_attachments = ARRAY_COUNT(color_attachments), 
 			.color_attachments = color_attachments,
 			.depth_attachment = &depth_attachment,
-			.command_buffer = &command_buffer,
+			.command_buffer = command_buffer,
 		};
 		GpuRenderPass render_pass;
 		gpu_begin_render_pass(&gpu_device, &render_pass_create_info, &render_pass);
@@ -388,9 +397,11 @@ int main()
 		gpu_end_render_pass(&render_pass);
 
 		//4. request present 
-		gpu_present_drawable(&gpu_device, &command_buffer, &drawable);
+		gpu_present_drawable(&gpu_device, command_buffer, &drawable);
 
-		assert(gpu_commit_command_buffer(&gpu_device, &command_buffer));
+		assert(gpu_commit_command_buffer(&gpu_device, command_buffer));
+
+		current_frame = (current_frame + 1) % swapchain_count;
 	}
 
 	// Cleanup
