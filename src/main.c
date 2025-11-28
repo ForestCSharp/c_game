@@ -253,10 +253,128 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 	};
 }
 
+typedef struct CharacterUpdateData
+{
+	Character* character;
+
+	Window* window;
+	GameObjectManager* game_object_manager;
+
+	float delta_time;
+	Vec2 mouse_delta;
+
+} CharacterUpdateData;
+
+void character_update(CharacterUpdateData* in_update_data)
+{
+	Character* character = in_update_data->character;
+	Window* window = in_update_data->window;
+	GameObjectManager* game_object_manager = in_update_data->game_object_manager;
+	float delta_time = in_update_data->delta_time;
+	Vec2 mouse_delta = in_update_data->mouse_delta;
+
+	{   // Player Movement
+		CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, game_object_manager, character->camera_object_handle);
+		assert(cam_component);
+		TransformComponent* root_transform = OBJECT_GET_COMPONENT(TransformComponent, game_object_manager, character->root_object_handle);
+		PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, game_object_manager, character->root_object_handle);
+		assert(root_transform && player_control);
+		const Vec3 old_translation = root_transform->trs.translation; 
+		Vec3 up_vec = vec3_new(0,1,0);
+		Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
+		Vec3 right_vec = vec3_cross(up_vec, forward_vec);
+
+		Vec3 move_vec = vec3_zero;
+		if (window_input_pressed(window, 'W'))
+		{
+			move_vec = vec3_add(move_vec, vec3_scale(forward_vec, player_control->move_speed ));
+		}
+		if (window_input_pressed(window, 'S'))
+		{
+			move_vec = vec3_add(move_vec, vec3_scale(forward_vec, -player_control->move_speed ));
+		}
+		if (window_input_pressed(window, 'A'))
+		{
+			move_vec = vec3_add(move_vec, vec3_scale(right_vec, player_control->move_speed ));
+		}
+		if (window_input_pressed(window, 'D'))
+		{
+			move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
+		}
+		if (window_input_pressed(window, 'E') || window_input_pressed(window, KEY_SPACE))
+		{
+			move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
+		}
+		if (window_input_pressed(window, 'Q'))
+		{
+			move_vec = vec3_add(move_vec, vec3_scale(up_vec, -player_control->move_speed ));
+		}
+
+		if (window_input_pressed(window, KEY_SHIFT))
+		{
+			move_vec = vec3_scale(move_vec, 2.5f);
+		}
+
+		// Finally scale everything by delta time
+		move_vec = vec3_scale(move_vec, delta_time);
+
+		{
+			const float body_rot_lerp_speed = 10.0 * delta_time;
+
+			root_transform->trs.translation = vec3_add(old_translation, move_vec);
+			Quat old_body_rotation = root_transform->trs.rotation;
+			Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
+			root_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
+		}
+
+		TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, game_object_manager, character->camera_root_object_handle);
+		assert(cam_root_transform);
+		//FCS TODO: Lerp for lazy cam
+		cam_root_transform->trs.translation = root_transform->trs.translation;
+
+		TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, game_object_manager, character->legs_object_handle);
+		assert(legs_transform);
+
+
+		if (!vec3_nearly_equal(vec3_zero, move_vec)) 
+		{
+			const Vec3 legs_up = vec3_new(0,1,0);
+			const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
+			if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
+			{
+				const float legs_rot_lerp_speed = 10.0 * delta_time;
+				const Quat old_rotation = legs_transform->trs.rotation;
+				const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
+				legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
+			}
+		}
+	}
+
+	{	// Camera Control
+		// currently assumes cam root has no parent (we manually move it into place)
+		TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, game_object_manager, character->camera_root_object_handle);
+		assert(cam_root_transform);
+
+		const float cam_rotation_speed = 1.0f;
+
+		if (!f32_nearly_zero(mouse_delta.x))
+		{
+			Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
+			cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+		}
+
+		if (!f32_nearly_zero(mouse_delta.y))
+		{
+			//FCS TODO: need to get current xform right vector
+			const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
+			Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
+			cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+		}
+	}
+}
 
 // FCS TODO:
-// need to n-buffer resources for frames in flight... (joint matrices)
-// fixes hitchiness on main character
+// need to n-buffer resources for frames in flight... (joint matrices still left to do)
 
 int main()
 {
@@ -775,104 +893,13 @@ int main()
 
 		if (!show_mouse)
 		{
-			{   // Player Movement
-				CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, character.camera_object_handle);
-				assert(cam_component);
-				TransformComponent* root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.root_object_handle);
-				PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, character.root_object_handle);
-				assert(root_transform && player_control);
-				const Vec3 old_translation = root_transform->trs.translation; 
-				Vec3 up_vec = vec3_new(0,1,0);
-				Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
-				Vec3 right_vec = vec3_cross(up_vec, forward_vec);
-
-				Vec3 move_vec = vec3_zero;
-				if (window_input_pressed(&window, 'W'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'S'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, -player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'A'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(right_vec, player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'D'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'E') || window_input_pressed(&window, KEY_SPACE))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'Q'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(up_vec, -player_control->move_speed ));
-				}
-
-				if (window_input_pressed(&window, KEY_SHIFT))
-				{
-					move_vec = vec3_scale(move_vec, 2.5f);
-				}
-
-				// Finally scale everything by delta time
-				move_vec = vec3_scale(move_vec, delta_time);
-
-				{
-					const float body_rot_lerp_speed = 10.0 * delta_time;
-
-					root_transform->trs.translation = vec3_add(old_translation, move_vec);
-					Quat old_body_rotation = root_transform->trs.rotation;
-					Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
-					root_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
-				}
-
-				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.camera_root_object_handle);
-				assert(cam_root_transform);
-				//FCS TODO: Lerp for lazy cam
-				cam_root_transform->trs.translation = root_transform->trs.translation;
-
-				TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.legs_object_handle);
-				assert(legs_transform);
-
-
-				if (!vec3_nearly_equal(vec3_zero, move_vec)) 
-				{
-					const Vec3 legs_up = vec3_new(0,1,0);
-					const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
-					if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
-					{
-						const float legs_rot_lerp_speed = 10.0 * delta_time;
-						const Quat old_rotation = legs_transform->trs.rotation;
-						const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
-						legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
-					}
-				}
-			}
-
-			{	// Camera Control
-				// currently assumes cam root has no parent (we manually move it into place)
-				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.camera_root_object_handle);
-				assert(cam_root_transform);
-
-				const float cam_rotation_speed = 1.0f;
-
-				if (!f32_nearly_zero(mouse_delta.x))
-				{
-					Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
-					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
-				}
-
-				if (!f32_nearly_zero(mouse_delta.y))
-				{
-					//FCS TODO: need to get current xform right vector
-					const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
-					Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
-					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
-				}
-			}
+			character_update(&(CharacterUpdateData) {
+				.character = &character,
+				.window = &window,
+				.game_object_manager = &game_object_manager,
+				.delta_time = delta_time,
+				.mouse_delta = mouse_delta,
+			});
 		}
 
 		// Animation Update
