@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "app/app.h"
+#include "threading/threading.h"
 #include "timer.h"
 
 // GPU_IMPLEMENTATION_<BACKEND> set up in build.sh	
@@ -64,64 +65,31 @@ void animation_update_task(void* in_arg)
 	free(task_data);
 }
 
-// FCS TODO:
-// need to n-buffer resources for frames in flight...
-// Remove gpu wait idle on command buffer submission
-
-int main()
+typedef struct Character
 {
-	// Init multithreaded task system
-	TaskSystem task_system;
-	task_system_init(&task_system);
+	GameObjectHandle root_object_handle;
+	GameObjectHandle body_object_handle;
+	GameObjectHandle head_object_handle;
+	GameObjectHandle legs_object_handle;	
+	GameObjectHandle left_arm_object_handle;
+	GameObjectHandle right_arm_object_handle;
+	GameObjectHandle camera_root_object_handle;
+	GameObjectHandle camera_object_handle;
 
-	// Create our window	
-	String window_title = string_new("C Game (");
-	string_append(&window_title, gpu_get_api_name());
-	string_append(&window_title, ")");
+} Character;
 
-	i32 window_width = 1280;
-	i32 window_height = 720;
-    Window window = window_create(window_title.data, window_width, window_height);
+void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_gpu_device, Character* out_character)
+{
+	assert(out_character != NULL);
 
-	string_free(&window_title);
-
-	GpuDevice gpu_device;
-	gpu_create_device(&window, &gpu_device);
-
-	const u32 swapchain_count = gpu_get_swapchain_count(&gpu_device);
-
-	//GameObject + Components Setup
-	GameObjectManager game_object_manager = {};
-	GameObjectManager* game_object_manager_ptr = &game_object_manager;
-	game_object_manager_init(game_object_manager_ptr);
-
-	// Set up Static Model
-	StaticModel static_model;
-	if (!static_model_load("data/meshes/Monkey.glb", &gpu_device, &static_model))
-	{
-		printf("Failed to Load Static Model\n");
-		return 1;
-	}
-
-	// Set up Animated Model 
-	AnimatedModel animated_model;
-	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu_device, &animated_model))
-	//if (!animated_model_load("data/meshes/blender_simple.glb", &gpu_device, &animated_model))
-	//if (!animated_model_load("data/meshes/running.glb", &gpu_device, &animated_model))
-	{
-		printf("Failed to Load Animated Model\n");
-		return 1;
-	}
-
-	//FCS TODO: Wrap these in a "Character" struct
-	GameObjectHandle root_object_handle = ADD_OBJECT(game_object_manager_ptr);
-	GameObjectHandle body_object_handle = ADD_OBJECT(game_object_manager_ptr);
-	GameObjectHandle head_object_handle = ADD_OBJECT(game_object_manager_ptr);
-	GameObjectHandle legs_object_handle = ADD_OBJECT(game_object_manager_ptr);	
-	GameObjectHandle left_arm_object_handle = ADD_OBJECT(game_object_manager_ptr);
-	GameObjectHandle right_arm_object_handle = ADD_OBJECT(game_object_manager_ptr);
-	GameObjectHandle camera_root_object_handle = ADD_OBJECT(game_object_manager_ptr);
-	GameObjectHandle camera_object_handle = ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle root_object_handle			= ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle body_object_handle			= ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle head_object_handle			= ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle legs_object_handle			= ADD_OBJECT(game_object_manager_ptr);	
+	GameObjectHandle left_arm_object_handle		= ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle right_arm_object_handle	= ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle camera_root_object_handle	= ADD_OBJECT(game_object_manager_ptr);
+	GameObjectHandle camera_object_handle		= ADD_OBJECT(game_object_manager_ptr);
 	{	// Set up Main character hierarchy
 		TransformComponent root_transform = {
 			.trs = {
@@ -152,7 +120,7 @@ int main()
 		OBJECT_CREATE_COMPONENT(ColliderComponent, game_object_manager_ptr, root_object_handle, collider_comp);
 
 		StaticModel body_static_model;
-		assert(static_model_load("data/meshes/StarterMech_Body.glb", &gpu_device, &body_static_model));
+		assert(static_model_load("data/meshes/StarterMech_Body.glb", in_gpu_device, &body_static_model));
 		StaticModelComponent body_model_component_data = {.static_model = body_static_model, };
 		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, body_object_handle, body_model_component_data);
 
@@ -170,7 +138,7 @@ int main()
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, body_object_handle, body_transform);
 
 		StaticModel head_static_model;
-		assert(static_model_load("data/meshes/StarterMech_Head.glb", &gpu_device, &head_static_model));
+		assert(static_model_load("data/meshes/StarterMech_Head.glb", in_gpu_device, &head_static_model));
 		StaticModelComponent head_model_component_data = {.static_model = head_static_model, };
 		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, head_object_handle, head_model_component_data);
 
@@ -188,7 +156,7 @@ int main()
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, head_object_handle, head_transform);
 
 		StaticModel arm_static_model;
-		assert(static_model_load("data/meshes/StarterMech_Arm.glb", &gpu_device, &arm_static_model));
+		assert(static_model_load("data/meshes/StarterMech_Arm.glb", in_gpu_device, &arm_static_model));
 		StaticModelComponent arm_model_component_data = {.static_model = arm_static_model, };
 		
 		// Left Arm
@@ -224,7 +192,7 @@ int main()
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, right_arm_object_handle, right_arm_transform);
 
 		StaticModel legs_static_model;
-		assert(static_model_load("data/meshes/StarterMech_Legs.glb", &gpu_device, &legs_static_model));
+		assert(static_model_load("data/meshes/StarterMech_Legs.glb", in_gpu_device, &legs_static_model));
 		StaticModelComponent legs_model_component_data = {.static_model = legs_static_model, };
 		OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, legs_object_handle, legs_model_component_data);
 
@@ -271,6 +239,73 @@ int main()
 		};
 		OBJECT_CREATE_COMPONENT(CameraComponent, game_object_manager_ptr, camera_object_handle, cam_component_data);
 	}
+
+	//FCS TODO: Leaking the StaticModels by not adding them to this struct and cleaning them up later
+	*out_character = (Character) {
+		.root_object_handle	= root_object_handle,
+		.body_object_handle	= body_object_handle,
+		.head_object_handle = head_object_handle,
+		.legs_object_handle = legs_object_handle,
+		.left_arm_object_handle	= left_arm_object_handle,
+		.right_arm_object_handle = right_arm_object_handle,
+		.camera_root_object_handle = camera_root_object_handle,
+		.camera_object_handle =	camera_object_handle,
+	};
+}
+
+
+// FCS TODO:
+// need to n-buffer resources for frames in flight... (joint matrices)
+// fixes hitchiness on main character
+
+int main()
+{
+	// Init multithreaded task system
+	TaskSystem task_system;
+	task_system_init(&task_system);
+
+	// Create our window	
+	String window_title = string_new("C Game (");
+	string_append(&window_title, gpu_get_api_name());
+	string_append(&window_title, ")");
+
+	i32 window_width = 1280;
+	i32 window_height = 720;
+    Window window = window_create(window_title.data, window_width, window_height);
+
+	string_free(&window_title);
+
+	GpuDevice gpu_device;
+	gpu_create_device(&window, &gpu_device);
+
+	const u32 swapchain_count = gpu_get_swapchain_count(&gpu_device);
+
+	//GameObject + Components Setup
+	GameObjectManager game_object_manager = {};
+	GameObjectManager* game_object_manager_ptr = &game_object_manager;
+	game_object_manager_init(game_object_manager_ptr);
+
+	Character character;
+	character_create(game_object_manager_ptr, &gpu_device, &character);
+
+	// Set up Static Model
+	StaticModel static_model;
+	if (!static_model_load("data/meshes/Monkey.glb", &gpu_device, &static_model))
+	{
+		printf("Failed to Load Static Model\n");
+		return 1;
+	}
+
+	// Set up Animated Model 
+	AnimatedModel animated_model;
+	if (!animated_model_load("data/meshes/cesium_man.glb", &gpu_device, &animated_model))
+	//if (!animated_model_load("data/meshes/blender_simple.glb", &gpu_device, &animated_model))
+	//if (!animated_model_load("data/meshes/running.glb", &gpu_device, &animated_model))
+	{
+		printf("Failed to Load Animated Model\n");
+		return 1;
+	}
+
 
 	// Generate some random animated + static meshes
 	const i32 OBJECTS_TO_CREATE = 1000;
@@ -415,9 +450,7 @@ int main()
 		.size = sizeof(GlobalUniformStruct),
 		.data = NULL,
 	};
-	GpuBuffer global_uniform_buffer;
-	gpu_create_buffer(&gpu_device, &global_uniform_buffer_create_info, &global_uniform_buffer);
-	
+
 	// Create Bind Group Layout
 	GpuBindGroupLayoutCreateInfo global_bind_group_layout_create_info = {
 		.index = 0,
@@ -437,24 +470,30 @@ int main()
 	GpuBindGroupCreateInfo global_bind_group_create_info = {
 		.layout = &global_bind_group_layout,
 	};
-	GpuBindGroup global_bind_group;
-	assert(gpu_create_bind_group(&gpu_device, &global_bind_group_create_info, &global_bind_group));
 
-	//  Write updates to our global bind group
-	const GpuBindGroupUpdateInfo global_bind_group_update_info = {
-		.bind_group = &global_bind_group,
-		.num_writes = 1,
-		.writes = (GpuResourceWrite[1]){
-			{
-				.binding_index = 0,
-				.type = GPU_BINDING_TYPE_BUFFER,
-				.buffer_binding = {
-					.buffer = &global_uniform_buffer,
+	GpuBuffer global_uniform_buffers[swapchain_count];
+	GpuBindGroup global_bind_groups[swapchain_count];
+	for (i32 global_uniform_idx = 0; global_uniform_idx < swapchain_count; ++global_uniform_idx)
+	{
+		gpu_create_buffer(&gpu_device, &global_uniform_buffer_create_info, &global_uniform_buffers[global_uniform_idx]);
+		gpu_create_bind_group(&gpu_device, &global_bind_group_create_info, &global_bind_groups[global_uniform_idx]);
+
+		//  Write updates to our global bind group
+		const GpuBindGroupUpdateInfo global_bind_group_update_info = {
+			.bind_group = &global_bind_groups[global_uniform_idx],
+			.num_writes = 1,
+			.writes = (GpuResourceWrite[1]){
+				{
+					.binding_index = 0,
+					.type = GPU_BINDING_TYPE_BUFFER,
+					.buffer_binding = {
+						.buffer = &global_uniform_buffers[global_uniform_idx],
+					},
 				},
 			},
-		},
-	};
-	gpu_update_bind_group(&gpu_device, &global_bind_group_update_info);
+		};
+		gpu_update_bind_group(&gpu_device, &global_bind_group_update_info);
+	}
 
 	GpuBindGroupLayout* geometry_pipeline_bind_group_layouts[] = { &global_bind_group_layout, &per_object_bind_group_layout };
 
@@ -694,13 +733,16 @@ int main()
 
 		// Mouse Lock
 		static bool show_mouse_pressed_last_frame = false;
-		if (window_input_pressed(&window, 'M') && !show_mouse_pressed_last_frame)
+		const bool show_debug_ui_pressed = window_input_pressed(&window, 'I')
+										&& window_input_pressed(&window, KEY_LEFT_CONTROL);
+
+		if (show_debug_ui_pressed && !show_mouse_pressed_last_frame)
 		{
 			show_mouse = !show_mouse;
 			window_show_mouse_cursor(&window, show_mouse);
 			show_mouse_pressed_last_frame = true;
 		}
-		else if (!window_input_pressed(&window, 'M'))
+		else if (!show_debug_ui_pressed)
 		{
 			show_mouse_pressed_last_frame = false;
 		}
@@ -720,6 +762,183 @@ int main()
 		gui_begin_frame(&gui_context, gui_frame_state);
 		debug_draw_begin_frame(&debug_draw_context, current_frame);
 
+		if (!show_mouse) 
+		{
+			int x,y;
+			window_get_position(&window, &x, &y);
+
+			int width, height;
+			window_get_dimensions(&window, &width, &height);
+
+			window_set_mouse_pos(&window, x + width/2, y + height/2);
+		}
+
+		if (!show_mouse)
+		{
+			{   // Player Movement
+				CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, character.camera_object_handle);
+				assert(cam_component);
+				TransformComponent* root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.root_object_handle);
+				PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, character.root_object_handle);
+				assert(root_transform && player_control);
+				const Vec3 old_translation = root_transform->trs.translation; 
+				Vec3 up_vec = vec3_new(0,1,0);
+				Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
+				Vec3 right_vec = vec3_cross(up_vec, forward_vec);
+
+				Vec3 move_vec = vec3_zero;
+				if (window_input_pressed(&window, 'W'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'S'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, -player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'A'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(right_vec, player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'D'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'E') || window_input_pressed(&window, KEY_SPACE))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
+				}
+				if (window_input_pressed(&window, 'Q'))
+				{
+					move_vec = vec3_add(move_vec, vec3_scale(up_vec, -player_control->move_speed ));
+				}
+
+				if (window_input_pressed(&window, KEY_SHIFT))
+				{
+					move_vec = vec3_scale(move_vec, 2.5f);
+				}
+
+				// Finally scale everything by delta time
+				move_vec = vec3_scale(move_vec, delta_time);
+
+				{
+					const float body_rot_lerp_speed = 10.0 * delta_time;
+
+					root_transform->trs.translation = vec3_add(old_translation, move_vec);
+					Quat old_body_rotation = root_transform->trs.rotation;
+					Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
+					root_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
+				}
+
+				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.camera_root_object_handle);
+				assert(cam_root_transform);
+				//FCS TODO: Lerp for lazy cam
+				cam_root_transform->trs.translation = root_transform->trs.translation;
+
+				TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.legs_object_handle);
+				assert(legs_transform);
+
+
+				if (!vec3_nearly_equal(vec3_zero, move_vec)) 
+				{
+					const Vec3 legs_up = vec3_new(0,1,0);
+					const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
+					if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
+					{
+						const float legs_rot_lerp_speed = 10.0 * delta_time;
+						const Quat old_rotation = legs_transform->trs.rotation;
+						const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
+						legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
+					}
+				}
+			}
+
+			{	// Camera Control
+				// currently assumes cam root has no parent (we manually move it into place)
+				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, character.camera_root_object_handle);
+				assert(cam_root_transform);
+
+				const float cam_rotation_speed = 1.0f;
+
+				if (!f32_nearly_zero(mouse_delta.x))
+				{
+					Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
+					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+				}
+
+				if (!f32_nearly_zero(mouse_delta.y))
+				{
+					//FCS TODO: need to get current xform right vector
+					const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
+					Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
+					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+				}
+			}
+		}
+
+		// Animation Update
+		sbuffer(Task*) animation_tasks = NULL;
+
+		//FCS TODO: Way of counting components by type in game_object.h, so then num_updates_per_task could equal total_components / num_task_threads
+		//const i32 num_task_threads = task_system_num_threads(&task_system);
+		const i32 num_updates_per_task = 50;
+		AnimationUpdateTaskData* current_task_data = NULL;
+
+		u64 anim_update_start_time = time_now();
+
+		for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
+		{
+			GameObjectHandle object_handle = {.idx = obj_idx, };
+			if (!OBJECT_IS_VALID(&game_object_manager, object_handle)) 
+			{
+				continue;
+			}
+
+			AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, object_handle);
+			if (!animated_model_component)
+			{
+				continue;
+			}
+
+			if (!current_task_data)
+			{
+				current_task_data = calloc(1, sizeof(AnimationUpdateTaskData));
+				*current_task_data = (AnimationUpdateTaskData) {
+					.animated_model = &animated_model,
+					.delta_time = delta_time,
+					.global_animation_rate = global_animation_rate,
+				};
+			}
+
+			sb_push(current_task_data->components_to_update, animated_model_component);
+
+			if (sb_count(current_task_data->components_to_update) > num_updates_per_task)
+			{
+				const bool multithread = true;
+				if (multithread)
+				{
+					TaskDesc animation_task_desc = {
+						.task_function = animation_update_task,
+						.argument = current_task_data,
+					};
+					Task* new_animation_task = task_system_add_task(&task_system, &animation_task_desc);
+					sb_push(animation_tasks, new_animation_task);
+				}
+				else
+				{
+					animation_update_task(current_task_data);
+				}
+
+				current_task_data = NULL;
+			}	
+		}
+
+		// Need to wait on animation update
+		task_system_wait_tasks(&task_system, animation_tasks);
+
+		u64 anim_update_end_time = time_now();
+		const double anim_update_time_ms = time_seconds(anim_update_end_time - anim_update_start_time) * 1000;
+
+		// GUI
 		if (show_mouse)
 		{
 			if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
@@ -747,14 +966,34 @@ int main()
 
 				char buffer[128];
 				snprintf(buffer, sizeof(buffer), "FPS: %.1f", round(average_fps));
-				const float padding = 5.f;
+				const float horizontal_padding = 5.f;
+				const float vertical_padding = 5.f;
 				const float fps_button_size = 155.f;
-				if (gui_button(&gui_context, buffer, vec2_new(window_width - fps_button_size - padding, padding),
-				   vec2_new(fps_button_size, 30)) == GUI_CLICKED)
+				if (
+					gui_button(
+						&gui_context,
+						buffer, 
+						vec2_new(window_width - fps_button_size - horizontal_padding, vertical_padding),
+						vec2_new(fps_button_size, 30)) == GUI_CLICKED
+					)
 				{
 					accumulated_delta_time = 0.0f;
 					frames_rendered = 0;
 				}
+			}
+
+			{ // Print Anim Update Time on Screen
+				char buffer[256];
+				snprintf(buffer, sizeof(buffer), "Anim Update Time: %.6f ms", anim_update_time_ms);
+				const float horizontal_padding = 5.f;
+				const float vertical_padding = 40.f;
+				const float button_size = 360.f;
+				gui_button(
+					&gui_context, 
+					buffer, 
+					vec2_new(window_width - button_size - horizontal_padding, vertical_padding), 
+					vec2_new(button_size, 30)
+				);
 			}
 
 			static GuiWindow gui_window_1 = {
@@ -880,189 +1119,13 @@ int main()
 			gpu_write_buffer(&gpu_device, &gui_vertex_buffer_write_info);
 		}
 
-		if (!show_mouse) 
-		{
-			int x,y;
-			window_get_position(&window, &x, &y);
-
-			int width, height;
-			window_get_dimensions(&window, &width, &height);
-
-			window_set_mouse_pos(&window, x + width/2, y + height/2);
-		}
-
-		if (!show_mouse)
-		{
-			{   // Player Movement
-				CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
-				assert(cam_component);
-				TransformComponent* root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, root_object_handle);
-				PlayerControlComponent* player_control = OBJECT_GET_COMPONENT(PlayerControlComponent, &game_object_manager, root_object_handle);
-				assert(root_transform && player_control);
-				const Vec3 old_translation = root_transform->trs.translation; 
-				Vec3 up_vec = vec3_new(0,1,0);
-				Vec3 forward_vec = vec3_normalize(vec3_plane_projection(cam_component->camera_forward, vec3_new(0,1,0)));
-				Vec3 right_vec = vec3_cross(up_vec, forward_vec);
-
-				Vec3 move_vec = vec3_zero;
-				if (window_input_pressed(&window, 'W'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'S'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(forward_vec, -player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'A'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(right_vec, player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'D'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(right_vec, -player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'E') || window_input_pressed(&window, KEY_SPACE))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(up_vec, player_control->move_speed ));
-				}
-				if (window_input_pressed(&window, 'Q'))
-				{
-					move_vec = vec3_add(move_vec, vec3_scale(up_vec, -player_control->move_speed ));
-				}
-
-				if (window_input_pressed(&window, KEY_SHIFT))
-				{
-					move_vec = vec3_scale(move_vec, 2.5f);
-				}
-
-				// Finally scale everything by delta time
-				move_vec = vec3_scale(move_vec, delta_time);
-
-				{
-					const float body_rot_lerp_speed = 10.0 * delta_time;
-
-					root_transform->trs.translation = vec3_add(old_translation, move_vec);
-					Quat old_body_rotation = root_transform->trs.rotation;
-					Quat new_body_rotation = mat4_to_quat(mat4_from_axes(forward_vec, up_vec));
-					root_transform->trs.rotation = quat_slerp(body_rot_lerp_speed, old_body_rotation, new_body_rotation);
-				}
-
-				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
-				assert(cam_root_transform);
-				//FCS TODO: Lerp for lazy cam
-				cam_root_transform->trs.translation = root_transform->trs.translation;
-
-				TransformComponent* legs_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, legs_object_handle);
-				assert(legs_transform);
-
-
-				if (!vec3_nearly_equal(vec3_zero, move_vec)) 
-				{
-					const Vec3 legs_up = vec3_new(0,1,0);
-					const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
-					if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
-					{
-						const float legs_rot_lerp_speed = 10.0 * delta_time;
-						const Quat old_rotation = legs_transform->trs.rotation;
-						const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
-						legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
-					}
-				}
-			}
-
-			{	// Camera Control
-				// currently assumes cam root has no parent (we manually move it into place)
-				TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, camera_root_object_handle);
-				assert(cam_root_transform);
-
-				const float cam_rotation_speed = 1.0f;
-
-				if (!f32_nearly_zero(mouse_delta.x))
-				{
-					Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
-					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
-				}
-
-				if (!f32_nearly_zero(mouse_delta.y))
-				{
-					//FCS TODO: need to get current xform right vector
-					const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
-					Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
-					cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
-				}
-			}
-		}
-
-		// Animation Update
-		sbuffer(Task*) animation_tasks = NULL;
-
-		//FCS TODO: Way of counting components by type in game_object.h, so then num_updates_per_task could equal total_components / num_task_threads
-		//const i32 num_task_threads = task_system_num_threads(&task_system);
-		const i32 num_updates_per_task = 50;
-		AnimationUpdateTaskData* current_task_data = NULL;
-
-		u64 anim_update_start_time = time_now();
-
-		for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
-		{
-			GameObjectHandle object_handle = {.idx = obj_idx, };
-			if (!OBJECT_IS_VALID(&game_object_manager, object_handle)) 
-			{
-				continue;
-			}
-
-			AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, &game_object_manager, object_handle);
-			if (!animated_model_component)
-			{
-				continue;
-			}
-
-			if (!current_task_data)
-			{
-				current_task_data = calloc(1, sizeof(AnimationUpdateTaskData));
-				*current_task_data = (AnimationUpdateTaskData) {
-					.animated_model = &animated_model,
-					.delta_time = delta_time,
-					.global_animation_rate = global_animation_rate,
-				};
-			}
-
-			sb_push(current_task_data->components_to_update, animated_model_component);
-
-			if (sb_count(current_task_data->components_to_update) > num_updates_per_task)
-			{
-				const bool multithread = true;
-				if (multithread)
-				{
-					TaskDesc animation_task_desc = {
-						.task_function = animation_update_task,
-						.argument = current_task_data,
-					};
-					Task* new_animation_task = task_system_add_task(&task_system, &animation_task_desc);
-					sb_push(animation_tasks, new_animation_task);
-				}
-				else
-				{
-					animation_update_task(current_task_data);
-				}
-
-				current_task_data = NULL;
-			}	
-		}
-
-		// Need to wait on animation update
-		task_system_wait_tasks(&task_system, animation_tasks);
-
-		u64 anim_update_end_time = time_now();
-		printf("Anim Update Time: %f ms\n", time_seconds(anim_update_end_time - anim_update_start_time) * 1000);
-
-		{	// Update Global Uniforms...	
-			Mat4 root_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, root_object_handle));
+		{	// Update Global Uniforms...
+			Mat4 root_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, character.root_object_handle));
 			Vec3 root_position = mat4_get_translation(root_transform);
-			Mat4 cam_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, camera_object_handle));
+			Mat4 cam_transform = trs_to_mat4(game_object_compute_global_transform(&game_object_manager, character.camera_object_handle));
 			Vec3 cam_position = mat4_get_translation(cam_transform);
 
-			CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, camera_object_handle);
+			CameraComponent* cam_component = OBJECT_GET_COMPONENT(CameraComponent, &game_object_manager, character.camera_object_handle);
 			assert(cam_component);
 			cam_component->camera_forward = vec3_normalize(vec3_sub(root_position, cam_position));
 			const Vec3 cam_target = vec3_add(cam_position, cam_component->camera_forward);
@@ -1075,7 +1138,7 @@ int main()
 			memcpy(&global_uniform_data.eye, &cam_position, sizeof(float) * 3);
 
 			GpuBufferWriteInfo global_uniform_buffer_write_info = {
-				.buffer = &global_uniform_buffer,
+				.buffer = &global_uniform_buffers[current_frame],
 				.size = sizeof(GlobalUniformStruct),
 				.data = &global_uniform_data,
 			};
@@ -1118,7 +1181,7 @@ int main()
 			GpuRenderPass geometry_render_pass;
 			gpu_begin_render_pass(&gpu_device, &geometry_render_pass_create_info, &geometry_render_pass);
 			gpu_render_pass_set_render_pipeline(&geometry_render_pass, &geometry_render_pipeline);
-			gpu_render_pass_set_bind_group(&geometry_render_pass, &geometry_render_pipeline, &global_bind_group);
+			gpu_render_pass_set_bind_group(&geometry_render_pass, &geometry_render_pipeline, &global_bind_groups[current_frame]);
 
 			for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
 			{
@@ -1201,7 +1264,6 @@ int main()
 			gpu_render_pass_set_bind_group(&gui_render_pass, &gui_render_pipeline, &gui_bind_group);
 
 			gpu_render_pass_draw(&gui_render_pass, 0, sb_count(gui_context.draw_data.indices));		
-
 			gpu_end_render_pass(&gui_render_pass);
 		}
 
@@ -1215,11 +1277,15 @@ int main()
 
 	// Cleanup
 	static_model_free(&gpu_device, &static_model);
-	gpu_destroy_buffer(&gpu_device, &global_uniform_buffer);
 
 	gpu_destroy_texture(&gpu_device, &depth_texture);
 
-	gpu_destroy_bind_group(&gpu_device, &global_bind_group);
+
+	for (i32 swapchain_idx = 0; swapchain_idx < swapchain_count; ++swapchain_idx)
+	{
+		gpu_destroy_buffer(&gpu_device, &global_uniform_buffers[swapchain_idx]);
+		gpu_destroy_bind_group(&gpu_device, &global_bind_groups[swapchain_idx]);
+	}
 	gpu_destroy_bind_group_layout(&gpu_device, &global_bind_group_layout);
 
     gui_shutdown(&gui_context);

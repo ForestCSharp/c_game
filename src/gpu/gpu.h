@@ -297,4 +297,4 @@ u32 gpu_format_stride(GpuFormat format);
 const char* gpu_get_api_name();
 
 // FCS TODO: Remove bool returns on all functions
-// FCS TODO: Rename "drawable" to something else
+// FCS TODO: Rename "drawable" to backbuffer  
