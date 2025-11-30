@@ -205,7 +205,7 @@ typedef struct GpuRenderPipelineCreateInfo
 typedef struct GpuRenderPipeline GpuRenderPipeline;
 
 typedef struct GpuCommandBuffer GpuCommandBuffer;
-typedef struct GpuDrawable GpuDrawable;
+typedef struct GpuBackBuffer GpuBackBuffer;
 
 typedef enum GpuLoadAction
 {
@@ -254,13 +254,13 @@ u32 gpu_get_swapchain_count(GpuDevice* in_device);
 void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info, GpuShader* out_shader);
 void gpu_destroy_shader(GpuDevice* in_device, GpuShader* in_shader);
 
-bool gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout);
-bool gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* in_create_info, GpuBindGroup* out_bind_group);
+void gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout);
+void gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* in_create_info, GpuBindGroup* out_bind_group);
 void gpu_update_bind_group(GpuDevice* in_device, const GpuBindGroupUpdateInfo* in_update_info);
 void gpu_destroy_bind_group(GpuDevice* in_device, GpuBindGroup* in_bind_group);
 void gpu_destroy_bind_group_layout(GpuDevice* in_device, GpuBindGroupLayout* in_bind_group_layout);
 
-bool gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInfo* in_create_info, GpuRenderPipeline* out_render_pipeline);
+void gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInfo* in_create_info, GpuRenderPipeline* out_render_pipeline);
 
 void gpu_create_buffer(GpuDevice* in_device, const GpuBufferCreateInfo* in_create_info, GpuBuffer* out_buffer);
 void gpu_write_buffer(GpuDevice* in_device, const GpuBufferWriteInfo* in_write_info);
@@ -279,8 +279,8 @@ void gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_comma
 void gpu_reset_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer);
 void gpu_destroy_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer);
 
-bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* out_drawable);
-bool gpu_drawable_get_texture(GpuDrawable* in_drawable, GpuTexture* out_texture);
+void gpu_get_next_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* out_backbuffer);
+void gpu_backbuffer_get_texture(GpuBackBuffer* in_backbuffer, GpuTexture* out_texture);
 
 void gpu_begin_render_pass(GpuDevice* in_device, GpuRenderPassCreateInfo* in_create_info, GpuRenderPass* out_render_pass);
 void gpu_end_render_pass(GpuRenderPass* in_render_pass);
@@ -289,12 +289,11 @@ void gpu_render_pass_set_render_pipeline(GpuRenderPass* in_render_pass, GpuRende
 void gpu_render_pass_set_bind_group(GpuRenderPass* in_render_pass, GpuRenderPipeline* in_render_pipeline, GpuBindGroup* in_bind_group);
 void gpu_render_pass_draw(GpuRenderPass* in_render_pass, u32 vertex_start, u32 vertex_count);
 
-void gpu_present_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* in_drawable);
-bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer);
+void gpu_present_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* in_backbuffer);
+void gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer);
 
 // Helper Functions
 u32 gpu_format_stride(GpuFormat format);
 const char* gpu_get_api_name();
 
-// FCS TODO: Remove bool returns on all functions
 // FCS TODO: Rename "drawable" to backbuffer  

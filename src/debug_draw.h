@@ -94,7 +94,7 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 			},
 		},
 	};
-	assert(gpu_create_bind_group_layout(in_gpu_device, &bind_group_layout_create_info, &out_debug_draw_context->bind_group_layout));
+	gpu_create_bind_group_layout(in_gpu_device, &bind_group_layout_create_info, &out_debug_draw_context->bind_group_layout);
 
 	GpuBindGroupLayout* pipeline_bind_group_layouts[] = { &out_debug_draw_context->bind_group_layout };
 
@@ -106,7 +106,7 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 		.polygon_mode = GPU_POLYGON_MODE_LINE,
 		.depth_test_enabled = true,
 	};
-	assert(gpu_create_render_pipeline(in_gpu_device, &render_pipeline_create_info, &out_debug_draw_context->render_pipeline));
+	gpu_create_render_pipeline(in_gpu_device, &render_pipeline_create_info, &out_debug_draw_context->render_pipeline);
 
     gpu_destroy_shader(in_gpu_device, &vertex_shader);
     gpu_destroy_shader(in_gpu_device, &fragment_shader);
@@ -151,7 +151,7 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 			.layout = &out_debug_draw_context->bind_group_layout,
 		};
 		GpuBindGroup bind_group;
-		assert(gpu_create_bind_group(in_gpu_device, &bind_group_create_info, &bind_group));
+		gpu_create_bind_group(in_gpu_device, &bind_group_create_info, &bind_group);
 
 		const GpuBindGroupUpdateInfo bind_group_update_info = {
 			.bind_group = &bind_group,

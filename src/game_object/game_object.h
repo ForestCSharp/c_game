@@ -358,7 +358,7 @@ void game_object_render_data_setup(GameObjectManager* manager, GpuDevice* in_gpu
 			.layout = per_object_bind_group_layout,
 		};
 		GpuBindGroup per_object_bind_group;
-		assert(gpu_create_bind_group(in_gpu_device, &per_object_bind_group_create_info, &per_object_bind_group));
+		gpu_create_bind_group(in_gpu_device, &per_object_bind_group_create_info, &per_object_bind_group);
 
 		// Write uniform buffer to descriptor set
 	   sbuffer(GpuResourceWrite) resource_writes = NULL;

@@ -152,7 +152,7 @@ struct GpuRenderPass
 	VkCommandBuffer vk_command_buffer;
 };
 
-struct GpuDrawable
+struct GpuBackBuffer
 {
 	GpuTexture texture;
 };
@@ -756,7 +756,7 @@ VkDescriptorType gpu_binding_type_to_vk_descriptor_type(GpuBindingType in_type)
 	}
 }
 
-bool gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout)
+void gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout)
 {
 	VkDescriptorSetLayoutBinding vk_bindings[in_create_info->num_bindings];
 	VkDescriptorBindingFlags vk_binding_flags[in_create_info->num_bindings];
@@ -798,11 +798,9 @@ bool gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayout
 	out_bind_group_layout->index = in_create_info->index;
 	out_bind_group_layout->num_bindings = in_create_info->num_bindings;	
 	memcpy(out_bind_group_layout->bindings, in_create_info->bindings, sizeof(GpuResourceBinding) * in_create_info->num_bindings);
-
-	return true;
 }
 
-bool gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* in_create_info, GpuBindGroup* out_bind_group)
+void gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* in_create_info, GpuBindGroup* out_bind_group)
 {
 	GpuBindGroupLayout* layout = in_create_info->layout;
 	VkDescriptorPoolSize vk_pool_sizes[layout->num_bindings];
@@ -840,9 +838,7 @@ bool gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* i
 		.layout = *layout, 
 		.vk_descriptor_pool = vk_descriptor_pool,
 		.vk_descriptor_set = vk_descriptor_set,
-	};
-	
-	return true;
+	};	
 }
 
 void gpu_update_bind_group(GpuDevice* in_device, const GpuBindGroupUpdateInfo* in_update_info)
@@ -934,7 +930,7 @@ VkPolygonMode gpu_polygon_mode_to_vk_polygon_mode(GpuPolygonMode in_mode)
 	}
 }
 
-bool gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInfo* in_create_info, GpuRenderPipeline* out_render_pipeline)
+void gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInfo* in_create_info, GpuRenderPipeline* out_render_pipeline)
 {
 	VkPipelineShaderStageCreateInfo vertex_shader_stage_create_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -1116,8 +1112,6 @@ bool gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInf
 		.vk_pipeline = vk_pipeline,
 		.vk_pipeline_layout = vk_pipeline_layout,
 	};
-
-	return true;
 }
 
 #define MB * 1024 * 1024ULL
@@ -1901,7 +1895,7 @@ void gpu_destroy_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comma
 	vkDestroyFence(in_device->vk_device, in_command_buffer->submission_fence, NULL);
 }
 
-bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* out_drawable)
+void gpu_get_next_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* out_backbuffer)
 {
 	//FCS TODO: Actual Synchronization... array of image acquired semaphores on device that we pass to queue submission later 
 
@@ -1927,14 +1921,14 @@ bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_bu
 	vkWaitForFences(in_device->vk_device, 1, &vk_fence, VK_TRUE, UINT64_MAX);
 	vkDestroyFence(in_device->vk_device, vk_fence, NULL);
 
-	*out_drawable = (GpuDrawable) {
+	*out_backbuffer = (GpuBackBuffer) {
 		.texture = in_device->swapchain_images[in_device->current_image_index],
 	};
 
 	gpu_cmd_vk_image_barrier(
 		in_command_buffer->vk_command_buffer, 
 		&(GpuVkImageBarrier){
-			.vk_image = out_drawable->texture.vk_image,
+			.vk_image = out_backbuffer->texture.vk_image,
 			.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 			.dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 			.old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1942,14 +1936,11 @@ bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_bu
 			.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT,
 		}
 	);
-
-	return true;
 }
 
-bool gpu_drawable_get_texture(GpuDrawable* in_drawable, GpuTexture* out_texture)
+void gpu_backbuffer_get_texture(GpuBackBuffer* in_backbuffer, GpuTexture* out_texture)
 {
-	*out_texture = in_drawable->texture;
-	return true;
+	*out_texture = in_backbuffer->texture;
 }
 
 VkAttachmentLoadOp gpu_load_action_to_vulkan_load_op(GpuLoadAction in_load_action)
@@ -2133,7 +2124,7 @@ void gpu_render_pass_draw(GpuRenderPass* in_render_pass, u32 vertex_start, u32 v
     vkCmdDraw(in_render_pass->vk_command_buffer, vertex_count, instance_count, vertex_start, first_instance);
 }
 
-void gpu_present_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* in_drawable)
+void gpu_present_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* in_backbuffer)
 {
 	//FCS TODO: Proper Synchronization...
 
@@ -2152,7 +2143,7 @@ void gpu_present_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buf
 	gpu_cmd_vk_image_barrier(
 		in_command_buffer->vk_command_buffer, 
 		&(GpuVkImageBarrier){
-			.vk_image = in_drawable->texture.vk_image,
+			.vk_image = in_backbuffer->texture.vk_image,
 			.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 			.dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 			.old_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -2162,22 +2153,20 @@ void gpu_present_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buf
 	);
 }
 
-bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
+void gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
 {
     VK_CHECK(vkEndCommandBuffer(in_command_buffer->vk_command_buffer));
-
-    //VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
     VkSubmitInfo vk_submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .pNext = NULL,
-        .waitSemaphoreCount = 0, //wait_semaphore ? 1 : 0,
-        .pWaitSemaphores = NULL, //wait_semaphore ? &wait_semaphore->vk_semaphore : NULL,
-        .pWaitDstStageMask = NULL, //&wait_stage,
+        .waitSemaphoreCount = 0, 
+        .pWaitSemaphores = NULL,
+        .pWaitDstStageMask = NULL,
         .commandBufferCount = 1,
         .pCommandBuffers = &in_command_buffer->vk_command_buffer,
-        .signalSemaphoreCount = 0, //signal_semaphore != NULL ? 1 : 0,
-        .pSignalSemaphores = NULL, //signal_semaphore ? &signal_semaphore->vk_semaphore : NULL,
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = NULL,
     };
 
 	in_command_buffer->is_submitted = true;
@@ -2191,11 +2180,8 @@ bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comman
 	if (in_device->has_pending_present_info)
 	{
 		in_device->has_pending_present_info = false;
-		// FCS TODO: MoltenVk returning VK_SUBOPTIMAL_KHR, likely due to invalid swapchain size (need to implement window functions)
 		/*VK_CHECK*/(vkQueuePresentKHR(in_device->graphics_queue, &in_device->pending_vk_present_info));
-	}
-	
-	return true;
+	}	
 }
 
 const char* gpu_get_api_name()

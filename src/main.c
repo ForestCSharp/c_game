@@ -525,7 +525,7 @@ int main()
 		},
 	};
 	GpuBindGroupLayout per_object_bind_group_layout;
-	assert(gpu_create_bind_group_layout(&gpu_device, &per_object_bind_group_layout_create_info, &per_object_bind_group_layout));
+	gpu_create_bind_group_layout(&gpu_device, &per_object_bind_group_layout_create_info, &per_object_bind_group_layout);
 
 	// Finally set up our render data for all game objects...
 	for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
@@ -582,7 +582,7 @@ int main()
 	};
 	GpuBindGroupLayout global_bind_group_layout;
 	//FCS TODO: Need one of these per-frame
-	assert(gpu_create_bind_group_layout(&gpu_device, &global_bind_group_layout_create_info, &global_bind_group_layout));
+	gpu_create_bind_group_layout(&gpu_device, &global_bind_group_layout_create_info, &global_bind_group_layout);
 
 	// Create Global Bind Group
 	GpuBindGroupCreateInfo global_bind_group_create_info = {
@@ -623,7 +623,7 @@ int main()
 		.depth_test_enabled = true,
 	};
 	GpuRenderPipeline geometry_render_pipeline;
-	assert(gpu_create_render_pipeline(&gpu_device, &geometry_render_pipeline_create_info, &geometry_render_pipeline));	
+	gpu_create_render_pipeline(&gpu_device, &geometry_render_pipeline_create_info, &geometry_render_pipeline);
 
 	GpuTextureCreateInfo depth_texture_create_info = {
 		.format = GPU_FORMAT_D32_SFLOAT,	
@@ -727,13 +727,13 @@ int main()
 		},
 	};
 	GpuBindGroupLayout gui_bind_group_layout;
-	assert(gpu_create_bind_group_layout(&gpu_device, &gui_bind_group_layout_create_info, &gui_bind_group_layout));
+	gpu_create_bind_group_layout(&gpu_device, &gui_bind_group_layout_create_info, &gui_bind_group_layout);
 
 	GpuBindGroupCreateInfo gui_bind_group_create_info = {
 		.layout = &gui_bind_group_layout,
 	};
 	GpuBindGroup gui_bind_group;
-	assert(gpu_create_bind_group(&gpu_device, &gui_bind_group_create_info, &gui_bind_group));
+	gpu_create_bind_group(&gpu_device, &gui_bind_group_create_info, &gui_bind_group);
 
 	const GpuBindGroupUpdateInfo gui_bind_group_update_info = {
 		.bind_group = &gui_bind_group,
@@ -792,7 +792,7 @@ int main()
 		.depth_test_enabled = false,
 	};
 	GpuRenderPipeline gui_render_pipeline;
-	assert(gpu_create_render_pipeline(&gpu_device, &gui_render_pipeline_create_info, &gui_render_pipeline));
+	gpu_create_render_pipeline(&gpu_device, &gui_render_pipeline_create_info, &gui_render_pipeline);
 
 	gpu_destroy_shader(&gpu_device, &gui_vertex_shader);
 	gpu_destroy_shader(&gpu_device, &gui_fragment_shader);
@@ -1176,16 +1176,16 @@ int main()
 		GpuCommandBuffer* command_buffer = &command_buffers[current_frame];
 		gpu_reset_command_buffer(&gpu_device, command_buffer);
 
-		GpuDrawable drawable;
-		assert(gpu_get_next_drawable(&gpu_device, command_buffer, &drawable));
-		GpuTexture drawable_texture;
-		assert(gpu_drawable_get_texture(&drawable, &drawable_texture));
+		GpuBackBuffer backbuffer;
+		gpu_get_next_backbuffer(&gpu_device, command_buffer, &backbuffer);
+		GpuTexture backbuffer_texture;
+		gpu_backbuffer_get_texture(&backbuffer, &backbuffer_texture);
 
 		// Geometry Pass
 		{
 			GpuColorAttachmentDescriptor geometry_pass_color_attachments[] = {
 				{
-					.texture = &drawable_texture, 
+					.texture = &backbuffer_texture, 
 					.clear_color = {0.392f, 0.584f, 0.929f, 0.f},
 					.load_action = GPU_LOAD_ACTION_CLEAR,
 					.store_action = GPU_STORE_ACTION_STORE,
@@ -1263,7 +1263,7 @@ int main()
 			DebugDrawRecordInfo debug_draw_record_info = {
 				.gpu_device = &gpu_device,
 				.command_buffer = command_buffer,
-				.color_texture = &drawable_texture,
+				.color_texture = &backbuffer_texture,
 				.depth_texture = &depth_texture,
 			};
 			debug_draw_record_commands(&debug_draw_context, &debug_draw_record_info);
@@ -1273,7 +1273,7 @@ int main()
 		{
 			GpuColorAttachmentDescriptor gui_color_attachments[] = {
 				{
-					.texture = &drawable_texture, 
+					.texture = &backbuffer_texture, 
 					.load_action = GPU_LOAD_ACTION_LOAD,
 					.store_action = GPU_STORE_ACTION_STORE,
 				},
@@ -1294,8 +1294,8 @@ int main()
 			gpu_end_render_pass(&gui_render_pass);
 		}
 
-		gpu_present_drawable(&gpu_device, command_buffer, &drawable);
-		assert(gpu_commit_command_buffer(&gpu_device, command_buffer));
+		gpu_present_backbuffer(&gpu_device, command_buffer, &backbuffer);
+		gpu_commit_command_buffer(&gpu_device, command_buffer);
 
 		current_frame = (current_frame + 1) % swapchain_count;
 	}

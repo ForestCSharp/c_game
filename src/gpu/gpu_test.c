@@ -59,23 +59,17 @@ int main()
 	GpuBuffer joint_matrices_buffer;
 	gpu_create_buffer(&gpu_device, &joints_buffer_create_info, &joint_matrices_buffer);
 
-	printf("1\n");
-
 	GpuShaderCreateInfo vertex_shader_create_info = {
 		.filename = "bin/shaders/gpu_test.vert",
 	};
 	GpuShader gpu_vertex_shader;
 	gpu_create_shader(&gpu_device, &vertex_shader_create_info, &gpu_vertex_shader);
 
-	printf("2\n");
-
 	GpuShaderCreateInfo fragment_shader_create_info = {
 		.filename = "bin/shaders/gpu_test.frag",
 	};
 	GpuShader gpu_fragment_shader;
 	gpu_create_shader(&gpu_device, &fragment_shader_create_info, &gpu_fragment_shader);
-
-	printf("3\n");
 
 	typedef struct UniformStruct {
 		Mat4 model;
@@ -176,21 +170,21 @@ int main()
 		},
 	};
 	GpuBindGroupLayout bind_group_layout;
-	assert(gpu_create_bind_group_layout(&gpu_device, &bind_group_layout_create_info, &bind_group_layout));
+	gpu_create_bind_group_layout(&gpu_device, &bind_group_layout_create_info, &bind_group_layout);
 
 	// Create Static Bind Group
 	GpuBindGroupCreateInfo static_bind_group_create_info = {
 		.layout = &bind_group_layout,
 	};
 	GpuBindGroup static_bind_group;
-	assert(gpu_create_bind_group(&gpu_device, &static_bind_group_create_info, &static_bind_group));
+	gpu_create_bind_group(&gpu_device, &static_bind_group_create_info, &static_bind_group);
 
 	// Create Animated Bind Group
 	GpuBindGroupCreateInfo animated_bind_group_create_info = {
 		.layout = &bind_group_layout,
 	};
 	GpuBindGroup animated_bind_group;
-	assert(gpu_create_bind_group(&gpu_device, &animated_bind_group_create_info, &animated_bind_group));
+	gpu_create_bind_group(&gpu_device, &animated_bind_group_create_info, &animated_bind_group);
 
 	//  Write updates to our static bind group
 	const GpuBindGroupUpdateInfo static_bind_group_update_info = {
@@ -283,7 +277,7 @@ int main()
 		.depth_test_enabled = true,
 	};
 	GpuRenderPipeline gpu_render_pipeline;
-	assert(gpu_create_render_pipeline(&gpu_device, &render_pipeline_create_info, &gpu_render_pipeline));	
+	gpu_create_render_pipeline(&gpu_device, &render_pipeline_create_info, &gpu_render_pipeline);
 
 	GpuTextureCreateInfo depth_texture_create_info = {
 		.format = GPU_FORMAT_D32_SFLOAT,	
@@ -355,14 +349,14 @@ int main()
 		GpuCommandBuffer* command_buffer = &command_buffers[current_frame];
 		gpu_reset_command_buffer(&gpu_device, command_buffer);
 
-		GpuDrawable drawable;
-		assert(gpu_get_next_drawable(&gpu_device, command_buffer, &drawable));
-		GpuTexture drawable_texture;
-		assert(gpu_drawable_get_texture(&drawable, &drawable_texture));
+		GpuBackBuffer backbuffer;
+		gpu_get_next_backbuffer(&gpu_device, command_buffer, &backbuffer);
+		GpuTexture backbuffer_texture;
+		gpu_backbuffer_get_texture(&backbuffer, &backbuffer_texture);
 
 		GpuColorAttachmentDescriptor color_attachments[] = {
 			{
-				.texture = &drawable_texture, 
+				.texture = &backbuffer_texture, 
 				.clear_color = {0.392f, 0.584f, 0.929f, 0.f},
 				.load_action = GPU_LOAD_ACTION_CLEAR,
 				.store_action = GPU_STORE_ACTION_STORE,
@@ -397,9 +391,9 @@ int main()
 		gpu_end_render_pass(&render_pass);
 
 		//4. request present 
-		gpu_present_drawable(&gpu_device, command_buffer, &drawable);
+		gpu_present_backbuffer(&gpu_device, command_buffer, &backbuffer);
 
-		assert(gpu_commit_command_buffer(&gpu_device, command_buffer));
+		gpu_commit_command_buffer(&gpu_device, command_buffer);
 
 		current_frame = (current_frame + 1) % swapchain_count;
 	}

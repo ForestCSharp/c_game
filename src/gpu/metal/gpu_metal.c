@@ -75,9 +75,9 @@ struct GpuCommandBuffer
 	id<MTLCommandBuffer> metal_command_buffer;
 };
 
-struct GpuDrawable
+struct GpuBackBuffer
 {
-	id<CAMetalDrawable> metal_drawable;
+	id<CAMetalDrawable> metal_backbuffer;
 };
 
 void gpu_create_device(Window* in_window, GpuDevice* out_device)
@@ -155,15 +155,14 @@ void gpu_destroy_shader(GpuDevice* in_device, GpuShader* in_shader)
 	in_shader->metal_function = nil;
 }
 
-bool gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout)
+void gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout)
 {
 	out_bind_group_layout->index = in_create_info->index;
 	out_bind_group_layout->num_bindings = in_create_info->num_bindings;
 	memcpy(out_bind_group_layout->bindings, in_create_info->bindings, sizeof(GpuResourceBinding) * in_create_info->num_bindings);	
-	return true;
 }
 
-bool gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* in_create_info, GpuBindGroup* out_bind_group)
+void gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* in_create_info, GpuBindGroup* out_bind_group)
 {
 	*out_bind_group = (GpuBindGroup) {};	
 
@@ -199,8 +198,6 @@ bool gpu_create_bind_group(GpuDevice* in_device, const GpuBindGroupCreateInfo* i
 
 	// Fill the entire buffer with zeroes
 	memset(out_bind_group->metal_argument_buffer.contents, 0, argument_buffer_size);
-
-	return true;
 }
 
 void gpu_update_bind_group(GpuDevice* in_device, const GpuBindGroupUpdateInfo* in_update_info)
@@ -304,7 +301,7 @@ MTLTriangleFillMode gpu_polygon_mode_to_mtl_triangle_fill_mode(GpuPolygonMode in
 }
 
 //FCS TODO: currently just assumes a single MTLPixelFormatBGRA8Unorm color attachment
-bool gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInfo* in_create_info, GpuRenderPipeline* out_render_pipeline)
+void gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInfo* in_create_info, GpuRenderPipeline* out_render_pipeline)
 {	
 	MTLRenderPipelineDescriptor *metal_render_pipeline_descriptor = [[MTLRenderPipelineDescriptor alloc] init];
 	assert(in_create_info->vertex_shader);
@@ -337,8 +334,6 @@ bool gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInf
 		.metal_depth_stencil_state = metal_depth_stencil_state,
 		.metal_triangle_fill_mode = gpu_polygon_mode_to_mtl_triangle_fill_mode(in_create_info->polygon_mode),
 	};
-
-	return true;
 }
 
 //TODO: is_cpu_visible arg support
@@ -568,24 +563,21 @@ void gpu_destroy_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comma
 	in_command_buffer->metal_command_buffer = nil;
 }
 
-bool gpu_get_next_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* out_drawable)
+void gpu_get_next_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* out_backbuffer)
 {
-	*out_drawable = (GpuDrawable) {
-		.metal_drawable = [in_device->metal_layer nextDrawable],
+	*out_backbuffer = (GpuBackBuffer) {
+		.metal_backbuffer = [in_device->metal_layer nextDrawable],
 	};
-	return true; 
 }
 
-bool gpu_drawable_get_texture(GpuDrawable* in_drawable, GpuTexture* out_texture)
+void gpu_backbuffer_get_texture(GpuBackBuffer* in_backbuffer, GpuTexture* out_texture)
 {
-	assert(in_drawable);
+	assert(in_backbuffer);
 	assert(out_texture);
 
 	*out_texture = (GpuTexture) {
-		.metal_texture = in_drawable->metal_drawable.texture,
+		.metal_texture = in_backbuffer->metal_backbuffer.texture,
 	};
-
-	return true;
 }
 
 MTLLoadAction gpu_load_action_to_metal_load_action(GpuLoadAction in_load_action)
@@ -725,18 +717,14 @@ void gpu_render_pass_draw(GpuRenderPass* in_render_pass, u32 vertex_start, u32 v
 	[in_render_pass->metal_render_command_encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:vertex_start vertexCount:vertex_count];
 }
 
-void gpu_present_drawable(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuDrawable* in_drawable)
+void gpu_present_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* in_backbuffer)
 {
-	[in_command_buffer->metal_command_buffer presentDrawable:in_drawable->metal_drawable];
+	[in_command_buffer->metal_command_buffer presentDrawable:in_backbuffer->metal_backbuffer];
 }
 
-bool gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
+void gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
 {
 	[in_command_buffer->metal_command_buffer commit];
-
-	//FCS TODO: remove this, we shouldn't wait
-	//[in_command_buffer->metal_command_buffer waitUntilCompleted];
-	return true;
 }
 
 const char* gpu_get_api_name()
