@@ -296,4 +296,3 @@ void gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comman
 u32 gpu_format_stride(GpuFormat format);
 const char* gpu_get_api_name();
 
-// FCS TODO: Rename "drawable" to backbuffer  

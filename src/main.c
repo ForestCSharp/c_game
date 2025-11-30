@@ -329,6 +329,7 @@ void character_update(CharacterUpdateData* in_update_data)
 
 		TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, game_object_manager, character->camera_root_object_handle);
 		assert(cam_root_transform);
+
 		//FCS TODO: Lerp for lazy cam
 		cam_root_transform->trs.translation = root_transform->trs.translation;
 
@@ -365,7 +366,6 @@ void character_update(CharacterUpdateData* in_update_data)
 
 		if (!f32_nearly_zero(mouse_delta.y))
 		{
-			//FCS TODO: need to get current xform right vector
 			const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
 			Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
 			cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
@@ -581,7 +581,6 @@ int main()
 		},
 	};
 	GpuBindGroupLayout global_bind_group_layout;
-	//FCS TODO: Need one of these per-frame
 	gpu_create_bind_group_layout(&gpu_device, &global_bind_group_layout_create_info, &global_bind_group_layout);
 
 	// Create Global Bind Group
