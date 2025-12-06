@@ -1,8 +1,6 @@
 #pragma once
 
-#include "math/basic_math.h"
-#include "math/vec.h"
-#include "math/matrix.h"
+#include "math/math_lib.h"
 
 typedef struct GlobalUniformStruct
 {

@@ -1,6 +1,7 @@
 #pragma once
 #include <math.h>
 #include <stdio.h>
+#include "math/basic_math.h"
 
 typedef struct Vec2
 {

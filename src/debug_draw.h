@@ -1,9 +1,7 @@
 #pragma once
 
-#include "math/matrix.h"
-#include "math/quat.h"
-#include "math/vec.h"
 #include "stretchy_buffer.h"
+#include "math/math_lib.h"
 
 //FCS TODO: Remove after we support buffer resizing
 const u32 DEBUG_DRAW_MAX_VERTICES =	1000000;

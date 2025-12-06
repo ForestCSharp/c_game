@@ -1,12 +1,9 @@
 #pragma once
 
-#include "math/basic_math.h"
-#include "math/matrix.h"
-#include "math/vec.h"
-#include "math/quat.h"
 #include "model/static_model.h"
 #include "gltf.h"
 #include "types.h"
+#include "math/math_lib.h"
 #include "assert.h"
 
 // ---- Source Animation: References GLTF Hierarchy Directly... slow to compute poses ---- //

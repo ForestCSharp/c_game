@@ -1,11 +1,8 @@
 #pragma once
 
 #define _CRT_SECURE_NO_WARNINGS
-#include "math/basic_math.h"
-#include "math/matrix.h"
-#include "math/quat.h"
-#include "math/vec.h"
 #include "types.h"
+#include "math/math_lib.h"
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>

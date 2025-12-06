@@ -3,11 +3,11 @@
 #include "collision/collision.h"
 #include "collision/collision_render.h"
 #include "gpu/gpu.h"
-#include "math/matrix.h"
 #include "model/static_model.h"
 #include "model/animated_model.h"
 #include "stretchy_buffer.h"
 #include "types.h"
+#include "math/math_lib.h"
 #include "uniforms.h"
 
 const i64 INVALID_INDEX = -1;

@@ -2,10 +2,8 @@
 
 // Primitive Collision routines. For convex collision, see mpr.h
 
-#include "math/basic_math.h"
 #include "types.h"
-#include "math/vec.h"
-#include "math/matrix.h"
+#include "math/math_lib.h"
 
 typedef struct Plane
 {

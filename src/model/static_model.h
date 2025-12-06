@@ -1,9 +1,11 @@
 #pragma once
 
+#include "assert.h"
+
 #include "gltf.h"
 #include "gpu/gpu.h"
 #include "types.h"
-#include "assert.h"
+#include "math/math_lib.h"
 
 typedef struct StaticVertex
 {

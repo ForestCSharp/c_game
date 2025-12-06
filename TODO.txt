@@ -1,16 +1,5 @@
 
-[We're Back! -> Gpu Abstraction Purgatory Part N]
-- get metal and vulkan backends propped up
-- explore bindless options that work with Metal and Vulkan
-	- Currently looking into 1 binding per set and using unique set for unbounded resource lists?
-- start porting over old graphics code
-- evaluate API design
-- ???
-- Profit/Satisfaction
-
-
 [NEXT UP]
-- Debug Drawing Header
 - allow attaching to specific nodes in GLTF model (+ support animation)
 - procedural / IK support in animated models
 - start replacing mesh parts with animated models
@@ -21,16 +10,3 @@
 - Logging Header
 - TTF Fonts
 
-- Bindless Vulkan 
-	- broken on MoltenVk/MacOS: see: https://github.com/KhronosGroup/MoltenVK/commit/ff21180909f122eaaaed958f1c0b59589b10c17b
-	- TODO: Set up skinned (skeleton and inverse bind matrices) for bindless
-	- TODO: Bring back collision system using components + bindless
-	- TODO: Bring back joint vis using components + bindless
-
-- What is the difference: 
-	- shaderStorageBufferArrayDynamicIndexing in VkPhysicalDeviceFeatures
-		- Dynamic is per-invocation? could be used with draw indirect
-	- shaderStorageBufferArrayNonUniformIndexing in VkPhysicalDeviceDescriptorIndexingFeatureso 
-		- Even finer grained? could be used with draw instanced + instanced indirect for per-instance resources...
-
-- Procedural Animation (IK)

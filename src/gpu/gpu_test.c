@@ -8,10 +8,7 @@
 // GPU_IMPLEMENTATION_<BACKEND> set up in build.sh	
 #include "gpu/gpu.c"
 
-#include "math/basic_math.h"
-#include "math/matrix.h"
-#include "math/quat.h"
-#include "math/vec.h"
+#include "math/math_lib.h"
 
 #include "stretchy_buffer.h"
 

@@ -9,10 +9,7 @@
 // GPU_IMPLEMENTATION_<BACKEND> set up in build.sh	
 #include "gpu/gpu.c"
 
-#include "math/basic_math.h"
-#include "math/matrix.h"
-#include "math/quat.h"
-#include "math/vec.h"
+#include "math/math_lib.h"
 
 #include "stretchy_buffer.h"
 
@@ -102,7 +99,7 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, root_object_handle, root_transform);
 
 		PlayerControlComponent player_control = {
-			.move_speed = 100.0f,
+			.move_speed = 200.0f,
 		};
 		OBJECT_CREATE_COMPONENT(PlayerControlComponent, game_object_manager_ptr, root_object_handle, player_control);
 
@@ -265,6 +262,44 @@ typedef struct CharacterUpdateData
 
 } CharacterUpdateData;
 
+void camera_apply_rotation_clamped(Quat* q, float yaw_delta, float pitch_delta, float pitch_limit_degrees)
+{
+	float pitch_limit_rad = pitch_limit_degrees * DEGREES_TO_RADIANS;
+
+    // Extract current pitch
+    Vec3 forward = quat_rotate_vec3(*q, vec3_new(0,0,-1)); // engine's forward
+    float current_pitch = asinf(CLAMP(forward.y, -1.0f, 1.0f)); // pitch relative to horizontal plane
+
+    // Apply yaw freely around world up
+    if (!f32_nearly_zero(yaw_delta))
+    {
+        Quat q_yaw = quat_new(vec3_new(0,1,0), yaw_delta);
+        *q = quat_mul(q_yaw, *q);
+    }
+
+	float allowed_delta = pitch_delta;
+
+	// Clamp to upper limit
+	if (current_pitch + pitch_delta > pitch_limit_rad)
+	{
+		allowed_delta = pitch_limit_rad - current_pitch;
+	}
+
+	// Clamp to lower limit
+	if (current_pitch + pitch_delta < -pitch_limit_rad)
+	{
+		allowed_delta = -pitch_limit_rad - current_pitch;
+	}
+
+	// Apply rotation if nonzero
+	if (!f32_nearly_zero(allowed_delta))
+	{
+		Vec3 right = quat_rotate_vec3(*q, vec3_new(1,0,0));
+		Quat q_pitch = quat_new(right, allowed_delta);
+		*q = quat_mul(q_pitch, *q);
+	}
+}
+
 void character_update(CharacterUpdateData* in_update_data)
 {
 	Character* character = in_update_data->character;
@@ -358,18 +393,18 @@ void character_update(CharacterUpdateData* in_update_data)
 
 		const float cam_rotation_speed = 1.0f;
 
-		if (!f32_nearly_zero(mouse_delta.x))
+		if (!f32_nearly_zero(mouse_delta.x) || !f32_nearly_zero(mouse_delta.y))
 		{
-			Quat rotation_quat = quat_new(vec3_new(0,1,0), -mouse_delta.x * cam_rotation_speed * delta_time);	
-			cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
+			const Vec2 camera_move_speed = vec2_scale(mouse_delta, -1.0f * cam_rotation_speed * delta_time);
+
+			camera_apply_rotation_clamped(
+				&cam_root_transform->trs.rotation, 
+				camera_move_speed.x,
+				camera_move_speed.y,
+				80.0f 
+			);
 		}
 
-		if (!f32_nearly_zero(mouse_delta.y))
-		{
-			const Vec3 root_right = quat_rotate_vec3(cam_root_transform->trs.rotation, vec3_new(1, 0, 0));
-			Quat rotation_quat = quat_new(root_right, -mouse_delta.y * cam_rotation_speed * delta_time);	
-			cam_root_transform->trs.rotation = quat_mul(rotation_quat, cam_root_transform->trs.rotation);
-		}
 	}
 }
 

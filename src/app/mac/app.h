@@ -79,9 +79,9 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 @interface WindowView : NSView
 {
     NSTrackingArea* trackingArea;
-@public
+	@public
     i32 cached_mouse_x;
-@public
+	@public
     i32 cached_mouse_y;
 }
 @end
@@ -211,6 +211,9 @@ typedef struct Window
     NSWindow* ns_window;
     WindowView* ns_view;
     CAMetalLayer* metal_layer;
+
+	i32 mouse_delta_x;
+	i32 mouse_delta_y;
 } Window;
 
 Window window_create(const char* name, int width, int height)
