@@ -2,6 +2,7 @@
 
 #include "stdio.h"
 #include "types.h"
+#include "memory/allocator.h"
 
 typedef struct TrueTypeTable
 {
@@ -31,36 +32,6 @@ typedef struct TrueTypeFont
 {
 
 } TrueTypeFont;
-
-bool truetype_read_file(const char* filename, size_t* out_file_size, u8** out_data)
-{
-    FILE* file = fopen(filename, "rb");
-    if (!file)
-    {
-        return false;
-    }
-
-    fseek(file, 0L, SEEK_END);
-    const size_t file_size = *out_file_size = ftell(file);
-    rewind(file);
-
-    *out_data = calloc(1, file_size + 1);
-    if (!*out_data)
-    {
-        fclose(file);
-        return false;
-    }
-
-    if (fread(*out_data, 1, file_size, file) != file_size)
-    {
-        fclose(file);
-        free(*out_data);
-        return false;
-    }
-
-    fclose(file);
-    return true;
-}
 
 u8 read_u8(void* src, size_t offset)
 {
@@ -108,7 +79,7 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
 {
     size_t file_size = 0;
     u8* file_data = NULL;
-    if (truetype_read_file(filename, &file_size, &file_data))
+    if (read_binary_file(filename, &file_size, &file_data))
     {
 		printf("\n\ntruetype_load_file\n");
         printf("Font File Size: %zu\n", file_size);
@@ -131,7 +102,7 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
 
         u8* table_directory_start = font_directory_start + 12;
 
-        font_directory.table_directory = calloc(font_directory.num_tables, sizeof(TrueTypeTable));
+        font_directory.table_directory = mem_alloc_zeroed(font_directory.num_tables * sizeof(TrueTypeTable));
         for (i32 table_index = 0; table_index < font_directory.num_tables; ++table_index)
         {
             u8* current_table_start = table_directory_start + (16 * table_index);

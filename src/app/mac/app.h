@@ -308,7 +308,10 @@ void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out
 
 void window_set_mouse_pos(const Window* const window, i32 in_mouse_x, i32 in_mouse_y)
 {
-	CGDisplayMoveCursorToPoint(CGMainDisplayID(), CGPointMake(in_mouse_x, in_mouse_y));
+	if ([window->ns_window isKeyWindow])
+	{
+		CGDisplayMoveCursorToPoint(CGMainDisplayID(), CGPointMake(in_mouse_x, in_mouse_y));
+	}
 }
 
 void window_get_mouse_delta(const Window* const window, i32* out_mouse_delta_x, i32* out_mouse_delta_y)

@@ -1,5 +1,6 @@
 #include "app/app.h"
 #include "stretchy_buffer.h"
+#include "memory/allocator.h"
 
 typedef void (*task_function_ptr)(void *); 
 
@@ -109,7 +110,7 @@ void task_system_shutdown(TaskSystem* in_task_system)
 
 Task* task_system_add_task(TaskSystem* in_task_system, TaskDesc* in_task_desc)
 {
-	Task* new_task = malloc(sizeof(Task));
+	Task* new_task = mem_alloc(sizeof(Task));
 
 	*new_task = (Task) {
 		.desc = *in_task_desc,
@@ -133,7 +134,7 @@ void task_system_wait_tasks(TaskSystem* in_task_system, sbuffer(Task*) in_tasks)
 		Task* task = sb_last(in_tasks);
 		if (atomic_bool_get(&task->is_complete))
 		{
-			free(task);
+			mem_free(task);
 			sb_del(in_tasks, sb_count(in_tasks) - 1);	
 		}
 	}

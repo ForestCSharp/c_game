@@ -122,7 +122,7 @@ void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info
 	
 	size_t file_size;	
 	char* shader_source;
-	read_binary_file(&filename_string, &file_size, (void**)&shader_source);
+	read_binary_file(filename_string.data, &file_size, (void**)&shader_source);
 	string_free(&filename_string);
 
 	const char* entry_point = "main0";
@@ -146,7 +146,7 @@ void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info
 		.metal_function = function,
 	};
 
-	free(shader_source);
+	mem_free(shader_source);
 }
 
 void gpu_destroy_shader(GpuDevice* in_device, GpuShader* in_shader)

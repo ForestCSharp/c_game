@@ -6,6 +6,7 @@
 #include "gpu/gpu.h"
 #include "types.h"
 #include "math/math_lib.h"
+#include "memory/allocator.h"
 
 typedef struct StaticVertex
 {
@@ -78,8 +79,8 @@ bool static_model_load(const char* gltf_path, GpuDevice* in_gpu_device, StaticMo
 	}
 
 	// Allocate + Zero storage for vertices + indices
-	out_model->vertices = calloc(out_model->num_vertices, sizeof(StaticVertex));
-	out_model->indices = calloc(out_model->num_indices, sizeof(u32));
+	out_model->vertices = mem_alloc_zeroed(out_model->num_vertices * sizeof(StaticVertex));
+	out_model->indices = mem_alloc_zeroed(out_model->num_indices * sizeof(u32));
 
 	i32 vertex_offset = 0; // Incremented after each primitive
 	i32 index_offset = 0; // Incremented after each primitive
@@ -189,8 +190,8 @@ void static_model_free(GpuDevice* in_gpu_device, StaticModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
-    free(in_model->vertices);
-    free(in_model->indices);
+    mem_free(in_model->vertices);
+    mem_free(in_model->indices);
 	gpu_destroy_buffer(in_gpu_device, &in_model->vertex_buffer);	
 	gpu_destroy_buffer(in_gpu_device, &in_model->index_buffer);
 }

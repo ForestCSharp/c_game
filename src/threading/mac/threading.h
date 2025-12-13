@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include "memory/allocator.h"
 
 typedef struct Thread
 {
@@ -19,13 +20,13 @@ void* pthread_function(void* arg)
 {
 	PThreadPayload* pthread_payload = (PThreadPayload*) arg;
 	pthread_payload->thread_function(pthread_payload->thread_argument);
-	free(pthread_payload);
+	mem_free(pthread_payload);
 	return NULL;
 }
 
 void app_thread_create(app_thread_function_ptr thread_function, void* thread_argument, Thread* out_thread)
 {
-	PThreadPayload* pthread_payload = malloc(sizeof(PThreadPayload));
+	PThreadPayload* pthread_payload = mem_alloc(sizeof(PThreadPayload));
 	pthread_payload->thread_function = thread_function;
 	pthread_payload->thread_argument = thread_argument;
 	assert(pthread_create(&out_thread->posix_thread, NULL, pthread_function, (void *)pthread_payload) == 0);

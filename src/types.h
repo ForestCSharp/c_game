@@ -4,6 +4,7 @@
 #include "stdbool.h"
 #include "stdint.h"
 #include "string.h"
+#include "memory/allocator.h"
 
 // ---- Primitive Typedefs ---- //
 typedef uint64_t u64;
@@ -73,7 +74,7 @@ static const String empty_string = {
 String string_new(const char* in_c_string)
 {
 	size_t length = strlen(in_c_string);
-	char* data = malloc(length + 1);
+	char* data = mem_alloc(length + 1);
 	memcpy(data, in_c_string, length);
 	data[length] = '\0';
 	return (String) {
@@ -87,7 +88,7 @@ void string_append(String* in_string, const char* in_c_string_to_append)
 	const u64 new_length = in_string->length + strlen(in_c_string_to_append);
 	assert(new_length > in_string->length);
 
-	in_string->data = realloc(in_string->data, new_length + 1);
+	in_string->data = mem_realloc(in_string->data, new_length + 1);
 	in_string->length = new_length;
 
 	strcat(in_string->data, in_c_string_to_append);
@@ -109,14 +110,14 @@ void string_print(String* in_string)
 void string_free(String* in_string)
 {
 	assert(in_string->data != NULL && in_string->length > 0);
-	free(in_string->data);
+	mem_free(in_string->data);
 	*in_string = (String){};
 }
 
 
-static bool read_binary_file(const String* filename, size_t *out_file_size, void **out_data)
+static bool read_binary_file(const char* filename, size_t *out_file_size, void **out_data)
 {
-    FILE *file = fopen(filename->data, "rb");
+    FILE* file = fopen(filename, "rb");
     if (!file)
 	{
         return false;
@@ -126,7 +127,7 @@ static bool read_binary_file(const String* filename, size_t *out_file_size, void
     const size_t file_size = *out_file_size = ftell(file);
     rewind(file);
 
-    *out_data = calloc(1, file_size + 1);
+    *out_data = mem_alloc_zeroed(file_size + 1);
     if (!*out_data)
     {
         fclose(file);
@@ -136,7 +137,7 @@ static bool read_binary_file(const String* filename, size_t *out_file_size, void
     if (fread(*out_data, 1, file_size, file) != file_size)
     {
         fclose(file);
-        free(*out_data);
+        mem_free(*out_data);
         return false;
     }
 
@@ -144,7 +145,3 @@ static bool read_binary_file(const String* filename, size_t *out_file_size, void
     return true;
 }
 
-// FCS TODO: replace these with proper tracked allocations, report leaks at end of execution
-#define MALLOC(size) malloc(size); printf("malloc: %s line %d\n", __FILE__, __LINE__);
-#define CALLOC(num, size) calloc(num, size); printf("calloc: %s line %d\n", __FILE__, __LINE__);
-#define REALLOC(ptr, size) realloc(ptr, size); printf("realloc: %s line %d\n", __FILE__, __LINE__);

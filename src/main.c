@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "memory/allocator.h"
 #include "app/app.h"
 #include "threading/threading.h"
 #include "timer.h"
@@ -59,7 +60,7 @@ void animation_update_task(void* in_arg)
 	}
 
 	sb_free(task_data->components_to_update);
-	free(task_data);
+	mem_free(task_data);
 }
 
 typedef struct Character
@@ -962,7 +963,7 @@ int main()
 
 			if (!current_task_data)
 			{
-				current_task_data = calloc(1, sizeof(AnimationUpdateTaskData));
+				current_task_data = mem_alloc_zeroed(sizeof(AnimationUpdateTaskData));
 				*current_task_data = (AnimationUpdateTaskData) {
 					.animated_model = &animated_model,
 					.delta_time = delta_time,
