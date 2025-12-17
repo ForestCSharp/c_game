@@ -1,4 +1,6 @@
-#include "types.h"
+#pragma once
+
+#include "basic_types.h"
 
 // Threading/Sync Functions
 typedef struct Thread Thread;
@@ -19,6 +21,11 @@ void app_semaphore_create(const char* in_name, const i32 in_value, Semaphore* ou
 void app_semaphore_destroy(Semaphore* in_semaphore);
 void app_semaphore_wait(Semaphore* in_semaphore);
 void app_semaphore_post(Semaphore* in_semaphore);
+
+typedef struct AtomicInt AtomicInt;
+i32 atomic_int_set(AtomicInt* in_atomic, i32 in_new_value);
+i32 atomic_int_add(AtomicInt* in_atomic, i32 in_value_to_add);
+i32 atomic_int_get(AtomicInt* in_atomic);
 
 typedef struct AtomicBool AtomicBool;
 void atomic_bool_set(AtomicBool* in_atomic, bool in_new_value);

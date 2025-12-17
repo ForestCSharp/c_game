@@ -2,6 +2,9 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CoreAnimation.h>
 
+#include "string_type.h"
+#include "file_helpers.h"
+
 #define _OBJC_RELEASE(obj) { [obj release]; obj = nil; }
 
 struct GpuDevice
@@ -146,7 +149,7 @@ void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info
 		.metal_function = function,
 	};
 
-	mem_free(shader_source);
+	MEM_FREE(shader_source);
 }
 
 void gpu_destroy_shader(GpuDevice* in_device, GpuShader* in_shader)

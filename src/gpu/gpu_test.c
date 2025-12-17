@@ -46,7 +46,7 @@ int main()
 	}
 
 	// Go ahead and allocate the buffer we use to animate our joints
-	Mat4* joint_matrices = mem_alloc_zeroed(animated_model.num_joints * sizeof(Mat4));
+	Mat4* joint_matrices = MEM_ALLOC_ZEROED(animated_model.num_joints * sizeof(Mat4));
 	GpuBufferCreateInfo joints_buffer_create_info = {
 		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
 		.is_cpu_visible = true,

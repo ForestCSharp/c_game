@@ -110,7 +110,7 @@ void task_system_shutdown(TaskSystem* in_task_system)
 
 Task* task_system_add_task(TaskSystem* in_task_system, TaskDesc* in_task_desc)
 {
-	Task* new_task = mem_alloc(sizeof(Task));
+	Task* new_task = MEM_ALLOC(sizeof(Task));
 
 	*new_task = (Task) {
 		.desc = *in_task_desc,
@@ -134,10 +134,14 @@ void task_system_wait_tasks(TaskSystem* in_task_system, sbuffer(Task*) in_tasks)
 		Task* task = sb_last(in_tasks);
 		if (atomic_bool_get(&task->is_complete))
 		{
-			mem_free(task);
+			MEM_FREE(task);
 			sb_del(in_tasks, sb_count(in_tasks) - 1);	
 		}
 	}
+
+	// Clean up remaining task dats
+	assert(sb_count(in_tasks) == 0);
+	sb_free(in_tasks);
 }
 
 i32 task_system_num_threads(TaskSystem* in_task_system)

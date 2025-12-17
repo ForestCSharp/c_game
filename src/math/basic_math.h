@@ -3,7 +3,7 @@
 #include <math.h>
 
 #include "assert.h"
-#include "types.h"
+#include "basic_types.h"
 
 #ifndef MAX
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "stdio.h"
-#include "types.h"
+#include "basic_types.h"
 #include "memory/allocator.h"
 
 typedef struct TrueTypeTable
@@ -102,7 +102,7 @@ bool truetype_load_file(const char* filename, TrueTypeFont* out_font)
 
         u8* table_directory_start = font_directory_start + 12;
 
-        font_directory.table_directory = mem_alloc_zeroed(font_directory.num_tables * sizeof(TrueTypeTable));
+        font_directory.table_directory = MEM_ALLOC_ZEROED(font_directory.num_tables * sizeof(TrueTypeTable));
         for (i32 table_index = 0; table_index < font_directory.num_tables; ++table_index)
         {
             u8* current_table_start = table_directory_start + (16 * table_index);

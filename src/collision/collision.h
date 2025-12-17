@@ -2,7 +2,7 @@
 
 // Primitive Collision routines. For convex collision, see mpr.h
 
-#include "types.h"
+#include "basic_types.h"
 #include "math/math_lib.h"
 
 typedef struct Plane

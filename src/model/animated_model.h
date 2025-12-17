@@ -2,7 +2,7 @@
 
 #include "model/static_model.h"
 #include "gltf.h"
-#include "types.h"
+#include "basic_types.h"
 #include "math/math_lib.h"
 #include "assert.h"
 
@@ -279,9 +279,9 @@ bool animated_model_load(const char* gltf_path, GpuDevice* in_gpu_device, Animat
         return false;
     }
 
-    out_model->static_vertices = mem_alloc_zeroed(out_model->num_vertices * sizeof(StaticVertex));
-    out_model->skinned_vertices = mem_alloc_zeroed(out_model->num_vertices * sizeof(SkinnedVertex));
-    out_model->indices = mem_alloc_zeroed(out_model->num_indices * sizeof(u32));
+    out_model->static_vertices = MEM_ALLOC_ZEROED(out_model->num_vertices * sizeof(StaticVertex));
+    out_model->skinned_vertices = MEM_ALLOC_ZEROED(out_model->num_vertices * sizeof(SkinnedVertex));
+    out_model->indices = MEM_ALLOC_ZEROED(out_model->num_indices * sizeof(u32));
 
     // Flatten all primitives into a single vertex/index array pair
     i32 vertex_offset = 0; // Incremented after each primitive
@@ -377,11 +377,11 @@ bool animated_model_load(const char* gltf_path, GpuDevice* in_gpu_device, Animat
         // Create Source Animation
         SourceAnimation source_animation = {};
         source_animation.num_channels = animation->num_channels;
-        source_animation.channels = mem_alloc_zeroed(source_animation.num_channels * sizeof(SourceAnimationChannel));
+        source_animation.channels = MEM_ALLOC_ZEROED(source_animation.num_channels * sizeof(SourceAnimationChannel));
 
 		// Copy Inverse Bind Matrices
 		out_model->num_joints = skin->num_joints;
-		out_model->inverse_bind_matrices = mem_alloc_zeroed(out_model->num_joints * sizeof(Mat4));
+		out_model->inverse_bind_matrices = MEM_ALLOC_ZEROED(out_model->num_joints * sizeof(Mat4));
 		{
 			 u8* bind_matrices_buffer = skin->inverse_bind_matrices->buffer_view->buffer->data;
 			bind_matrices_buffer += gltf_accessor_get_initial_offset(skin->inverse_bind_matrices);
@@ -420,7 +420,7 @@ bool animated_model_load(const char* gltf_path, GpuDevice* in_gpu_device, Animat
             u32 output_buffer_byte_stride = gltf_accessor_get_stride(gltf_sampler->output);
 
             source_channel->num_keyframes = gltf_sampler->input->count;
-            source_channel->keyframes = mem_alloc_zeroed(source_channel->num_keyframes * sizeof(SourceAnimationKeyframe));
+            source_channel->keyframes = MEM_ALLOC_ZEROED(source_channel->num_keyframes * sizeof(SourceAnimationKeyframe));
             for (i32 keyframe_idx = 0; keyframe_idx < source_channel->num_keyframes; ++keyframe_idx)
             {
                 SourceAnimationKeyframe* source_keyframe = &source_channel->keyframes[keyframe_idx];
@@ -458,7 +458,7 @@ bool animated_model_load(const char* gltf_path, GpuDevice* in_gpu_device, Animat
 			.start_time = optional_get(animation_start),
 			.end_time = optional_get(animation_end),
 			.num_keyframes = num_keyframes,
-			.keyframes = mem_alloc_zeroed(num_keyframes * sizeof(BakedAnimationKeyframe)),
+			.keyframes = MEM_ALLOC_ZEROED(num_keyframes * sizeof(BakedAnimationKeyframe)),
 		};
 
 		for (i32 keyframe_idx = 0; keyframe_idx < num_keyframes; ++keyframe_idx)
@@ -467,11 +467,11 @@ bool animated_model_load(const char* gltf_path, GpuDevice* in_gpu_device, Animat
 			BakedAnimationKeyframe* keyframe = &out_model->baked_animation.keyframes[keyframe_idx];
 			*keyframe = (BakedAnimationKeyframe) {
 				.time = current_time,
-				.joint_matrices = mem_alloc_zeroed(skin->num_joints * sizeof(Mat4)),
+				.joint_matrices = MEM_ALLOC_ZEROED(skin->num_joints * sizeof(Mat4)),
 			};
 
 			const i32 num_gltf_nodes = out_model->gltf_asset.num_nodes;
-			NodeAnimData* node_anim_data_array = mem_alloc_zeroed(num_gltf_nodes * sizeof(NodeAnimData));	
+			NodeAnimData* node_anim_data_array = MEM_ALLOC_ZEROED(num_gltf_nodes * sizeof(NodeAnimData));	
 
             // 1. Compute all animation channel current values
             for (i32 channel_idx = 0; channel_idx < source_animation.num_channels; ++channel_idx)
@@ -495,7 +495,7 @@ bool animated_model_load(const char* gltf_path, GpuDevice* in_gpu_device, Animat
 				keyframe->joint_matrices[joint_idx] = global_joint_transform;
 			}
 
-			mem_free(node_anim_data_array);
+			MEM_FREE(node_anim_data_array);
 		}	
 
 		//FCS TODO: Free up or store SourceAnimation data...
@@ -549,10 +549,10 @@ void animated_model_free(GpuDevice* in_gpu_device, AnimatedModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
-    mem_free(in_model->static_vertices);
-    mem_free(in_model->skinned_vertices);
-    mem_free(in_model->indices);
-	mem_free(in_model->inverse_bind_matrices);
+    MEM_FREE(in_model->static_vertices);
+    MEM_FREE(in_model->skinned_vertices);
+    MEM_FREE(in_model->indices);
+	MEM_FREE(in_model->inverse_bind_matrices);
 
 	// Unregister and destroy bindless resources
 	gpu_destroy_buffer(in_gpu_device, &in_model->static_vertex_buffer);	
@@ -563,9 +563,9 @@ void animated_model_free(GpuDevice* in_gpu_device, AnimatedModel* in_model)
 	for (i32 keyframe_idx = 0; keyframe_idx < in_model->baked_animation.num_keyframes; ++keyframe_idx)
 	{
 		BakedAnimationKeyframe* keyframe = &in_model->baked_animation.keyframes[keyframe_idx]; 
-		mem_free(keyframe->joint_matrices);
+		MEM_FREE(keyframe->joint_matrices);
 	}
-	mem_free(in_model->baked_animation.keyframes);
+	MEM_FREE(in_model->baked_animation.keyframes);
 }
 
 void animated_model_update_animation(AnimatedModel* in_model, float in_anim_time, Mat4* out_joint_matrices)

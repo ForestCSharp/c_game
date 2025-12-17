@@ -1,6 +1,6 @@
 
 #include "math.h"
-#include "types.h"
+#include "basic_types.h"
 #include "stdio.h"
 
 bool test_mat4_inverse();

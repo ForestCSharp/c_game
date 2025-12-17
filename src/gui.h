@@ -1,7 +1,7 @@
 #pragma once
 
 #include "stretchy_buffer.h"
-#include "types.h"
+#include "basic_types.h"
 #include "math/math_lib.h"
 
 /*

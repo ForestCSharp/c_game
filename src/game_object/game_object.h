@@ -6,7 +6,7 @@
 #include "model/static_model.h"
 #include "model/animated_model.h"
 #include "stretchy_buffer.h"
-#include "types.h"
+#include "basic_types.h"
 #include "math/math_lib.h"
 #include "uniforms.h"
 

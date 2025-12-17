@@ -21,6 +21,7 @@
 #include "gui.h"
 #include "debug_draw.h"
 #include "task/task.h"
+#include "string_type.h"
 
 typedef struct AnimationUpdateTaskData
 {
@@ -34,8 +35,8 @@ void animation_update_task(void* in_arg)
 {
 	AnimationUpdateTaskData* task_data = (AnimationUpdateTaskData*) in_arg;
 	AnimatedModel* animated_model = task_data->animated_model;
-	float delta_time = task_data->delta_time;
-	float global_animation_rate = task_data->global_animation_rate;
+	const float delta_time = task_data->delta_time;
+	const float global_animation_rate = task_data->global_animation_rate;
 
 	for (i32 component_idx = 0; component_idx < sb_count(task_data->components_to_update); ++component_idx)
 	{
@@ -60,7 +61,7 @@ void animation_update_task(void* in_arg)
 	}
 
 	sb_free(task_data->components_to_update);
-	mem_free(task_data);
+	MEM_FREE(task_data);
 }
 
 typedef struct Character
@@ -947,6 +948,9 @@ int main()
 
 		u64 anim_update_start_time = time_now();
 
+		//ENABLE_MEMORY_LOGGING();
+		MEMORY_LOG(NULL, printf("\n\n BEGIN FRAME \n \n"));
+
 		for (i64 obj_idx = 0; obj_idx < sb_count(game_object_manager.game_object_array); ++obj_idx)
 		{
 			GameObjectHandle object_handle = {.idx = obj_idx, };
@@ -963,17 +967,22 @@ int main()
 
 			if (!current_task_data)
 			{
-				current_task_data = mem_alloc_zeroed(sizeof(AnimationUpdateTaskData));
+				current_task_data = MEM_ALLOC_ZEROED(sizeof(AnimationUpdateTaskData));
 				*current_task_data = (AnimationUpdateTaskData) {
 					.animated_model = &animated_model,
 					.delta_time = delta_time,
 					.global_animation_rate = global_animation_rate,
+					.components_to_update = NULL,
 				};
 			}
 
 			sb_push(current_task_data->components_to_update, animated_model_component);
 
-			if (sb_count(current_task_data->components_to_update) > num_updates_per_task)
+			const bool is_last_object = obj_idx == (sb_count(game_object_manager.game_object_array) - 1);
+			const bool component_update_limit_reached = sb_count(current_task_data->components_to_update) > num_updates_per_task;
+			const bool should_start_task = is_last_object || component_update_limit_reached;
+
+			if (should_start_task)
 			{
 				const bool multithread = true;
 				if (multithread)
@@ -994,8 +1003,15 @@ int main()
 			}	
 		}
 
+		const i32 num_animation_tasks = sb_count(animation_tasks);
+
 		// Need to wait on animation update
 		task_system_wait_tasks(&task_system, animation_tasks);
+
+		MEMORY_LOG(NULL, printf("\n\nEND FRAME"));
+		//printf("Num Animation Tasks: %d\n", num_animation_tasks);
+		//DISABLE_MEMORY_LOGGING();
+		//MEMORY_LOG_STATS();
 
 		u64 anim_update_end_time = time_now();
 		const double anim_update_time_ms = time_seconds(anim_update_end_time - anim_update_start_time) * 1000;
@@ -1022,6 +1038,8 @@ int main()
 			static float f = 0.25f;
 			gui_slider_float(&gui_context, &f, vec2_new(0, 2), "My Slider", vec2_new(15, 0), vec2_new(270, 50));
 
+			float top_right_ui_position_y = 5.f;
+
 			{ // Rolling FPS, resets on click
 				double average_delta_time = accumulated_delta_time / (double)frames_rendered;
 				float average_fps = 1.0 / average_delta_time;
@@ -1029,13 +1047,12 @@ int main()
 				char buffer[128];
 				snprintf(buffer, sizeof(buffer), "FPS: %.1f", round(average_fps));
 				const float horizontal_padding = 5.f;
-				const float vertical_padding = 5.f;
 				const float fps_button_size = 155.f;
 				if (
 					gui_button(
 						&gui_context,
 						buffer, 
-						vec2_new(window_width - fps_button_size - horizontal_padding, vertical_padding),
+						vec2_new(window_width - fps_button_size - horizontal_padding, top_right_ui_position_y),
 						vec2_new(fps_button_size, 30)) == GUI_CLICKED
 					)
 				{
@@ -1044,16 +1061,34 @@ int main()
 				}
 			}
 
+			top_right_ui_position_y += 35.f;
+
 			{ // Print Anim Update Time on Screen
 				char buffer[256];
 				snprintf(buffer, sizeof(buffer), "Anim Update Time: %.6f ms", anim_update_time_ms);
 				const float horizontal_padding = 5.f;
-				const float vertical_padding = 40.f;
-				const float button_size = 360.f;
+				const float button_size = 400.f;
 				gui_button(
 					&gui_context, 
 					buffer, 
-					vec2_new(window_width - button_size - horizontal_padding, vertical_padding), 
+					vec2_new(window_width - button_size - horizontal_padding, top_right_ui_position_y), 
+					vec2_new(button_size, 30)
+				);
+			}
+
+			top_right_ui_position_y += 35.f;
+
+			{ // Total Memory Usage
+				i32 total_memory = get_total_allocated_memory();
+				char buffer[512];
+				snprintf(buffer, sizeof(buffer), "Memory Usage: %i (%i MiB)", total_memory, total_memory / 1024 / 1024);
+
+				const float horizontal_padding = 5.f;
+				const float button_size = 400.f;
+				gui_button(
+					&gui_context, 
+					buffer, 
+					vec2_new(window_width - button_size - horizontal_padding, top_right_ui_position_y), 
 					vec2_new(button_size, 30)
 				);
 			}

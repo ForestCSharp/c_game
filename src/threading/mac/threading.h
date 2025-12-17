@@ -1,8 +1,10 @@
 
 // Threading/Sync Functions
 #include <errno.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <string.h>
 #include "memory/allocator.h"
 
 typedef struct Thread
@@ -20,13 +22,13 @@ void* pthread_function(void* arg)
 {
 	PThreadPayload* pthread_payload = (PThreadPayload*) arg;
 	pthread_payload->thread_function(pthread_payload->thread_argument);
-	mem_free(pthread_payload);
+	MEM_FREE(pthread_payload);
 	return NULL;
 }
 
 void app_thread_create(app_thread_function_ptr thread_function, void* thread_argument, Thread* out_thread)
 {
-	PThreadPayload* pthread_payload = mem_alloc(sizeof(PThreadPayload));
+	PThreadPayload* pthread_payload = MEM_ALLOC(sizeof(PThreadPayload));
 	pthread_payload->thread_function = thread_function;
 	pthread_payload->thread_argument = thread_argument;
 	assert(pthread_create(&out_thread->posix_thread, NULL, pthread_function, (void *)pthread_payload) == 0);
@@ -116,6 +118,26 @@ void app_semaphore_post(Semaphore* in_semaphore)
 	sem_post(in_semaphore->posix_semaphore);	
 }
 
+typedef struct AtomicInt
+{
+	volatile int atomic_int;
+} AtomicInt;
+
+i32 atomic_int_set(AtomicInt* in_atomic, i32 in_new_value)
+{
+	return __sync_lock_test_and_set(&in_atomic->atomic_int, in_new_value);
+}
+
+i32 atomic_int_add(AtomicInt* in_atomic, i32 in_value_to_add)
+{
+	return __sync_fetch_and_add(&in_atomic->atomic_int, in_value_to_add);
+}
+
+int atomic_int_get(AtomicInt* in_atomic)
+{
+	return atomic_int_add(in_atomic, 0);	
+}
+
 typedef struct AtomicBool
 {
 	volatile int atomic_int;
@@ -137,3 +159,4 @@ bool atomic_bool_get(AtomicBool* in_atomic)
 {
 	return __sync_add_and_fetch(&in_atomic->atomic_int, 0) != 0;
 }
+

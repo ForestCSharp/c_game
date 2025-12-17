@@ -1,6 +1,6 @@
 #pragma once
 
-#include "types.h"
+#include "basic_types.h"
 
 typedef struct Window Window;
 
