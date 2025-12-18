@@ -130,4 +130,4 @@ void app_semaphore_post(Semaphore* in_semaphore)
     assert(ReleaseSemaphore(in_semaphore->win_semaphore, 1, NULL) != 0);
 }
 
-#include "clang/clang_atomics.h"
+#include "threading/clang/clang_atomics.h"

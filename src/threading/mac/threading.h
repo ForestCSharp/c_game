@@ -118,4 +118,4 @@ void app_semaphore_post(Semaphore* in_semaphore)
 	sem_post(in_semaphore->posix_semaphore);	
 }
 
-#include "clang/clang_atomics.h"
+#include "threading/clang/clang_atomics.h"
