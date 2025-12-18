@@ -79,8 +79,8 @@ bool static_model_load(const char* gltf_path, GpuDevice* in_gpu_device, StaticMo
 	}
 
 	// Allocate + Zero storage for vertices + indices
-	out_model->vertices = MEM_ALLOC_ZEROED(out_model->num_vertices * sizeof(StaticVertex));
-	out_model->indices = MEM_ALLOC_ZEROED(out_model->num_indices * sizeof(u32));
+	out_model->vertices = FCS_MEM_ALLOC_ZEROED(out_model->num_vertices * sizeof(StaticVertex));
+	out_model->indices = FCS_MEM_ALLOC_ZEROED(out_model->num_indices * sizeof(u32));
 
 	i32 vertex_offset = 0; // Incremented after each primitive
 	i32 index_offset = 0; // Incremented after each primitive
@@ -190,8 +190,8 @@ void static_model_free(GpuDevice* in_gpu_device, StaticModel* in_model)
 {
     assert(in_model);
     gltf_free_asset(&in_model->gltf_asset);
-    MEM_FREE(in_model->vertices);
-    MEM_FREE(in_model->indices);
+    FCS_MEM_FREE(in_model->vertices);
+    FCS_MEM_FREE(in_model->indices);
 	gpu_destroy_buffer(in_gpu_device, &in_model->vertex_buffer);	
 	gpu_destroy_buffer(in_gpu_device, &in_model->index_buffer);
 }

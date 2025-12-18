@@ -14,5 +14,5 @@ typedef struct ObjectUniformStruct
 {
 	Mat4 model;
 	bool is_skinned;
-	uint padding[3];
+	u32 padding[3];
 } ObjectUniformStruct;

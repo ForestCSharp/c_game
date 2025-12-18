@@ -110,7 +110,7 @@ void task_system_shutdown(TaskSystem* in_task_system)
 
 Task* task_system_add_task(TaskSystem* in_task_system, TaskDesc* in_task_desc)
 {
-	Task* new_task = MEM_ALLOC(sizeof(Task));
+	Task* new_task = FCS_MEM_ALLOC(sizeof(Task));
 
 	*new_task = (Task) {
 		.desc = *in_task_desc,
@@ -134,7 +134,7 @@ void task_system_wait_tasks(TaskSystem* in_task_system, sbuffer(Task*) in_tasks)
 		Task* task = sb_last(in_tasks);
 		if (atomic_bool_get(&task->is_complete))
 		{
-			MEM_FREE(task);
+			FCS_MEM_FREE(task);
 			sb_del(in_tasks, sb_count(in_tasks) - 1);	
 		}
 	}

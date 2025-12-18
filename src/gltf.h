@@ -139,7 +139,7 @@ char* parse_string(char** p_string)
         // FIXME: check for escape char before ending quote
         if (key_length >= 0)
         {
-            char* parsed_string = (char*) MEM_ALLOC_ZEROED(key_length + 1);
+            char* parsed_string = (char*) FCS_MEM_ALLOC_ZEROED(key_length + 1);
             memcpy(parsed_string, *p_string, key_length);
             *p_string = *p_string + key_length + 1;
             return parsed_string;
@@ -203,7 +203,7 @@ bool parse_json_value(char** json_string, JsonValue* out_value)
         do
         {
             out_value->data.array.count += 1;
-            out_value->data.array.values = (JsonValue*) MEM_REALLOC(out_value->data.array.values, sizeof(JsonValue) * out_value->data.array.count);
+            out_value->data.array.values = (JsonValue*) FCS_MEM_REALLOC(out_value->data.array.values, sizeof(JsonValue) * out_value->data.array.count);
             JsonValue* array_value = &out_value->data.array.values[out_value->data.array.count - 1];
             memset(array_value, 0, sizeof(JsonValue));
             if (!parse_json_value(&current_position, array_value))
@@ -259,7 +259,7 @@ bool parse_json_object(char** json_string, JsonObject* out_json_object)
     do
     {
         out_json_object->count += 1;
-        out_json_object->key_value_pairs = (JsonKeyValuePair*) MEM_REALLOC(out_json_object->key_value_pairs, sizeof(JsonKeyValuePair) * out_json_object->count);
+        out_json_object->key_value_pairs = (JsonKeyValuePair*) FCS_MEM_REALLOC(out_json_object->key_value_pairs, sizeof(JsonKeyValuePair) * out_json_object->count);
         JsonKeyValuePair* key_value = &out_json_object->key_value_pairs[out_json_object->count - 1];
         memset(key_value, 0, sizeof(JsonKeyValuePair));
 
@@ -430,10 +430,10 @@ void free_json_value(JsonValue* in_value)
         {
             free_json_value(&in_value->data.array.values[i]);
         }
-        MEM_FREE(in_value->data.array.values);
+        FCS_MEM_FREE(in_value->data.array.values);
         break;
     case JSON_VALUE_TYPE_STRING:
-        MEM_FREE(in_value->data.string);
+        FCS_MEM_FREE(in_value->data.string);
         break;
     default:
         break;
@@ -447,7 +447,7 @@ void free_json_object(JsonObject* in_object)
         JsonKeyValuePair* key_value = &in_object->key_value_pairs[i];
         free_json_value(&key_value->value);
     }
-    MEM_FREE(in_object->key_value_pairs);
+    FCS_MEM_FREE(in_object->key_value_pairs);
 }
 
 static inline void indent(FILE* out_file, int n)
@@ -851,7 +851,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
 				return false;
             }
 
-            char* json_string = (char*) MEM_ALLOC_ZEROED(json_length + 1);
+            char* json_string = (char*) FCS_MEM_ALLOC_ZEROED(json_length + 1);
             json_string[json_length] = 0; // Null-terminate string
 
             if (fread(json_string, json_length, 1, file) != 0)
@@ -859,12 +859,12 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                 char* modified_json_string = json_string;
                 if (!parse_json_object(&modified_json_string, &out_asset->json))
 				{
-					MEM_FREE(json_string);
+					FCS_MEM_FREE(json_string);
 					return false;
 				}
             }
 
-            MEM_FREE(json_string);
+            FCS_MEM_FREE(json_string);
         }
 
         // BUFFERS
@@ -877,7 +877,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             {
                 // Increment num_buffers and realloc
                 out_asset->num_buffers++;
-                out_asset->buffers = (GltfBuffer*) MEM_REALLOC(out_asset->buffers, sizeof(GltfBuffer) * out_asset->num_buffers);
+                out_asset->buffers = (GltfBuffer*) FCS_MEM_REALLOC(out_asset->buffers, sizeof(GltfBuffer) * out_asset->num_buffers);
 
                 i32 buffer_type = 0;
                 if (fread(&buffer_type, 4, 1, file) != 1 || buffer_type != GLTF_CHUNK_TYPE_BUFFER)
@@ -885,7 +885,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     return false;
                 }
 
-                u8* buffer_data = (u8*) MEM_ALLOC_ZEROED(buffer_length);
+                u8* buffer_data = (u8*) FCS_MEM_ALLOC_ZEROED(buffer_length);
                 if (fread(buffer_data, buffer_length, 1, file) == 1)
                 {
                     out_asset->buffers[out_asset->num_buffers - 1].byte_length = buffer_length;
@@ -907,7 +907,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             }
 
             out_asset->num_buffer_views = json_buffer_views->count;
-            out_asset->buffer_views = (GltfBufferView*) MEM_ALLOC_ZEROED(out_asset->num_buffer_views * sizeof(GltfBufferView));
+            out_asset->buffer_views = (GltfBufferView*) FCS_MEM_ALLOC_ZEROED(out_asset->num_buffer_views * sizeof(GltfBufferView));
 
             for (i32 i = 0; i < out_asset->num_buffer_views; ++i)
             {
@@ -939,7 +939,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_accessors)
             {
                 out_asset->num_accessors = json_accessors->count;
-                out_asset->accessors = (GltfAccessor*) MEM_ALLOC_ZEROED(out_asset->num_accessors * sizeof(GltfAccessor));
+                out_asset->accessors = (GltfAccessor*) FCS_MEM_ALLOC_ZEROED(out_asset->num_accessors * sizeof(GltfAccessor));
 
                 for (i32 i = 0; i < out_asset->num_accessors; ++i)
                 {
@@ -981,7 +981,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_meshes)
             {
                 out_asset->num_meshes = json_meshes->count;
-                out_asset->meshes = (GltfMesh*) MEM_ALLOC_ZEROED(out_asset->num_meshes * sizeof(GltfMesh));
+                out_asset->meshes = (GltfMesh*) FCS_MEM_ALLOC_ZEROED(out_asset->num_meshes * sizeof(GltfMesh));
 
                 for (i32 i = 0; i < out_asset->num_meshes; ++i)
                 {
@@ -998,7 +998,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     }
 
                     mesh->num_primitives = json_primitives->count;
-                    mesh->primitives = (GltfPrimitive*) MEM_ALLOC_ZEROED(mesh->num_primitives * sizeof(GltfPrimitive));
+                    mesh->primitives = (GltfPrimitive*) FCS_MEM_ALLOC_ZEROED(mesh->num_primitives * sizeof(GltfPrimitive));
 
                     for (i32 j = 0; j < mesh->num_primitives; ++j)
                     {
@@ -1055,7 +1055,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_nodes)
             {
                 out_asset->num_nodes = json_nodes->count;
-                out_asset->nodes = (GltfNode*) MEM_ALLOC_ZEROED(out_asset->num_nodes * sizeof(GltfNode));
+                out_asset->nodes = (GltfNode*) FCS_MEM_ALLOC_ZEROED(out_asset->num_nodes * sizeof(GltfNode));
 
                 // SKINS (we set up skins here because they reference the nodes we just allocated above)
                 {
@@ -1063,7 +1063,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_skins)
                     {
                         out_asset->num_skins = json_skins->count;
-                        out_asset->skins = (GltfSkin*) MEM_ALLOC_ZEROED(out_asset->num_skins * sizeof(GltfSkin));
+                        out_asset->skins = (GltfSkin*) FCS_MEM_ALLOC_ZEROED(out_asset->num_skins * sizeof(GltfSkin));
 
                         for (i32 skin_index = 0; skin_index < out_asset->num_skins; ++skin_index)
                         {
@@ -1080,7 +1080,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                             if (json_joints)
                             {
                                 skin->num_joints = json_joints->count;
-                                skin->joints = MEM_ALLOC_ZEROED(skin->num_joints * sizeof(GltfNode*));
+                                skin->joints = FCS_MEM_ALLOC_ZEROED(skin->num_joints * sizeof(GltfNode*));
                                 for (i32 joint_array_index = 0; joint_array_index < skin->num_joints; ++joint_array_index)
                                 {
                                     i32 joint_node_index;
@@ -1107,7 +1107,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_children_nodes)
                     {
                         node->num_children = json_children_nodes->count;
-                        node->children = MEM_ALLOC_ZEROED(node->num_children * sizeof(GltfNode*));
+                        node->children = FCS_MEM_ALLOC_ZEROED(node->num_children * sizeof(GltfNode*));
                         for (i32 index_in_children_array = 0; index_in_children_array < node->num_children; ++index_in_children_array)
                         {
                             i32 index_in_nodes_array;
@@ -1184,7 +1184,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
             if (json_animations)
             {
                 out_asset->num_animations = json_animations->count;
-                out_asset->animations = (GltfAnimation*) MEM_ALLOC_ZEROED(out_asset->num_animations * sizeof(GltfAnimation));
+                out_asset->animations = (GltfAnimation*) FCS_MEM_ALLOC_ZEROED(out_asset->num_animations * sizeof(GltfAnimation));
 
                 for (i32 anim_index = 0; anim_index < out_asset->num_animations; ++anim_index)
                 {
@@ -1197,7 +1197,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_samplers)
                     {
                         animation->num_samplers = json_samplers->count;
-                        animation->samplers = (GltfAnimationSampler*) MEM_ALLOC_ZEROED(animation->num_samplers * sizeof(GltfAnimationSampler));
+                        animation->samplers = (GltfAnimationSampler*) FCS_MEM_ALLOC_ZEROED(animation->num_samplers * sizeof(GltfAnimationSampler));
 
                         for (i32 sampler_index = 0; sampler_index < animation->num_samplers; ++sampler_index)
                         {
@@ -1249,7 +1249,7 @@ bool gltf_load_asset(const char* filename, GltfAsset* out_asset)
                     if (json_channels)
                     {
                         animation->num_channels = json_channels->count;
-                        animation->channels = (GltfAnimationChannel*) MEM_ALLOC_ZEROED(animation->num_channels * sizeof(GltfAnimationChannel));
+                        animation->channels = (GltfAnimationChannel*) FCS_MEM_ALLOC_ZEROED(animation->num_channels * sizeof(GltfAnimationChannel));
 
                         for (i32 channel_index = 0; channel_index < animation->num_samplers; ++channel_index)
                         {
@@ -1322,37 +1322,37 @@ void gltf_free_asset(GltfAsset* asset)
 {
     for (i32 i = 0; i < asset->num_meshes; ++i)
     {
-        MEM_FREE(asset->meshes[i].primitives);
+        FCS_MEM_FREE(asset->meshes[i].primitives);
     }
-    MEM_FREE(asset->meshes);
+    FCS_MEM_FREE(asset->meshes);
 
-    MEM_FREE(asset->accessors);
-    MEM_FREE(asset->buffer_views);
+    FCS_MEM_FREE(asset->accessors);
+    FCS_MEM_FREE(asset->buffer_views);
 
     for (i32 i = 0; i < asset->num_buffers; ++i)
     {
-        MEM_FREE(asset->buffers[i].data);
+        FCS_MEM_FREE(asset->buffers[i].data);
     }
-    MEM_FREE(asset->buffers);
+    FCS_MEM_FREE(asset->buffers);
 
     for (i32 i = 0; i < asset->num_skins; ++i)
     {
-        MEM_FREE(asset->skins[i].joints);
+        FCS_MEM_FREE(asset->skins[i].joints);
     }
-    MEM_FREE(asset->skins);
+    FCS_MEM_FREE(asset->skins);
 
     for (i32 i = 0; i < asset->num_nodes; ++i)
     {
-        MEM_FREE(asset->nodes[i].children);
+        FCS_MEM_FREE(asset->nodes[i].children);
     }
-    MEM_FREE(asset->nodes);
+    FCS_MEM_FREE(asset->nodes);
 
     for (i32 i = 0; i < asset->num_animations; ++i)
     {
-        MEM_FREE(asset->animations[i].channels);
-        MEM_FREE(asset->animations[i].samplers);
+        FCS_MEM_FREE(asset->animations[i].channels);
+        FCS_MEM_FREE(asset->animations[i].samplers);
     }
-    MEM_FREE(asset->animations);
+    FCS_MEM_FREE(asset->animations);
 
     free_json_object(&asset->json);
 }

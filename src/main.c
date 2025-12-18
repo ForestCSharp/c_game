@@ -61,7 +61,7 @@ void animation_update_task(void* in_arg)
 	}
 
 	sb_free(task_data->components_to_update);
-	MEM_FREE(task_data);
+	FCS_MEM_FREE(task_data);
 }
 
 typedef struct Character
@@ -967,7 +967,7 @@ int main()
 
 			if (!current_task_data)
 			{
-				current_task_data = MEM_ALLOC_ZEROED(sizeof(AnimationUpdateTaskData));
+				current_task_data = FCS_MEM_ALLOC_ZEROED(sizeof(AnimationUpdateTaskData));
 				*current_task_data = (AnimationUpdateTaskData) {
 					.animated_model = &animated_model,
 					.delta_time = delta_time,

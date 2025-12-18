@@ -14,7 +14,7 @@ static bool read_binary_file(const char* filename, size_t *out_file_size, void *
     const size_t file_size = *out_file_size = ftell(file);
     rewind(file);
 
-    *out_data = MEM_ALLOC_ZEROED(file_size + 1);
+    *out_data = FCS_MEM_ALLOC_ZEROED(file_size + 1);
     if (!*out_data)
     {
         fclose(file);
@@ -24,7 +24,7 @@ static bool read_binary_file(const char* filename, size_t *out_file_size, void *
     if (fread(*out_data, 1, file_size, file) != file_size)
     {
         fclose(file);
-        MEM_FREE(*out_data);
+        FCS_MEM_FREE(*out_data);
         return false;
     }
 

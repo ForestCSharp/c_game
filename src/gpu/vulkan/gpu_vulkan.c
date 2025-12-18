@@ -564,7 +564,7 @@ void gpu_create_device(Window* in_window, GpuDevice* out_device)
         .swapchain = VK_NULL_HANDLE,
 		// Memory
 		.num_memory_types = vk_memory_properties.memoryProperties.memoryTypeCount,
-        .memory_types = MEM_ALLOC_ZEROED(vk_memory_properties.memoryProperties.memoryTypeCount * sizeof(GpuMemoryType)),
+        .memory_types = FCS_MEM_ALLOC_ZEROED(vk_memory_properties.memoryProperties.memoryTypeCount * sizeof(GpuMemoryType)),
         .vk_memory_properties = vk_memory_properties.memoryProperties,
 		// Pending Present
 		.has_pending_present_info = false,
@@ -650,9 +650,9 @@ void gpu_vk_resize_swapchain(GpuDevice* in_device, const Window* const in_window
 
     if (in_device->swapchain_images != NULL)
     {
-        MEM_FREE(in_device->swapchain_images);
+        FCS_MEM_FREE(in_device->swapchain_images);
     }
-    in_device->swapchain_images = MEM_ALLOC(swapchain_image_count * sizeof(GpuTexture));
+    in_device->swapchain_images = FCS_MEM_ALLOC(swapchain_image_count * sizeof(GpuTexture));
     for (i32 i = 0; i < swapchain_image_count; ++i)
     {
         in_device->swapchain_images[i] = (GpuTexture){
@@ -1208,7 +1208,7 @@ GpuMemory* gpu_vk_allocate_memory(GpuDevice* in_device, u32 type_filter, VkMemor
 					  .offset = free_list_region->offset + padding,
 					  .size = alloc_size,
 					  .owning_block = block,
-					  .alloc_ref = MEM_ALLOC_ZEROED(sizeof(GpuMemory)),
+					  .alloc_ref = FCS_MEM_ALLOC_ZEROED(sizeof(GpuMemory)),
 					})
 				);
 
@@ -1303,7 +1303,7 @@ GpuMemory* gpu_vk_allocate_memory(GpuDevice* in_device, u32 type_filter, VkMemor
 			.offset = 0,
 			.size = alloc_size,
 			.owning_block = new_block,
-			.alloc_ref = MEM_ALLOC_ZEROED(sizeof(GpuMemory)),
+			.alloc_ref = FCS_MEM_ALLOC_ZEROED(sizeof(GpuMemory)),
   		})
 	);
 

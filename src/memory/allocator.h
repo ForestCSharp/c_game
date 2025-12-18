@@ -22,10 +22,10 @@ void* mem_alloc_ext(size_t in_size, const char* file, int line);
 void* mem_alloc_zeroed_ext(size_t in_size, const char* file, int line);
 void* mem_realloc_ext(void* in_ptr, size_t in_size, const char* file, int line);
 
-#define MEM_ALLOC(size) mem_alloc_ext(size, __FILE__, __LINE__)
-#define MEM_ALLOC_ZEROED(size) mem_alloc_zeroed_ext(size, __FILE__, __LINE__)
-#define MEM_REALLOC(ptr, size) mem_realloc_ext(ptr, size, __FILE__, __LINE__)
-#define MEM_FREE(ptr) mem_free(ptr)
+#define FCS_MEM_ALLOC(size) mem_alloc_ext(size, __FILE__, __LINE__)
+#define FCS_MEM_ALLOC_ZEROED(size) mem_alloc_zeroed_ext(size, __FILE__, __LINE__)
+#define FCS_MEM_REALLOC(ptr, size) mem_realloc_ext(ptr, size, __FILE__, __LINE__)
+#define FCS_MEM_FREE(ptr) mem_free(ptr)
 
 #include "threading/threading.h"
 

@@ -2,25 +2,40 @@
 
 #if defined(_WIN32)
 
-//#include "profileapi.h" // FCS TODO: QueryPerformanceCounter...
-#include "time.h"
+#include <windows.h>
 
-//NOTE: windows clock() function returns wall time, rather than cpu time used by the process
+// Global or static variable to cache the frequency
+static double g_performance_frequency = 0.0;
 
 u64 time_now()
 {
-    // clock() returns a 32-bit int on windows
-    return (u64) clock();
-}
-
-double time_nanoseconds(u64 in_time)
-{
-
+    LARGE_INTEGER counter;
+    if (QueryPerformanceCounter(&counter))
+    {
+        return (u64)counter.QuadPart;
+    }
+    return 0;
 }
 
 double time_seconds(u64 in_time)
 {
-    return (double) in_time / (double) CLOCKS_PER_SEC;
+    // Initialize frequency if it hasn't been set yet
+    if (g_performance_frequency == 0.0)
+    {
+        LARGE_INTEGER freq;
+        if (QueryPerformanceFrequency(&freq))
+        {
+            g_performance_frequency = (double)freq.QuadPart;
+        }
+        else
+        {
+            // This should never happen on modern Windows (XP or later)
+            return 0.0;
+        }
+    }
+
+    // Calculation: Ticks / Ticks-per-Second
+    return (double)in_time / g_performance_frequency;
 }
 
 #elif defined(__APPLE__)

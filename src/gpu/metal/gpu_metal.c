@@ -149,7 +149,7 @@ void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info
 		.metal_function = function,
 	};
 
-	MEM_FREE(shader_source);
+	FCS_MEM_FREE(shader_source);
 }
 
 void gpu_destroy_shader(GpuDevice* in_device, GpuShader* in_shader)
