@@ -1,7 +1,5 @@
 #pragma once
 
-#include "collision/collision.h"
-#include "collision/collision_render.h"
 #include "gpu/gpu.h"
 #include "model/static_model.h"
 #include "model/animated_model.h"
@@ -165,11 +163,6 @@ typedef struct CameraComponent
 	float fov;
 } CameraComponent;
 
-typedef struct ColliderComponent
-{
-	Collider collider;
-} ColliderComponent;
-
 typedef enum ComponentType
 {
 	COMPONENT_TYPE(TransformComponent),
@@ -178,7 +171,6 @@ typedef enum ComponentType
 	COMPONENT_TYPE(ObjectRenderDataComponent),
 	COMPONENT_TYPE(PlayerControlComponent),
 	COMPONENT_TYPE(CameraComponent),
-	COMPONENT_TYPE(ColliderComponent),
 	COMPONENT_TYPE_COUNT,
 } ComponentType;
 
@@ -199,7 +191,6 @@ typedef struct GameObjectManager
 	DEFINE_COMPONENT_STORAGE(ObjectRenderDataComponent);
 	DEFINE_COMPONENT_STORAGE(PlayerControlComponent);
 	DEFINE_COMPONENT_STORAGE(CameraComponent);
-	DEFINE_COMPONENT_STORAGE(ColliderComponent);
 
 } GameObjectManager;
 
@@ -209,7 +200,6 @@ DEFINE_COMPONENT_INTERFACE(AnimatedModelComponent);
 DEFINE_COMPONENT_INTERFACE(ObjectRenderDataComponent);
 DEFINE_COMPONENT_INTERFACE(PlayerControlComponent);
 DEFINE_COMPONENT_INTERFACE(CameraComponent);
-DEFINE_COMPONENT_INTERFACE(ColliderComponent);
 
 void game_object_manager_init(GameObjectManager* manager)
 {

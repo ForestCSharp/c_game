@@ -1,23 +1,46 @@
 #pragma once
 
-typedef struct AtomicInt
+typedef struct AtomicInt32
 {
-	volatile int atomic_int;
-} AtomicInt;
+	volatile i32 atomic_int;
+} AtomicInt32;
 
-i32 atomic_int_set(AtomicInt* in_atomic, i32 in_new_value)
+i32 atomic_i32_set(AtomicInt32* in_atomic, i32 in_new_value)
 {
 	return __sync_lock_test_and_set(&in_atomic->atomic_int, in_new_value);
 }
 
-i32 atomic_int_add(AtomicInt* in_atomic, i32 in_value_to_add)
+i32 atomic_i32_add(AtomicInt32* in_atomic, i32 in_value_to_add)
 {
 	return __sync_fetch_and_add(&in_atomic->atomic_int, in_value_to_add);
 }
 
-int atomic_int_get(AtomicInt* in_atomic)
+int atomic_i32_get(AtomicInt32* in_atomic)
 {
-	return atomic_int_add(in_atomic, 0);	
+	return atomic_i32_add(in_atomic, 0);	
+}
+
+typedef struct AtomicInt64
+{
+    volatile i64 atomic_int;
+} AtomicInt64;
+
+i64 atomic_i64_set(AtomicInt64* in_atomic, i64 in_new_value)
+{
+    // Sets the value and returns the previous value
+    return __sync_lock_test_and_set(&in_atomic->atomic_int, in_new_value);
+}
+
+i64 atomic_i64_add(AtomicInt64* in_atomic, i64 in_value_to_add)
+{
+    // Adds value and returns the value BEFORE the addition
+    return __sync_fetch_and_add(&in_atomic->atomic_int, in_value_to_add);
+}
+
+i64 atomic_i64_get(AtomicInt64* in_atomic)
+{
+    // Atomic read via a fetch-and-add of zero
+    return atomic_i64_add(in_atomic, 0);    
 }
 
 typedef struct AtomicBool

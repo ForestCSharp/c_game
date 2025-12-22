@@ -5,7 +5,11 @@
 #include "string_type.h"
 #include "file_helpers.h"
 
+#define _OBJC_RETAIN(obj) {[obj retain]; }
 #define _OBJC_RELEASE(obj) { [obj release]; obj = nil; }
+
+//FCS TODO: Sokol GFX Style Metal Resource Management
+//	
 
 struct GpuDevice
 {
@@ -100,17 +104,23 @@ void gpu_create_device(Window* in_window, GpuDevice* out_device)
 
 void gpu_destroy_device(GpuDevice* in_device)
 {
-	in_device->metal_device = nil;
-	in_device->metal_layer = nil;
-	in_device->metal_queue = nil;
+	_OBJC_RELEASE(in_device->metal_device);
+	_OBJC_RELEASE(in_device->metal_layer);
+	_OBJC_RELEASE(in_device->metal_queue);
 }
 
 void gpu_device_wait_idle(GpuDevice* in_device)
 {
-	GpuCommandBuffer command_buffer;
-	gpu_create_command_buffer(in_device, &command_buffer);
-	gpu_commit_command_buffer(in_device, &command_buffer);
-	[command_buffer.metal_command_buffer waitUntilCompleted];
+    @autoreleasepool 
+    {
+        GpuCommandBuffer command_buffer;
+        gpu_create_command_buffer(in_device, &command_buffer); // RETAINS (+1)
+        
+        gpu_commit_command_buffer(in_device, &command_buffer);
+        [command_buffer.metal_command_buffer waitUntilCompleted];
+
+        gpu_destroy_command_buffer(in_device, &command_buffer); // RELEASES (-1)
+    }
 }
 
 u32 gpu_get_swapchain_count(GpuDevice* in_device)
@@ -154,8 +164,8 @@ void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info
 
 void gpu_destroy_shader(GpuDevice* in_device, GpuShader* in_shader)
 {
-	in_shader->metal_library = nil;
-	in_shader->metal_function = nil;
+	_OBJC_RELEASE(in_shader->metal_library);
+	_OBJC_RELEASE(in_shader->metal_function);
 }
 
 void gpu_create_bind_group_layout(GpuDevice* in_device, const GpuBindGroupLayoutCreateInfo* in_create_info, GpuBindGroupLayout* out_bind_group_layout)
@@ -284,7 +294,7 @@ void gpu_update_bind_group(GpuDevice* in_device, const GpuBindGroupUpdateInfo* i
 
 void gpu_destroy_bind_group(GpuDevice* in_device, GpuBindGroup* in_bind_group)
 {
-	in_bind_group->metal_argument_buffer = nil;
+	_OBJC_RELEASE(in_bind_group->metal_argument_buffer);
 	*in_bind_group = (GpuBindGroup){};
 }
 
@@ -326,7 +336,6 @@ void gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInf
 
 	metal_render_pipeline_descriptor.depthAttachmentPixelFormat = in_create_info->depth_test_enabled ? MTLPixelFormatDepth32Float : MTLPixelFormatInvalid;
 
-
     MTLDepthStencilDescriptor* metal_depth_stencil_desc = [[MTLDepthStencilDescriptor alloc] init];
 	metal_depth_stencil_desc.depthCompareFunction = in_create_info->depth_test_enabled ? MTLCompareFunctionLess : MTLCompareFunctionAlways;
 	metal_depth_stencil_desc.depthWriteEnabled = in_create_info->depth_test_enabled;
@@ -337,6 +346,9 @@ void gpu_create_render_pipeline(GpuDevice* in_device, GpuRenderPipelineCreateInf
 		.metal_depth_stencil_state = metal_depth_stencil_state,
 		.metal_triangle_fill_mode = gpu_polygon_mode_to_mtl_triangle_fill_mode(in_create_info->polygon_mode),
 	};
+
+	_OBJC_RELEASE(metal_depth_stencil_desc);
+	_OBJC_RELEASE(metal_render_pipeline_descriptor);
 }
 
 //TODO: is_cpu_visible arg support
@@ -454,6 +466,8 @@ void gpu_create_texture(GpuDevice* in_device, const GpuTextureCreateInfo* in_cre
 	
 	out_texture->create_info = *in_create_info;
 	out_texture->metal_texture = [in_device->metal_device newTextureWithDescriptor:texture_descriptor];
+
+	_OBJC_RELEASE(texture_descriptor);
 }
 
 void gpu_write_texture(GpuDevice* in_device, const GpuTextureWriteInfo* in_upload_info)
@@ -534,6 +548,8 @@ void gpu_create_sampler(GpuDevice* in_device, const GpuSamplerCreateInfo* in_cre
 	*out_sampler = (GpuSampler) {
 		.metal_sampler_state = metal_sampler_state,
 	};
+
+	_OBJC_RELEASE(metal_sampler_desc);
 }
 
 void gpu_destroy_sampler(GpuDevice* in_device, GpuSampler* in_sampler)
@@ -543,34 +559,52 @@ void gpu_destroy_sampler(GpuDevice* in_device, GpuSampler* in_sampler)
 
 void gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_command_buffer)
 {
-	*out_command_buffer = (GpuCommandBuffer){};
-	out_command_buffer->metal_command_buffer = [in_device->metal_queue commandBuffer];
+	@autoreleasepool
+	{
+		*out_command_buffer = (GpuCommandBuffer){};
+
+		id<MTLCommandBuffer> metal_command_buffer = [in_device->metal_queue commandBuffer];
+		out_command_buffer->metal_command_buffer = metal_command_buffer;
+		_OBJC_RETAIN(out_command_buffer->metal_command_buffer);
+	}
 }
 
 void gpu_reset_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
 {
-	if (in_command_buffer->metal_command_buffer != nil)
+	@autoreleasepool
 	{
-		const bool is_committed = (in_command_buffer->metal_command_buffer.status != MTLCommandBufferStatusNotEnqueued);
-		if (is_committed)
+		if (in_command_buffer->metal_command_buffer != nil)
 		{
-			[in_command_buffer->metal_command_buffer waitUntilCompleted];
+			const bool is_committed = (in_command_buffer->metal_command_buffer.status != MTLCommandBufferStatusNotEnqueued);
+			if (is_committed)
+			{
+				[in_command_buffer->metal_command_buffer waitUntilCompleted];
+			}
+
+			gpu_destroy_command_buffer(in_device, in_command_buffer);
+			gpu_create_command_buffer(in_device, in_command_buffer);
 		}
-		gpu_create_command_buffer(in_device, in_command_buffer);
 	}
 }
 
 void gpu_destroy_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
 {
-	_OBJC_RELEASE(in_command_buffer->metal_command_buffer);
-	in_command_buffer->metal_command_buffer = nil;
+	if (in_command_buffer->metal_command_buffer != nil)
+	{
+		_OBJC_RELEASE(in_command_buffer->metal_command_buffer);
+		in_command_buffer->metal_command_buffer = nil;
+	}
 }
 
 void gpu_get_next_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* out_backbuffer)
 {
-	*out_backbuffer = (GpuBackBuffer) {
-		.metal_backbuffer = [in_device->metal_layer nextDrawable],
-	};
+	@autoreleasepool
+	{
+        *out_backbuffer = (GpuBackBuffer) {
+            .metal_backbuffer = [in_device->metal_layer nextDrawable],
+        };
+        _OBJC_RETAIN(out_backbuffer->metal_backbuffer);
+	}
 }
 
 void gpu_backbuffer_get_texture(GpuBackBuffer* in_backbuffer, GpuTexture* out_texture)
@@ -611,123 +645,151 @@ void gpu_begin_render_pass(GpuDevice* in_device, GpuRenderPassCreateInfo* in_cre
 	assert(out_render_pass);
 
 	*out_render_pass = (GpuRenderPass){};
-	MTLRenderPassDescriptor* metal_render_pass_descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
 
-
-	for (i32 i = 0; i < in_create_info->num_color_attachments; ++i)
+	@autoreleasepool
 	{
-		GpuColorAttachmentDescriptor* color_attachment = &in_create_info->color_attachments[i];
-		if (color_attachment->texture)
+		MTLRenderPassDescriptor* metal_render_pass_descriptor = [[MTLRenderPassDescriptor alloc] init];
+
+		for (i32 i = 0; i < in_create_info->num_color_attachments; ++i)
 		{
-			metal_render_pass_descriptor.colorAttachments[i].texture = color_attachment->texture->metal_texture;
-			metal_render_pass_descriptor.colorAttachments[i].loadAction = gpu_load_action_to_metal_load_action(color_attachment->load_action);
-			metal_render_pass_descriptor.colorAttachments[i].storeAction = gpu_store_action_to_metal_store_action(color_attachment->store_action);
-			metal_render_pass_descriptor.colorAttachments[i].clearColor = MTLClearColorMake(
-				color_attachment->clear_color[0],
-				color_attachment->clear_color[1],
-				color_attachment->clear_color[2],
-				color_attachment->clear_color[3]
-			);
+			GpuColorAttachmentDescriptor* color_attachment = &in_create_info->color_attachments[i];
+			if (color_attachment->texture)
+			{
+				metal_render_pass_descriptor.colorAttachments[i].texture = color_attachment->texture->metal_texture;
+				metal_render_pass_descriptor.colorAttachments[i].loadAction = gpu_load_action_to_metal_load_action(color_attachment->load_action);
+				metal_render_pass_descriptor.colorAttachments[i].storeAction = gpu_store_action_to_metal_store_action(color_attachment->store_action);
+				metal_render_pass_descriptor.colorAttachments[i].clearColor = MTLClearColorMake(
+					color_attachment->clear_color[0],
+					color_attachment->clear_color[1],
+					color_attachment->clear_color[2],
+					color_attachment->clear_color[3]
+				);
+			}
 		}
-	}
 
-	GpuDepthAttachmentDescriptor* depth_attachment = in_create_info->depth_attachment;
-	if (depth_attachment)
-	{
-		metal_render_pass_descriptor.depthAttachment.texture = depth_attachment->texture->metal_texture;
-		metal_render_pass_descriptor.depthAttachment.loadAction = gpu_load_action_to_metal_load_action(depth_attachment->load_action);
-		metal_render_pass_descriptor.depthAttachment.storeAction = gpu_store_action_to_metal_store_action(depth_attachment->store_action);
-		metal_render_pass_descriptor.depthAttachment.clearDepth = depth_attachment->clear_depth;
-	}
+		GpuDepthAttachmentDescriptor* depth_attachment = in_create_info->depth_attachment;
+		if (depth_attachment)
+		{
+			metal_render_pass_descriptor.depthAttachment.texture = depth_attachment->texture->metal_texture;
+			metal_render_pass_descriptor.depthAttachment.loadAction = gpu_load_action_to_metal_load_action(depth_attachment->load_action);
+			metal_render_pass_descriptor.depthAttachment.storeAction = gpu_store_action_to_metal_store_action(depth_attachment->store_action);
+			metal_render_pass_descriptor.depthAttachment.clearDepth = depth_attachment->clear_depth;
+		}
 
-	out_render_pass->metal_render_command_encoder = [in_create_info->command_buffer->metal_command_buffer renderCommandEncoderWithDescriptor:metal_render_pass_descriptor];	
+		out_render_pass->metal_render_command_encoder = [in_create_info->command_buffer->metal_command_buffer renderCommandEncoderWithDescriptor:metal_render_pass_descriptor];	
+		_OBJC_RETAIN(out_render_pass->metal_render_command_encoder);
+
+		_OBJC_RELEASE(metal_render_pass_descriptor);
+	}
 }
 
 void gpu_end_render_pass(GpuRenderPass* in_render_pass)
 {
-	[in_render_pass->metal_render_command_encoder endEncoding];
+	@autoreleasepool
+	{	
+		[in_render_pass->metal_render_command_encoder endEncoding];
+	}
+
+	_OBJC_RELEASE(in_render_pass->metal_render_command_encoder);
+	in_render_pass->metal_render_command_encoder = nil;
 }
 
 void gpu_render_pass_set_render_pipeline(GpuRenderPass* in_render_pass, GpuRenderPipeline* in_render_pipeline)
 {
-	[in_render_pass->metal_render_command_encoder setRenderPipelineState:in_render_pipeline->metal_render_pipeline_state];
-	[in_render_pass->metal_render_command_encoder setDepthStencilState:in_render_pipeline->metal_depth_stencil_state];
-	[in_render_pass->metal_render_command_encoder setTriangleFillMode:in_render_pipeline->metal_triangle_fill_mode];
+	@autoreleasepool
+	{	
+		[in_render_pass->metal_render_command_encoder setRenderPipelineState:in_render_pipeline->metal_render_pipeline_state];
+		[in_render_pass->metal_render_command_encoder setDepthStencilState:in_render_pipeline->metal_depth_stencil_state];
+		[in_render_pass->metal_render_command_encoder setTriangleFillMode:in_render_pipeline->metal_triangle_fill_mode];
+	}
 }
 
 void gpu_render_pass_set_bind_group(GpuRenderPass* in_render_pass, GpuRenderPipeline* in_render_pipeline, GpuBindGroup* in_bind_group)
 {
 	assert(in_render_pass);
 	assert(in_bind_group);
-	
-	GpuBindGroupLayout* layout = &in_bind_group->layout;
-	for (i32 binding_index = 0; binding_index < layout->num_bindings; ++binding_index)
-	{
-		GpuBindGroupWriteReference* write_reference = &in_bind_group->write_references[binding_index];
-		if (!write_reference->is_valid)
+
+	@autoreleasepool
+	{	
+		GpuBindGroupLayout* layout = &in_bind_group->layout;
+		for (i32 binding_index = 0; binding_index < layout->num_bindings; ++binding_index)
 		{
-			continue;
+			GpuBindGroupWriteReference* write_reference = &in_bind_group->write_references[binding_index];
+			if (!write_reference->is_valid)
+			{
+				continue;
+			}
+
+			GpuResourceBinding* resource_binding = &layout->bindings[binding_index];
+			MTLRenderStages metal_render_stages = 0;	
+			if (BIT_COMPARE(resource_binding->shader_stages, GPU_SHADER_STAGE_VERTEX))
+			{
+				metal_render_stages |= MTLRenderStageVertex;
+			}
+			if (BIT_COMPARE(resource_binding->shader_stages, GPU_SHADER_STAGE_FRAGMENT))
+			{
+				metal_render_stages |= MTLRenderStageFragment;
+			}
+				
+			switch(write_reference->type)
+			{
+				case GPU_BINDING_TYPE_BUFFER:
+					[in_render_pass->metal_render_command_encoder 
+						useResource:write_reference->metal_buffer 
+						usage:MTLResourceUsageRead
+						stages:metal_render_stages
+					];
+					break;
+				case GPU_BINDING_TYPE_TEXTURE:
+					[in_render_pass->metal_render_command_encoder
+						useResource:write_reference->metal_texture
+						usage:MTLResourceUsageRead
+						stages:metal_render_stages];
+					break;
+
+				case GPU_BINDING_TYPE_SAMPLER:
+					// Nothing to do for Samplers
+					break;
+			}
 		}
 
-		GpuResourceBinding* resource_binding = &layout->bindings[binding_index];
-		MTLRenderStages metal_render_stages = 0;	
-		if (BIT_COMPARE(resource_binding->shader_stages, GPU_SHADER_STAGE_VERTEX))
-		{
-			metal_render_stages |= MTLRenderStageVertex;
-		}
-		if (BIT_COMPARE(resource_binding->shader_stages, GPU_SHADER_STAGE_FRAGMENT))
-		{
-			metal_render_stages |= MTLRenderStageFragment;
-	  	}
-	  		
-	  	switch(write_reference->type)
-		{
-			case GPU_BINDING_TYPE_BUFFER:
-				[in_render_pass->metal_render_command_encoder 
-					useResource:write_reference->metal_buffer 
-					usage:MTLResourceUsageRead
-	  				stages:metal_render_stages
-				];
-	  			break;
-			case GPU_BINDING_TYPE_TEXTURE:
-				[in_render_pass->metal_render_command_encoder
-					useResource:write_reference->metal_texture
-					usage:MTLResourceUsageRead
-					stages:metal_render_stages];
-				break;
+		[in_render_pass->metal_render_command_encoder
+			setVertexBuffer:in_bind_group->metal_argument_buffer
+			offset:0 
+			atIndex:layout->index
+		];
 
-			case GPU_BINDING_TYPE_SAMPLER:
-				// Nothing to do for Samplers
-				break;
-		}
+		[in_render_pass->metal_render_command_encoder
+			setFragmentBuffer:in_bind_group->metal_argument_buffer
+			offset:0
+			atIndex:layout->index
+		];	
 	}
-
-	[in_render_pass->metal_render_command_encoder
-		setVertexBuffer:in_bind_group->metal_argument_buffer
-		offset:0 
-		atIndex:layout->index
-	];
-
-	[in_render_pass->metal_render_command_encoder
-		setFragmentBuffer:in_bind_group->metal_argument_buffer
-		offset:0
-		atIndex:layout->index
-	];	
 }
 
 void gpu_render_pass_draw(GpuRenderPass* in_render_pass, u32 vertex_start, u32 vertex_count)
 {
-	[in_render_pass->metal_render_command_encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:vertex_start vertexCount:vertex_count];
+	@autoreleasepool
+	{
+		[in_render_pass->metal_render_command_encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:vertex_start vertexCount:vertex_count];
+	}
 }
 
 void gpu_present_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer, GpuBackBuffer* in_backbuffer)
 {
-	[in_command_buffer->metal_command_buffer presentDrawable:in_backbuffer->metal_backbuffer];
+	@autoreleasepool
+	{
+		[in_command_buffer->metal_command_buffer presentDrawable:in_backbuffer->metal_backbuffer];
+	}
+	_OBJC_RELEASE(in_backbuffer->metal_backbuffer);
 }
 
 void gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
 {
-	[in_command_buffer->metal_command_buffer commit];
+	@autoreleasepool
+	{
+		[in_command_buffer->metal_command_buffer commit];
+	}
 }
 
 const char* gpu_get_api_name()

@@ -25,13 +25,19 @@ typedef struct DebugDrawData
 	GpuBuffer uniform_buffer; 
 	DebugDrawUniformStruct* uniform_data;
 
-	sbuffer(DebugDrawVertex) vertices;
-	GpuBuffer vertex_buffer;
+	sbuffer(DebugDrawVertex) wireframe_vertices;
+	GpuBuffer wireframe_vertex_buffer;
+	sbuffer(u32) wireframe_indices;
+	GpuBuffer wireframe_index_buffer;
+	GpuBindGroup wireframe_bind_group;
 
-	sbuffer(u32) indices;
-	GpuBuffer index_buffer;
+	sbuffer(DebugDrawVertex) solid_vertices;
+	GpuBuffer solid_vertex_buffer;
+	sbuffer(u32) solid_indices;
+	GpuBuffer solid_index_buffer;
+	GpuBindGroup solid_bind_group;
 
-	GpuBindGroup bind_group;
+
 } DebugDrawData;
 
 typedef struct DebugDrawContext
@@ -41,7 +47,8 @@ typedef struct DebugDrawContext
 	sbuffer(DebugDrawData) draw_data;
 
 	GpuBindGroupLayout bind_group_layout;
-	GpuRenderPipeline render_pipeline;
+	GpuRenderPipeline wireframe_render_pipeline;
+	GpuRenderPipeline solid_render_pipeline;
 } DebugDrawContext;
 
 typedef struct DebugDrawRecordInfo
@@ -104,7 +111,9 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 		.polygon_mode = GPU_POLYGON_MODE_LINE,
 		.depth_test_enabled = true,
 	};
-	gpu_create_render_pipeline(in_gpu_device, &render_pipeline_create_info, &out_debug_draw_context->render_pipeline);
+	gpu_create_render_pipeline(in_gpu_device, &render_pipeline_create_info, &out_debug_draw_context->wireframe_render_pipeline);
+	render_pipeline_create_info.polygon_mode = GPU_POLYGON_MODE_FILL;
+	gpu_create_render_pipeline(in_gpu_device, &render_pipeline_create_info, &out_debug_draw_context->solid_render_pipeline);
 
     gpu_destroy_shader(in_gpu_device, &vertex_shader);
     gpu_destroy_shader(in_gpu_device, &fragment_shader);
@@ -130,8 +139,10 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 			.size = max_vertices_size,
 			.data = NULL,
 		};
-		GpuBuffer vertex_buffer;
-		gpu_create_buffer(in_gpu_device, &vertex_buffer_create_info, &vertex_buffer);
+		GpuBuffer wireframe_vertex_buffer;
+		gpu_create_buffer(in_gpu_device, &vertex_buffer_create_info, &wireframe_vertex_buffer);
+		GpuBuffer solid_vertex_buffer;
+		gpu_create_buffer(in_gpu_device, &vertex_buffer_create_info, &solid_vertex_buffer);
 
 		// index storage buffer create info
 		const u32 max_indices_size = sizeof(u32) * DEBUG_DRAW_MAX_VERTICES;
@@ -141,18 +152,20 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 			.size = max_indices_size,
 			.data = NULL,
 		};
-		GpuBuffer index_buffer;
-		gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &index_buffer);
+		GpuBuffer wireframe_index_buffer;
+		gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &wireframe_index_buffer);
+		GpuBuffer solid_index_buffer;
+		gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &solid_index_buffer);
 
 		// Create Global Bind Group per swapchain
 		GpuBindGroupCreateInfo bind_group_create_info = {
 			.layout = &out_debug_draw_context->bind_group_layout,
 		};
-		GpuBindGroup bind_group;
-		gpu_create_bind_group(in_gpu_device, &bind_group_create_info, &bind_group);
+		GpuBindGroup wireframe_bind_group;
+		gpu_create_bind_group(in_gpu_device, &bind_group_create_info, &wireframe_bind_group);
 
-		const GpuBindGroupUpdateInfo bind_group_update_info = {
-			.bind_group = &bind_group,
+		const GpuBindGroupUpdateInfo wireframe_bind_group_update_info = {
+			.bind_group = &wireframe_bind_group,
 			.num_writes = 3,
 			.writes = (GpuResourceWrite[3]){
 				{
@@ -166,26 +179,61 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 					.binding_index = 1,
 					.type = GPU_BINDING_TYPE_BUFFER,
 					.buffer_binding = {
-						.buffer = &vertex_buffer,
+						.buffer = &wireframe_vertex_buffer,
 					},
 				},
 				{
 					.binding_index = 2,
 					.type = GPU_BINDING_TYPE_BUFFER,
 					.buffer_binding = {
-						.buffer = &index_buffer,
+						.buffer = &wireframe_index_buffer,
 					},
 				},
 			},
 		};
-		gpu_update_bind_group(in_gpu_device, &bind_group_update_info);
+		gpu_update_bind_group(in_gpu_device, &wireframe_bind_group_update_info);
+
+		GpuBindGroup solid_bind_group;
+		gpu_create_bind_group(in_gpu_device, &bind_group_create_info, &solid_bind_group);
+
+		const GpuBindGroupUpdateInfo solid_bind_group_update_info = {
+			.bind_group = &solid_bind_group,
+			.num_writes = 3,
+			.writes = (GpuResourceWrite[3]){
+				{
+					.binding_index = 0,
+					.type = GPU_BINDING_TYPE_BUFFER,
+					.buffer_binding = {
+						.buffer = &uniform_buffer,
+					},
+				},
+				{
+					.binding_index = 1,
+					.type = GPU_BINDING_TYPE_BUFFER,
+					.buffer_binding = {
+						.buffer = &solid_vertex_buffer,
+					},
+				},
+				{
+					.binding_index = 2,
+					.type = GPU_BINDING_TYPE_BUFFER,
+					.buffer_binding = {
+						.buffer = &solid_index_buffer,
+					},
+				},
+			},
+		};
+		gpu_update_bind_group(in_gpu_device, &solid_bind_group_update_info);
 
 		DebugDrawData new_draw_data = {
 			.uniform_buffer = uniform_buffer,
-			.vertex_buffer = vertex_buffer,
-			.index_buffer = index_buffer,
 			.uniform_data = gpu_map_buffer(in_gpu_device, &uniform_buffer),
-			.bind_group = bind_group,
+			.wireframe_vertex_buffer = wireframe_vertex_buffer,
+			.wireframe_index_buffer = wireframe_index_buffer,
+			.wireframe_bind_group = wireframe_bind_group,
+			.solid_vertex_buffer = solid_vertex_buffer,
+			.solid_index_buffer = solid_index_buffer,
+			.solid_bind_group = solid_bind_group,
 		};
 		sb_push(out_debug_draw_context->draw_data, new_draw_data);
 	}
@@ -193,27 +241,16 @@ void debug_draw_init(GpuDevice* in_gpu_device, DebugDrawContext* out_debug_draw_
 
 void debug_draw_shutdown(GpuDevice* in_gpu_device, DebugDrawContext* debug_draw_context)
 {
-	//for (i32 i = 0; i < sb_count(debug_draw_context->draw_data); ++i)
-	//{
-	//	DebugDrawData* draw_data = &debug_draw_context->draw_data[i];
-
-	//	gpu_destroy_buffer(gpu_context, &draw_data->vertex_buffer);
-	//	gpu_destroy_buffer(gpu_context, &draw_data->index_buffer);
-	//	gpu_destroy_buffer(gpu_context, &draw_data->uniform_buffer);
-	//	gpu_destroy_descriptor_set(gpu_context, &draw_data->descriptor_set);
-	//}
-	//sb_free(debug_draw_context->draw_data);
-
-	//gpu_destroy_descriptor_layout(gpu_context, &debug_draw_context->descriptor_layout);
-	//gpu_destroy_pipeline(gpu_context, &debug_draw_context->render_pipeline);
-	//gpu_destroy_pipeline_layout(gpu_context, &debug_draw_context->pipeline_layout);
+	// FCS TODO: CLEANUP
 }
 
 void debug_draw_begin_frame(DebugDrawContext* in_context, const i32 in_swapchain_index)
 {
 	in_context->current_swapchain_index = in_swapchain_index;
-	sb_free(in_context->draw_data[in_context->current_swapchain_index].vertices);
-	sb_free(in_context->draw_data[in_context->current_swapchain_index].indices);
+	sb_free(in_context->draw_data[in_context->current_swapchain_index].wireframe_vertices);
+	sb_free(in_context->draw_data[in_context->current_swapchain_index].wireframe_indices);
+	sb_free(in_context->draw_data[in_context->current_swapchain_index].solid_vertices);
+	sb_free(in_context->draw_data[in_context->current_swapchain_index].solid_indices);
 }
 
 DebugDrawData* debug_draw_get_current_draw_data(DebugDrawContext* debug_draw_context)
@@ -230,19 +267,38 @@ void debug_draw_end_frame(DebugDrawContext* debug_draw_context, GpuDevice* in_gp
 	uniform_data->projection = *projection;
 
 	//FCS TODO: Just persistently map vtx and idx buffers?
-	GpuBufferWriteInfo vertex_buffer_write_info = {
-		.buffer = &draw_data->vertex_buffer,
-		.size = sizeof(DebugDrawVertex) * sb_count(draw_data->vertices),
-		.data = draw_data->vertices,
-	};
-	gpu_write_buffer(in_gpu_device, &vertex_buffer_write_info);
 
-	GpuBufferWriteInfo index_buffer_write_info = {
-		.buffer = &draw_data->index_buffer,
-		.size = sizeof(u32) * sb_count(draw_data->indices),
-		.data = draw_data->indices,
-	};
-	gpu_write_buffer(in_gpu_device, &index_buffer_write_info);
+	{
+		GpuBufferWriteInfo vertex_buffer_write_info = {
+			.buffer = &draw_data->wireframe_vertex_buffer,
+			.size = sizeof(DebugDrawVertex) * sb_count(draw_data->wireframe_vertices),
+			.data = draw_data->wireframe_vertices,
+		};
+		gpu_write_buffer(in_gpu_device, &vertex_buffer_write_info);
+
+		GpuBufferWriteInfo index_buffer_write_info = {
+			.buffer = &draw_data->wireframe_index_buffer,
+			.size = sizeof(u32) * sb_count(draw_data->wireframe_indices),
+			.data = draw_data->wireframe_indices,
+		};
+		gpu_write_buffer(in_gpu_device, &index_buffer_write_info);
+	}
+
+	{
+		GpuBufferWriteInfo vertex_buffer_write_info = {
+			.buffer = &draw_data->solid_vertex_buffer,
+			.size = sizeof(DebugDrawVertex) * sb_count(draw_data->solid_vertices),
+			.data = draw_data->solid_vertices,
+		};
+		gpu_write_buffer(in_gpu_device, &vertex_buffer_write_info);
+
+		GpuBufferWriteInfo index_buffer_write_info = {
+			.buffer = &draw_data->solid_index_buffer,
+			.size = sizeof(u32) * sb_count(draw_data->solid_indices),
+			.data = draw_data->solid_indices,
+		};
+		gpu_write_buffer(in_gpu_device, &index_buffer_write_info);
+	}
 }
 
 void debug_draw_record_commands(DebugDrawContext* debug_draw_context, DebugDrawRecordInfo* record_info)
@@ -273,9 +329,23 @@ void debug_draw_record_commands(DebugDrawContext* debug_draw_context, DebugDrawR
 	};
 	GpuRenderPass render_pass;
 	gpu_begin_render_pass(record_info->gpu_device, &render_pass_create_info, &render_pass);
-	gpu_render_pass_set_render_pipeline(&render_pass, &debug_draw_context->render_pipeline);
-	gpu_render_pass_set_bind_group(&render_pass, &debug_draw_context->render_pipeline, &draw_data->bind_group);
-	gpu_render_pass_draw(&render_pass, 0, sb_count(draw_data->indices));
+	
+	// Draw Wireframe Geometry
+	if (sb_count(draw_data->wireframe_indices) > 0)
+	{
+		gpu_render_pass_set_render_pipeline(&render_pass, &debug_draw_context->wireframe_render_pipeline);
+		gpu_render_pass_set_bind_group(&render_pass, &debug_draw_context->wireframe_render_pipeline, &draw_data->wireframe_bind_group);
+		gpu_render_pass_draw(&render_pass, 0, sb_count(draw_data->wireframe_indices));
+	}
+
+	// Draw Solid Geometry
+	if (sb_count(draw_data->solid_indices) > 0)
+	{
+		gpu_render_pass_set_render_pipeline(&render_pass, &debug_draw_context->solid_render_pipeline);
+		gpu_render_pass_set_bind_group(&render_pass, &debug_draw_context->wireframe_render_pipeline, &draw_data->solid_bind_group);
+		gpu_render_pass_draw(&render_pass, 0, sb_count(draw_data->solid_indices));
+	}
+
 	gpu_end_render_pass(&render_pass);
 }
 
@@ -286,13 +356,14 @@ typedef struct DebugDrawSphere
 	i32 latitudes;
 	i32 longitudes;
 	Vec4 color;
+	bool solid;
 } DebugDrawSphere;
 
 void debug_draw_sphere(DebugDrawContext* debug_draw_context, const DebugDrawSphere* debug_draw_sphere)
 {
-	DebugDrawData* draw_data = debug_draw_get_current_draw_data(debug_draw_context);		
-	sbuffer(DebugDrawVertex)* out_vertices = &draw_data->vertices;
-	sbuffer(u32)* out_indices = &draw_data->indices;
+	DebugDrawData* draw_data = debug_draw_get_current_draw_data(debug_draw_context);	
+	sbuffer(DebugDrawVertex)* out_vertices = debug_draw_sphere->solid ? &draw_data->solid_vertices : &draw_data->wireframe_vertices;
+	sbuffer(u32)* out_indices = debug_draw_sphere->solid ? &draw_data->solid_indices : &draw_data->wireframe_indices;
 
 	//Figure out where our indices should start
 	const u32 index_offset = sb_count(*out_vertices);

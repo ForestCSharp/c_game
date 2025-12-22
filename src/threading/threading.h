@@ -22,10 +22,15 @@ void app_semaphore_destroy(Semaphore* in_semaphore);
 void app_semaphore_wait(Semaphore* in_semaphore);
 void app_semaphore_post(Semaphore* in_semaphore);
 
-typedef struct AtomicInt AtomicInt;
-i32 atomic_int_set(AtomicInt* in_atomic, i32 in_new_value);
-i32 atomic_int_add(AtomicInt* in_atomic, i32 in_value_to_add);
-i32 atomic_int_get(AtomicInt* in_atomic);
+typedef struct AtomicInt32 AtomicInt32;
+i32 atomic_i32_set(AtomicInt32* in_atomic, i32 in_new_value);
+i32 atomic_i32_add(AtomicInt32* in_atomic, i32 in_value_to_add);
+i32 atomic_i32_get(AtomicInt32* in_atomic);
+
+typedef struct AtomicInt64 AtomicInt64;
+i64 atomic_i64_set(AtomicInt64* in_atomic, i64 in_new_value);
+i64 atomic_i64_add(AtomicInt64* in_atomic, i64 in_value_to_add);
+i64 atomic_i64_get(AtomicInt64* in_atomic);
 
 typedef struct AtomicBool AtomicBool;
 void atomic_bool_set(AtomicBool* in_atomic, bool in_new_value);

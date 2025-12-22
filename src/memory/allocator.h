@@ -33,27 +33,27 @@ void* mem_realloc_ext(void* in_ptr, size_t in_size, const char* file, int line);
 #if MEMORY_LOGGING
 	//FCS TODO: Make Atomic Bool...
 	bool g_memory_logging = false;
-	AtomicInt total_allocated_during_log;
-	AtomicInt total_freed_during_log;
+	AtomicInt64 total_allocated_during_log;
+	AtomicInt64 total_freed_during_log;
 
 	#define RECORD_ALLOC(size)\
-		atomic_int_add(&total_allocated_memory, size);\
+		atomic_i64_add(&total_allocated_memory, size);\
 		if (g_memory_logging)\
 		{\
-			atomic_int_add(&total_allocated_during_log, size);\
+			atomic_i64_add(&total_allocated_during_log, size);\
 		}
 
 	#define RECORD_FREE(size)\
-		atomic_int_add(&total_allocated_memory, -size);\
+		atomic_i64_add(&total_allocated_memory, -size);\
 		if (g_memory_logging)\
 		{\
-			atomic_int_add(&total_freed_during_log, size);\
+			atomic_i64_add(&total_freed_during_log, size);\
 		}
 
 	#define ENABLE_MEMORY_LOGGING()\
 		g_memory_logging = true;\
-		atomic_int_set(&total_allocated_during_log, 0);\
-		atomic_int_set(&total_freed_during_log, 0);
+		atomic_i64_set(&total_allocated_during_log, 0);\
+		atomic_i64_set(&total_freed_during_log, 0);
 
 	#define DISABLE_MEMORY_LOGGING()\
 		g_memory_logging = false;
@@ -68,15 +68,15 @@ void* mem_realloc_ext(void* in_ptr, size_t in_size, const char* file, int line);
 	
 	#define MEMORY_LOG_STATS()\
 		printf("Memory Log Session: Total Allocated: %i, Total Freed: %i\n",\
-			atomic_int_get(&total_allocated_during_log),\
-			atomic_int_get(&total_freed_during_log)\
+			atomic_i64_get(&total_allocated_during_log),\
+			atomic_i64_get(&total_freed_during_log)\
 		);
 
 #else // MEMORY_LOGGING (disabled)
 	#define RECORD_ALLOC(size)\
-		atomic_int_add(&total_allocated_memory, size);
+		atomic_i64_add(&total_allocated_memory, size);
 	#define RECORD_FREE(size)\
-		atomic_int_add(&total_allocated_memory, -size);
+		atomic_i64_add(&total_allocated_memory, -size);
 
 	#define ENABLE_MEMORY_LOGGING() 
 	#define DISABLE_MEMORY_LOGGING()
@@ -87,10 +87,10 @@ void* mem_realloc_ext(void* in_ptr, size_t in_size, const char* file, int line);
 #define ALLOCATOR_USE_STD_LIB_FUNCTIONS 1
 #if ALLOCATOR_USE_STD_LIB_FUNCTIONS
 
-static AtomicInt total_allocated_memory;
+static AtomicInt64 total_allocated_memory;
 
 #if MEMORY_LOGGING
-static AtomicInt next_allocation_id;
+static AtomicInt64 next_allocation_id;
 #endif // MEMORY_LOGGING
 
 typedef struct AllocationHeader
@@ -107,9 +107,9 @@ typedef struct AllocationHeader
 
 const size_t ALLOCATION_HEADER_SIZE = sizeof(AllocationHeader);
 
-i32 get_total_allocated_memory()
+i32 get_allocated_memory()
 {
-	return atomic_int_get(&total_allocated_memory);
+	return atomic_i64_get(&total_allocated_memory);
 }
 
 void* allocation_header_setup(char* in_ptr, size_t in_allocation_size, int in_allocation_id)
@@ -143,7 +143,7 @@ void allocation_header_set_metadata(void* in_ptr, const char* file, int line)
 	// Reuse existing allocation id if its valid
 	header->allocation_id = header->allocation_id > 0 
 							? header->allocation_id
-							: atomic_int_add(&next_allocation_id, 1);
+							: atomic_i64_add(&next_allocation_id, 1);
 	header->file = file;
 	header->line = line;
 	#endif //MEMORY_LOGGING

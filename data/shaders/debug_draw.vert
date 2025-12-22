@@ -33,7 +33,8 @@ void main()
 
 	gl_Position = global_ubo.projection * global_ubo.view * vertex.position;
     out_position = gl_Position.xyz;
-	out_normal = vertex.normal.xyz; 	//FCS TODO: View and Proj multiply
+	const vec4 transformed_normal = global_ubo.view * vertex.normal;
+	out_normal = transformed_normal.xyz;
 	out_color = vertex.color;
 
 }

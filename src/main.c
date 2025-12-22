@@ -23,6 +23,8 @@
 #include "task/task.h"
 #include "string_type.h"
 
+#include "collision/collision.h"
+
 typedef struct AnimationUpdateTaskData
 {
 	AnimatedModel* animated_model;
@@ -81,6 +83,8 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 {
 	assert(out_character != NULL);
 
+	const Vec3 character_root_position = vec3_new(0,0,-15);
+
 	GameObjectHandle root_object_handle			= ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle body_object_handle			= ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle head_object_handle			= ADD_OBJECT(game_object_manager_ptr);
@@ -94,7 +98,7 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 			.trs = {
 				.scale = vec3_new(5,5,5),
 				.rotation = quat_identity,
-				.translation = vec3_new(0,0,0),
+				.translation = character_root_position,
 			},
 			.parent = {},
 		};
@@ -104,19 +108,6 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 			.move_speed = 200.0f,
 		};
 		OBJECT_CREATE_COMPONENT(PlayerControlComponent, game_object_manager_ptr, root_object_handle, player_control);
-
-		ColliderComponent collider_comp = {
-			.collider = {
-				.type = COLLIDER_TYPE_CAPSULE,
-				.capsule = {
-					.center = vec3_zero,
-					.orientation = quat_identity,
-					.half_height = 5.0f,
-				},
-			},
-		};
-		//FCS TODO: Collision Routines will need to handle xforms...
-		OBJECT_CREATE_COMPONENT(ColliderComponent, game_object_manager_ptr, root_object_handle, collider_comp);
 
 		StaticModel body_static_model;
 		assert(static_model_load("data/meshes/StarterMech_Body.glb", in_gpu_device, &body_static_model));
@@ -213,7 +204,7 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 			.trs = {
 				.scale = vec3_new(1,1,1),
 				.rotation = quat_new(vec3_new(1,0,0), -15.0f * DEGREES_TO_RADIANS),
-				.translation = vec3_new(0,0,0),
+				.translation = character_root_position,
 			},
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, camera_root_object_handle, cam_root_transform);
@@ -432,8 +423,35 @@ int main()
 
 	GpuDevice gpu_device;
 	gpu_create_device(&window, &gpu_device);
-
 	const u32 swapchain_count = gpu_get_swapchain_count(&gpu_device);
+
+	// Init Physics Scene
+	PhysicsScene physics_scene = {};
+	physics_scene_init(&physics_scene);
+
+	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		.position = vec3_new(0,50,0),
+		.orientation = quat_identity,
+		.shape = {
+			.type = SHAPE_TYPE_SPHERE,
+			.sphere = {
+				.radius = 5,
+			},
+		},
+		.inverse_mass = 1.f,
+	});
+
+	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		.position = vec3_new(0,-1000,0),
+		.orientation = quat_identity,
+		.shape = {
+			.type = SHAPE_TYPE_SPHERE,
+			.sphere = {
+				.radius = 1000,
+			},
+		},
+		.inverse_mass = 0.f,
+	});
 
 	//GameObject + Components Setup
 	GameObjectManager game_object_manager = {};
@@ -505,6 +523,8 @@ int main()
 			rand_f32(-spawn_span, spawn_span),
 			rand_f32(-spawn_span, spawn_span)
 		);
+
+		translation = vec3_add(translation, vec3_new(0,0, -spawn_span * 2));
 
 		const Quat rotation	=	create_animated_model 
 							?	quat_identity
@@ -849,7 +869,7 @@ int main()
     i32 mouse_x, mouse_y;
 	window_get_mouse_pos(&window, &mouse_x, &mouse_y);
 
-	bool show_mouse = false;
+	bool show_mouse = true;
 	window_show_mouse_cursor(&window, show_mouse);
 
 	GpuCommandBuffer command_buffers[swapchain_count];
@@ -864,7 +884,7 @@ int main()
 		{
 			break;
 		}
-		
+	
         const u64 new_time = time_now();
         const double delta_time = time_seconds(new_time - time);
         time = new_time;
@@ -1003,13 +1023,12 @@ int main()
 			}	
 		}
 
-		const i32 num_animation_tasks = sb_count(animation_tasks);
+		physics_scene_update(&physics_scene, delta_time);
 
 		// Need to wait on animation update
 		task_system_wait_tasks(&task_system, animation_tasks);
 
 		MEMORY_LOG(NULL, printf("\n\nEND FRAME"));
-		//printf("Num Animation Tasks: %d\n", num_animation_tasks);
 		//DISABLE_MEMORY_LOGGING();
 		//MEMORY_LOG_STATS();
 
@@ -1078,13 +1097,31 @@ int main()
 
 			top_right_ui_position_y += 35.f;
 
-			{ // Total Memory Usage
-				i32 total_memory = get_total_allocated_memory();
+			{ // Allocator Memory Usage (memory allocated with the functions/macros in the memory/ directory)
+				i32 allocated_memory = get_allocated_memory();
 				char buffer[512];
-				snprintf(buffer, sizeof(buffer), "Memory Usage: %i (%i MiB)", total_memory, total_memory / 1024 / 1024);
+				snprintf(buffer, sizeof(buffer), "Alloc Mem Usage: %i (%.2f MiB)", allocated_memory, allocated_memory / 1024.0 / 1024.0);
 
 				const float horizontal_padding = 5.f;
-				const float button_size = 400.f;
+				const float button_size = 600.f;
+				gui_button(
+					&gui_context, 
+					buffer, 
+					vec2_new(window_width - button_size - horizontal_padding, top_right_ui_position_y), 
+					vec2_new(button_size, 30)
+				);
+			}
+
+			top_right_ui_position_y += 35.f;
+
+			{ // Total Memory Usage (memory usage as reported by the os for this process)
+				i64 total_memory = app_get_memory_usage();
+				char buffer[512];
+				snprintf(buffer, sizeof(buffer), "Total Mem Usage: %lli (%.2f MiB)", total_memory, total_memory / 1024.0 / 1024.0);
+				printf("Total Mem Usage: %lli (%.2f MiB)\n", total_memory, total_memory / 1024.0 / 1024.0);
+
+				const float horizontal_padding = 5.f;
+				const float button_size = 600.f;
 				gui_button(
 					&gui_context, 
 					buffer, 
@@ -1318,10 +1355,34 @@ int main()
 			gpu_end_render_pass(&geometry_render_pass);
 		}
 
+		// Render Physics Bodies
+		{
+			for (i32 body_idx = 0; body_idx < sb_count(physics_scene.bodies); ++body_idx)
+			{
+				PhysicsBody* body = &physics_scene.bodies[body_idx];
+				switch (body->shape.type)
+				{
+					case SHAPE_TYPE_SPHERE: 
+					{
+						debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
+							.center = body->position,
+							.radius = body->shape.sphere.radius,
+							.latitudes = 24,
+							.longitudes = 24,
+							.color = vec4_new(0.5,0.5,0.5,1),
+							.solid = true,
+						});
+						break;
+					}
+					//FCS TODO: Other Shapes
+				}
+			}	
+		}
+
 		// Debug Draw Pass
 		{
 			debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
-				.center = vec3_new(0,0,0),
+				.center = vec3_new(0,0,-1000),
 				.radius = 25,
 				.latitudes = 12,
 				.longitudes = 12,

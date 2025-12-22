@@ -18,6 +18,9 @@ typedef enum KeyCode
 } KeyCode;
 
 // Application Functions
+i64 app_get_memory_usage();
+
+// Window Functions
 Window window_create(const char* name, int width, int height);
 bool window_handle_messages(Window* window);
 void window_show_mouse_cursor(Window* window, bool in_show_mouse_cursor);

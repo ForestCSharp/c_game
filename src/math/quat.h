@@ -154,6 +154,20 @@ Quat quat_slerp(float t, Quat a, Quat b)
 	return quat_normalize(result);
 }
 
+Quat quat_inverse(const Quat q)
+{
+    float len_sq = quat_size_squared(q);
+    
+    // Safety check to avoid division by zero
+    if (len_sq < 0.000001f)
+	{
+        return quat_identity;
+    }
+
+    Quat conj = quat_conjugate(q);
+    return quat_scale(conj, 1.0f / len_sq);
+}
+
 bool quat_nearly_equal(const Quat a, const Quat b)
 {
 	return 	f32_nearly_equal(a.x, b.x)

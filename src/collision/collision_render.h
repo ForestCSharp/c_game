@@ -6,13 +6,14 @@
 #include "model/static_model.h"
 #include "stretchy_buffer.h"
 
-typedef struct ColliderRenderData
+typedef struct PhysicsBodyRenderData
 {
+	bool is_valid;
 	i32 num_vertices;
 	GpuBuffer vertex_buffer;
 	i32 num_indices;
 	GpuBuffer index_buffer;
-} ColliderRenderData;
+} PhysicsBodyRenderData;
 
 
 //FCS TODO: move any basic shape generation to its own file
@@ -232,41 +233,43 @@ void append_box(const Vec3 axes[3], const float half_extents[3], sbuffer(StaticV
 }
 
 //FCS TODO: Draw Colliders using debug drawing framework
-void collider_render_data_create(GpuDevice* in_gpu_device, 
-								 const Collider* in_collider,
-								 ColliderRenderData* out_render_data)
+void physics_body_render_data_create(
+	GpuDevice* in_gpu_device, 
+	const PhysicsBody* in_body,
+	PhysicsBodyRenderData* out_render_data
+)
 {
-	assert(in_collider && out_render_data);
+	assert(in_body && out_render_data);
 
 	sbuffer(StaticVertex) vertices = NULL;
 	sbuffer(u32) indices = NULL;
 
-	switch(in_collider->type)
+	switch(in_body->shape.type)
 	{
-		case COLLIDER_TYPE_SPHERE:
+		case SHAPE_TYPE_SPHERE:
 		{
 			//FCS TODO: 1 UV Sphere	
-			append_uv_sphere(vec3_zero, in_collider->sphere.radius, 12, 12, &vertices, &indices);
+			append_uv_sphere(vec3_zero, in_body->shape.sphere.radius, 12, 12, &vertices, &indices);
 			break;
 		}
-		case COLLIDER_TYPE_CAPSULE:
-		{
-			LineSegment segment = capsule_segment(in_collider->capsule);
-			const Vec3 top_sphere_offset = vec3_sub(segment.start, in_collider->capsule.center); 
-			append_uv_sphere(top_sphere_offset, in_collider->capsule.radius, 12, 12, &vertices, &indices);
-			const Vec3 bottom_sphere_offset = vec3_sub(segment.end, in_collider->capsule.center);
-			append_uv_sphere(bottom_sphere_offset, in_collider->capsule.radius, 12, 12, &vertices, &indices);
-			const Vec3 capsule_offset = vec3_zero;
-			append_cylinder(capsule_offset, in_collider->capsule.radius, in_collider->capsule.half_height, 12, 12, &vertices, &indices);
-			break;
-		}
-		case COLLIDER_TYPE_OBB:
-		{
-			Vec3 obb_axes[3];
-			obb_make_axes(in_collider->obb, obb_axes);
-			append_box(obb_axes, in_collider->obb.halfwidths, &vertices, &indices);	
-			break;
-		}
+		//case SHAPE_TYPE_CAPSULE:
+		//{
+		//	LineSegment segment = capsule_segment(in_body->capsule);
+		//	const Vec3 top_sphere_offset = vec3_sub(segment.start, in_body->capsule.center); 
+		//	append_uv_sphere(top_sphere_offset, in_body->capsule.radius, 12, 12, &vertices, &indices);
+		//	const Vec3 bottom_sphere_offset = vec3_sub(segment.end, in_body->capsule.center);
+		//	append_uv_sphere(bottom_sphere_offset, in_body->capsule.radius, 12, 12, &vertices, &indices);
+		//	const Vec3 capsule_offset = vec3_zero;
+		//	append_cylinder(capsule_offset, in_body->capsule.radius, in_body->capsule.half_height, 12, 12, &vertices, &indices);
+		//	break;
+		//}
+		//case SHAPE_TYPE_OBB:
+		//{
+		//	Vec3 obb_axes[3];
+		//	obb_make_axes(in_body->obb, obb_axes);
+		//	append_box(obb_axes, in_body->obb.halfwidths, &vertices, &indices);	
+		//	break;
+		//}
 	}
 
 	// GPU Data Setup
@@ -288,7 +291,8 @@ void collider_render_data_create(GpuDevice* in_gpu_device,
 	GpuBuffer index_buffer;
 	gpu_create_buffer(in_gpu_device, &index_buffer_create_info, &index_buffer);
 
-	*out_render_data = (ColliderRenderData) {
+	*out_render_data = (PhysicsBodyRenderData) {
+		.is_valid = true,
 		.num_vertices = sb_count(vertices),
 		.vertex_buffer = vertex_buffer,
 		.num_indices = sb_count(indices),
@@ -296,7 +300,7 @@ void collider_render_data_create(GpuDevice* in_gpu_device,
 	};
 }
 
-void collider_render_data_free(GpuDevice* in_gpu_device, ColliderRenderData* in_render_data)
+void collider_render_data_free(GpuDevice* in_gpu_device, PhysicsBodyRenderData* in_render_data)
 {
 	assert(in_render_data);
 	gpu_destroy_buffer(in_gpu_device, &in_render_data->vertex_buffer);

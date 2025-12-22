@@ -300,6 +300,9 @@ int main()
 
 	while (window_handle_messages(&window))
 	{
+		const i64 app_memory_usage = app_get_memory_usage();
+		printf("App Memory Usage: %f MiB\n", (double) app_memory_usage / 1024.f / 1024.f);
+
 		if (window_input_pressed(&window, KEY_ESCAPE))
 		{
 			break;
@@ -310,7 +313,7 @@ int main()
         time = new_time;
 
 		{	// Updating Static Uniform Data
-			static_rotation = quat_mul(static_rotation, quat_new(vec3_new(0,1,0), 0.01f));
+			static_rotation = quat_normalize(quat_mul(static_rotation, quat_new(vec3_new(0,1,0), 0.01f)));
 			static_uniform_data.model = mat4_mul_mat4(quat_to_mat4(static_rotation), mat4_translation(static_translation));
 			GpuBufferWriteInfo uniform_buffer_write_info = {
 				.buffer = &static_uniform_buffer,

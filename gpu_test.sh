@@ -29,6 +29,8 @@ echo ${machine}
 
 if [ $machine = Mac ]; then
 
+	# -fno-objc-arc \
+
 	#Build and Run for Mac
 	cp /usr/local/lib/libvulkan.dylib ./bin/
 	clang -ObjC -g ./src/gpu/gpu_test.c ./bin/libvulkan.dylib \

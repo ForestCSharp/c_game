@@ -3,6 +3,18 @@
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
+#include <sys/resource.h>
+
+
+i64 app_get_memory_usage()
+{
+	struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) != 0)
+	{
+		return -1;
+    }
+    return usage.ru_maxrss; 
+}
 
 // FCS TODO: make per-window (move into window struct)
 bool global_key_states[KEY_MAX_VALUE];
