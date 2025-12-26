@@ -430,8 +430,9 @@ int main()
 	physics_scene_init(&physics_scene);
 
 	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-		.position = vec3_new(0,50,0),
+		.position = vec3_new(0,0,0),
 		.orientation = quat_identity,
+		.linear_velocity = vec3_new(10,0,0),
 		.shape = {
 			.type = SHAPE_TYPE_SPHERE,
 			.sphere = {
@@ -439,11 +440,14 @@ int main()
 			},
 		},
 		.inverse_mass = 1.f,
+		.elasticity = 0.5f,
+		.friction = 0.5f,
 	});
 
 	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
 		.position = vec3_new(0,-1000,0),
 		.orientation = quat_identity,
+		.linear_velocity = vec3_zero,
 		.shape = {
 			.type = SHAPE_TYPE_SPHERE,
 			.sphere = {
@@ -451,6 +455,8 @@ int main()
 			},
 		},
 		.inverse_mass = 0.f,
+		.elasticity = 1.0f,
+		.friction = 0.5f,
 	});
 
 	//GameObject + Components Setup
@@ -1118,7 +1124,7 @@ int main()
 				i64 total_memory = app_get_memory_usage();
 				char buffer[512];
 				snprintf(buffer, sizeof(buffer), "Total Mem Usage: %lli (%.2f MiB)", total_memory, total_memory / 1024.0 / 1024.0);
-				printf("Total Mem Usage: %lli (%.2f MiB)\n", total_memory, total_memory / 1024.0 / 1024.0);
+				//printf("Total Mem Usage: %lli (%.2f MiB)\n", total_memory, total_memory / 1024.0 / 1024.0);
 
 				const float horizontal_padding = 5.f;
 				const float button_size = 600.f;
@@ -1357,6 +1363,8 @@ int main()
 
 		// Render Physics Bodies
 		{
+			//FCS TODO: Need some directionality so we can see orientation/rotational changes on spheres...
+
 			for (i32 body_idx = 0; body_idx < sb_count(physics_scene.bodies); ++body_idx)
 			{
 				PhysicsBody* body = &physics_scene.bodies[body_idx];
@@ -1366,11 +1374,13 @@ int main()
 					{
 						debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
 							.center = body->position,
+							.orientation = body->orientation,
 							.radius = body->shape.sphere.radius,
-							.latitudes = 24,
-							.longitudes = 24,
-							.color = vec4_new(0.5,0.5,0.5,1),
+							.latitudes = 48,
+							.longitudes = 48,
+							.color = vec4_new(1.0,1.0,1.0,1.0),
 							.solid = true,
+							.shade = true,
 						});
 						break;
 					}
@@ -1383,6 +1393,7 @@ int main()
 		{
 			debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
 				.center = vec3_new(0,0,-1000),
+				.orientation = quat_identity,
 				.radius = 25,
 				.latitudes = 12,
 				.longitudes = 12,

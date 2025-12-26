@@ -1,6 +1,7 @@
 #pragma once
 
 #include <math.h>
+#include <stdlib.h>
 
 #include "assert.h"
 #include "basic_types.h"

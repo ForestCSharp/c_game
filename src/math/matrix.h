@@ -8,6 +8,152 @@
 #include "quat.h"
 #include <math.h>
 
+typedef struct Mat3
+{
+    union
+    {
+        Vec3 columns[3];
+        float d[3][3];
+    };
+} Mat3;
+
+declare_optional_type(Mat3);
+
+const Mat3 mat3_identity = {
+    .d = {	
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
+    },
+};
+
+static inline void mat3_print(const Mat3 m)
+{
+    printf("[");
+    for (u32 row = 0; row < 3; ++row)
+    {
+        if (row > 0) printf(" ");
+        for (u32 col = 0; col < 3; ++col)
+        {
+            printf("%f", m.d[row][col]);
+            if (row < 2 || col < 2) printf(", ");
+        }
+        if (row < 2) printf("\n");
+    }
+    printf("]\n");
+}
+
+Mat3 mat3_mul_mat3(const Mat3 a, const Mat3 b)
+{
+    Mat3 result = {0};
+    for (i32 row = 0; row < 3; ++row)
+    {
+        for (i32 col = 0; col < 3; ++col)
+        {
+            for (i32 i = 0; i < 3; ++i)
+            {
+                result.d[row][col] += a.d[row][i] * b.d[i][col];
+            }
+        }
+    }
+    return result;
+}
+
+Vec3 mat3_mul_vec3(const Mat3 m, const Vec3 v)
+{
+    return (Vec3){
+        .x = m.d[0][0] * v.x + m.d[1][0] * v.y + m.d[2][0] * v.z,
+        .y = m.d[0][1] * v.x + m.d[1][1] * v.y + m.d[2][1] * v.z,
+        .z = m.d[0][2] * v.x + m.d[1][2] * v.y + m.d[2][2] * v.z,
+    };
+}
+
+Mat3 mat3_mul_f32(const Mat3 m, const float f)
+{
+    Mat3 result = m;
+    for (i32 row = 0; row < 3; ++row)
+        for (i32 col = 0; col < 3; ++col)
+            result.d[row][col] *= f;
+    return result;
+}
+
+Mat3 mat3_transpose(const Mat3 in_mat)
+{
+    Mat3 result = {};
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            result.d[i][j] = in_mat.d[j][i];
+    return result;
+}
+
+float mat3_determinant(const Mat3 m_in)
+{
+    const float* m = (const float*)m_in.d;
+
+    return m[0] * (m[4] * m[8] - m[5] * m[7]) -
+           m[1] * (m[3] * m[8] - m[5] * m[6]) +
+           m[2] * (m[3] * m[7] - m[4] * m[6]);
+}
+
+Mat3 mat3_adjoint(const Mat3 m_in)
+{
+    Mat3 res = {0};
+    const float* m = (const float*)m_in.d;
+    float* adj = (float*)res.d;
+
+    // The indices here are pre-transposed to form the Adjoint
+    // Row 0
+    adj[0] =  (m[4] * m[8] - m[5] * m[7]);
+    adj[3] = -(m[3] * m[8] - m[5] * m[6]);
+    adj[6] =  (m[3] * m[7] - m[4] * m[6]);
+
+    // Row 1
+    adj[1] = -(m[1] * m[8] - m[2] * m[7]);
+    adj[4] =  (m[0] * m[8] - m[2] * m[6]);
+    adj[7] = -(m[0] * m[7] - m[1] * m[6]);
+
+    // Row 2
+    adj[2] =  (m[1] * m[5] - m[2] * m[4]);
+    adj[5] = -(m[0] * m[5] - m[2] * m[3]);
+    adj[8] =  (m[0] * m[4] - m[1] * m[3]);
+
+    return res;
+}
+
+optional(Mat3) mat3_inverse(Mat3 in_mat)
+{
+    optional(Mat3) out_matrix = {};
+
+    const float determinant = mat3_determinant(in_mat);
+    if (determinant != 0.0f)
+    {
+        const float inverse_determinant = 1.0f / determinant;
+        Mat3 result = mat3_mul_f32(mat3_adjoint(in_mat), inverse_determinant);
+        optional_set(out_matrix, result);
+    }
+
+    return out_matrix;
+}
+
+bool mat3_nearly_equal(const Mat3 a, const Mat3 b)
+{
+    for (i32 column_idx = 0; column_idx < 3; ++column_idx)
+    {
+        if (!vec3_nearly_equal(a.columns[column_idx], b.columns[column_idx]))
+            return false;
+    }
+    return true;
+}
+
+Mat3 mat3_lerp(float t, const Mat3 a, const Mat3 b)
+{
+    t = CLAMP(t, 0.0f, 1.0f);
+    Mat3 result = {};
+    for (i32 i = 0; i < 3; ++i)
+        result.columns[i] = vec3_lerp(t, a.columns[i], b.columns[i]);
+    return result;
+}
+
 typedef struct Mat4
 {
 	union
@@ -179,40 +325,61 @@ Vec3 mat4_get_translation(const Mat4 in_mat)
 	return vec3_new(in_mat.d[3][0], in_mat.d[3][1], in_mat.d[3][2]);
 }
 
+float mat4_determinant(const Mat4 m_in)
+{
+    const float* m = (const float*)m_in.d;
+
+    // We only need the first 4 cofactors to calculate the determinant
+    float c0 =  m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    float c4 = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    float c8 =  m[4] * m[9]  * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    float c12 = -m[4] * m[9]  * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+
+    return m[0] * c0 + m[1] * c4 + m[2] * c8 + m[3] * c12;
+}
+
+Mat4 mat4_adjoint(const Mat4 m_in)
+{
+    Mat4 res = {0};
+    const float* m = (const float*)m_in.d;
+    float* adj = (float*)res.d;
+
+    adj[0]  =  m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    adj[4]  = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    adj[8]  =  m[4] * m[9]  * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    adj[12] = -m[4] * m[9]  * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    
+    adj[1]  = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    adj[5]  =  m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    adj[9]  = -m[0] * m[9]  * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    adj[13] =  m[0] * m[9]  * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    
+    adj[2]  =  m[1] * m[6]  * m[15] - m[1] * m[7]  * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7]  - m[13] * m[3] * m[6];
+    adj[6]  = -m[0] * m[6]  * m[15] + m[0] * m[7]  * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7]  + m[12] * m[3] * m[6];
+    adj[10] =  m[0] * m[5]  * m[15] - m[0] * m[7]  * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7]  - m[12] * m[3] * m[5];
+    adj[14] = -m[0] * m[5]  * m[14] + m[0] * m[6]  * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6]  + m[12] * m[2] * m[5];
+    
+    adj[3]  = -m[1] * m[6]  * m[11] + m[1] * m[7]  * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9]  * m[2] * m[7]  + m[9]  * m[3] * m[6];
+    adj[7]  =  m[0] * m[6]  * m[11] - m[0] * m[7]  * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8]  * m[2] * m[7]  - m[8]  * m[3] * m[6];
+    adj[11] = -m[0] * m[5]  * m[11] + m[0] * m[7]  * m[9]  + m[4] * m[1] * m[11] - m[4] * m[3] * m[9]  - m[8]  * m[1] * m[7]  + m[8]  * m[3] * m[5];
+    adj[15] =  m[0] * m[5]  * m[10] - m[0] * m[6]  * m[9]  - m[4] * m[1] * m[10] + m[4] * m[2] * m[9]  + m[8]  * m[1] * m[6]  - m[8]  * m[2] * m[5];
+
+    return res;
+}
+
 optional(Mat4) mat4_inverse(Mat4 in_mat)
 {
-	optional(Mat4) out_matrix = {};
+    optional(Mat4) out_matrix = {};
 
-	Mat4 tmp = {};	
-	float* m = (float*) in_mat.d;
-	float* inv = (float*) tmp.d;
+    const float determinant = mat4_determinant(in_mat);
+    if (determinant != 0.0f)
+    {
+        const float inverse_determinant = 1.0f / determinant;
+        Mat4 result = mat4_mul_f32(mat4_adjoint(in_mat), inverse_determinant);
+        optional_set(out_matrix, result);
+    }
 
-	inv[0]  =  m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-	inv[4]  = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-	inv[8]  =  m[4] * m[9]  * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-	inv[12] = -m[4] * m[9]  * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
-	inv[1]  = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-	inv[5]  =  m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-	inv[9]  = -m[0] * m[9]  * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-	inv[13] =  m[0] * m[9]  * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-	inv[2]  =  m[1] * m[6]  * m[15] - m[1] * m[7]  * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7]  - m[13] * m[3] * m[6];
-	inv[6]  = -m[0] * m[6]  * m[15] + m[0] * m[7]  * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7]  + m[12] * m[3] * m[6];
-	inv[10] =  m[0] * m[5]  * m[15] - m[0] * m[7]  * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7]  - m[12] * m[3] * m[5];
-	inv[14] = -m[0] * m[5]  * m[14] + m[0] * m[6]  * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6]  + m[12] * m[2] * m[5];
-	inv[3]  = -m[1] * m[6]  * m[11] + m[1] * m[7]  * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9]  * m[2] * m[7]  + m[9]  * m[3] * m[6];
-	inv[7]  =  m[0] * m[6]  * m[11] - m[0] * m[7]  * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8]  * m[2] * m[7]  - m[8]  * m[3] * m[6];
-	inv[11] = -m[0] * m[5]  * m[11] + m[0] * m[7]  * m[9]  + m[4] * m[1] * m[11] - m[4] * m[3] * m[9]  - m[8]  * m[1] * m[7]  + m[8]  * m[3] * m[5];
-	inv[15] =  m[0] * m[5]  * m[10] - m[0] * m[6]  * m[9]  - m[4] * m[1] * m[10] + m[4] * m[2] * m[9]  + m[8]  * m[1] * m[6]  - m[8]  * m[2] * m[5];
-
-	const float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-	if (det != 0)
-	{
-		const float inv_det = 1.0 / det;	
-		tmp = mat4_mul_f32(tmp, inv_det);
-		optional_set(out_matrix, tmp);
-	}
-
-	return out_matrix;
+    return out_matrix;
 }
 
 bool mat4_nearly_equal(const Mat4 a, const Mat4 b)
@@ -237,5 +404,17 @@ Mat4 mat4_lerp(float t, const Mat4 a, const Mat4 b)
 		result.columns[i] = vec4_lerp(t, a.columns[i], b.columns[i]);
 	}
 	return result;
+}
+
+Mat4 mat3_to_mat4(const Mat3 m)
+{
+    return (Mat4) {
+        .d = {
+            m.d[0][0], m.d[0][1], m.d[0][2], 0.0f,
+            m.d[1][0], m.d[1][1], m.d[1][2], 0.0f,
+            m.d[2][0], m.d[2][1], m.d[2][2], 0.0f,
+            0.0f,      0.0f,      0.0f,      1.0f
+        }
+    };
 }
 

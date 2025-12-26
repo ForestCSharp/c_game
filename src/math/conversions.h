@@ -6,9 +6,9 @@
 
 //FCS TODO: Move other conversions here
 
-Mat4 quat_to_mat4(const Quat in_q)
+Mat3 quat_to_mat3(const Quat in_q)
 {
-    Quat q = in_q;
+	Quat q = in_q;
 
     // check normalized
     if (fabsf(quat_size_squared(q) - 1.0f) > 0.001)
@@ -26,14 +26,18 @@ Mat4 quat_to_mat4(const Quat in_q)
     float wx = w * x;   float yz = y * z;
     float xz = x * z;   float wz = w * z; 
 
-	return (Mat4) {
+	return (Mat3) {
 		.d = {
-			1 - 2 * y2 - 2 * z2,	2 * xy + 2 * wz, 		2 * xz - 2 * wy, 		0,
-			2 * xy - 2 * wz,		1 - 2 * x2 - 2 * z2,	2 * yz + 2 * wx, 		0,
-			2 * xz + 2 * wy, 		2 * yz - 2 * wx, 		1 - 2 * x2 - 2 * y2,	0,
-			0, 						0, 						0, 						1
+			1 - 2 * y2 - 2 * z2,	2 * xy + 2 * wz, 		2 * xz - 2 * wy,
+			2 * xy - 2 * wz,		1 - 2 * x2 - 2 * z2,	2 * yz + 2 * wx,
+			2 * xz + 2 * wy, 		2 * yz - 2 * wx, 		1 - 2 * x2 - 2 * y2
 		}
 	};
+}
+
+Mat4 quat_to_mat4(const Quat in_q)
+{
+	return mat3_to_mat4(quat_to_mat3(in_q));
 }
 
 Quat mat4_to_quat(const Mat4 in_mat)

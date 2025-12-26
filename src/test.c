@@ -1,8 +1,13 @@
 
-#include "math.h"
+#include "math/basic_math.h"
+#include "math/matrix.h"
+#include "math/quat.h"
+#include "math/conversions.h"
+#include "math/trs.h"
 #include "basic_types.h"
 #include "stdio.h"
 
+bool test_mat3_inverse();
 bool test_mat4_inverse();
 bool test_mat4_decompose();
 bool test_quat_mat_conversions();
@@ -10,6 +15,7 @@ bool test_quat_mat_conversions();
 int main()
 {
 	bool success = true;
+	success &= test_mat3_inverse();
 	success &= test_mat4_inverse();
 	success &= test_mat4_decompose();
 	success &= test_quat_mat_conversions();
@@ -23,6 +29,31 @@ int main()
 
 	printf("ALL TESTS PASSED!\n");
 	return 0;
+}
+
+bool test_mat3_inverse()
+{
+	Mat3 matrix = {
+		.d = {
+			12.0f, 2.0f, 1.0f,
+			0.0f, 0.0f, 1.0f,
+			0.0f, 1.0f, 5.0f
+		},
+	};
+
+	optional(Mat3) inverse = mat3_inverse(matrix);
+	assert(optional_is_set(inverse));
+
+	Mat3 result = mat3_mul_mat3(matrix, optional_get(inverse));	
+	for (i32 row = 0; row < 3; ++row)
+	{
+		for (i32 col = 0; col < 3; ++col)
+		{
+			assert(f32_nearly_equal(result.d[row][col], mat3_identity.d[row][col]));
+		}
+	}
+
+	return true;
 }
 
 bool test_mat4_inverse()

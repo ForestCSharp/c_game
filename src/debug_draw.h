@@ -352,11 +352,13 @@ void debug_draw_record_commands(DebugDrawContext* debug_draw_context, DebugDrawR
 typedef struct DebugDrawSphere
 {
 	Vec3 center;
+	Quat orientation;
 	f32 radius;
 	i32 latitudes;
 	i32 longitudes;
 	Vec4 color;
 	bool solid;
+	bool shade;
 } DebugDrawSphere;
 
 void debug_draw_sphere(DebugDrawContext* debug_draw_context, const DebugDrawSphere* debug_draw_sphere)
@@ -364,6 +366,8 @@ void debug_draw_sphere(DebugDrawContext* debug_draw_context, const DebugDrawSphe
 	DebugDrawData* draw_data = debug_draw_get_current_draw_data(debug_draw_context);	
 	sbuffer(DebugDrawVertex)* out_vertices = debug_draw_sphere->solid ? &draw_data->solid_vertices : &draw_data->wireframe_vertices;
 	sbuffer(u32)* out_indices = debug_draw_sphere->solid ? &draw_data->solid_indices : &draw_data->wireframe_indices;
+
+	const Mat3 orientation_matrix = quat_to_mat3(debug_draw_sphere->orientation);
 
 	//Figure out where our indices should start
 	const u32 index_offset = sb_count(*out_vertices);
@@ -394,20 +398,38 @@ void debug_draw_sphere(DebugDrawContext* debug_draw_context, const DebugDrawSphe
 
 			DebugDrawVertex vertex = {};
 
-			vertex.position = vec4_from_vec3(sphere_center, 1.0);
-			vertex.position.x += xz * cosf(longitudeAngle);	
-			vertex.position.y += y;
-			vertex.position.z += xz * sinf(longitudeAngle);		/* z = r * sin(phi) */
+			Vec3 local_position = vec3_zero;		
+			local_position.x += xz * cosf(longitudeAngle);	
+			local_position.y += y;
+			local_position.z += xz * sinf(longitudeAngle);		/* z = r * sin(phi) */
+			local_position = mat3_mul_vec3(orientation_matrix, local_position);
 
-			//vertex.uv.x = (float) j/longitudes;				/* s */
-			//vertex.uv.y = (float) i/latitudes;				/* t */
+			Vec3 world_position = vec3_add(sphere_center, local_position);
 
-			const f32 lengthInv = 1.0f / radius; 
-			vertex.normal.x = vertex.position.x * lengthInv;
-			vertex.normal.y = vertex.position.y * lengthInv;
-			vertex.normal.z = vertex.position.z * lengthInv;
+			vertex.position = vec4_from_vec3(world_position, 1.0);
+
+
+			Vec3 local_normal = vec3_scale(local_position, 1.0f / radius);
+			Vec3 world_normal = mat3_mul_vec3(orientation_matrix, local_normal);
+			vertex.normal = vec4_from_vec3(world_normal, 0.0f);
+
+			// 4. SEAMLESS COLORING (x,y,z,w)
+			f32 u = (f32)j / (f32)longitudes; 
+			f32 v = (f32)i / (f32)latitudes;
+
+			//FCS TODO:
+			//vertex.uv.x = u;
+			//vertex.uv.y = v;
 
 			vertex.color = debug_draw_sphere->color;
+			if (debug_draw_sphere->shade)
+			{
+				f32 brightness = 0.25f + pow(v, 2.0f);
+				//f32 brightness = i % (latitudes / 2);
+				vertex.color.x *= brightness;
+				vertex.color.y *= brightness;
+				vertex.color.z *= brightness;
+			}
 
 			sb_push(*out_vertices, vertex);
 		}
