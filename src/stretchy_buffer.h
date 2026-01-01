@@ -12,7 +12,8 @@
 #define sb_push  stb_sb_push
 #define sb_count stb_sb_count
 #define sb_add   stb_sb_add
-#define sb_last  stb_sb_last
+#define sb_last stb_sb_last
+#define sb_reserve stb_sb_reserve
 
 #define sb_del  stb_sb_del
 #define sb_deln stb_sb_deln
@@ -21,12 +22,12 @@
 
 #endif
 
-#define stb_sb_free(a) \
-    ((a) ? FCS_MEM_FREE(stb__sbraw(a)), a = NULL, 0 : 0) // FCS Modification: set input 'a' to NULL after free
+#define stb_sb_free(a) ((a) ? FCS_MEM_FREE(stb__sbraw(a)), a = NULL, 0 : 0) // FCS Modification: set input 'a' to NULL after free
 #define stb_sb_push(a, v) (stb__sbmaybegrow(a, 1), (a)[stb__sbn(a)++] = (v))
 #define stb_sb_count(a)   ((a) ? stb__sbn(a) : 0)
 #define stb_sb_add(a, n)  (stb__sbmaybegrow(a, n), stb__sbn(a) += (n), &(a)[stb__sbn(a) - (n)])
 #define stb_sb_last(a)    ((a)[stb__sbn(a) - 1])
+#define stb_sb_reserve(a, n) (stb__sbneedgrow(a, n) ? stb__sbgrow(a, n) : 0) //FCS Modification: reserve functionality
 
 // BEGIN FCS: adapted from stbds
 #define stb_sb_deln(a, i, n) (memmove(&(a)[i], &(a)[(i) + (n)], sizeof *(a) * (stb__sbn(a) - (n) - (i))), stb__sbn(a) -= (n))

@@ -93,6 +93,22 @@ bool vec2_nearly_equal(const Vec2 a, const Vec2 b)
 		&&	f32_nearly_equal(a.y, b.y);
 }
 
+Vec2 vec2_componentwise_min(const Vec2 a, const Vec2 b)
+{
+	return (Vec2) {
+		.x = a.x < b.x ? a.x : b.x,
+		.y = a.y < b.y ? a.y : b.y,
+	};
+}
+
+Vec2 vec2_componentwise_max(const Vec2 a, const Vec2 b)
+{
+	return (Vec2) {
+		.x = a.x > b.x ? a.x : b.x,
+		.y = a.y > b.y ? a.y : b.y,
+	};
+}
+
 typedef struct Vec3
 {
     float x;
@@ -217,6 +233,24 @@ bool vec3_nearly_equal(const Vec3 a, const Vec3 b)
 			&&	f32_nearly_equal(a.z, b.z);
 }
 
+Vec3 vec3_componentwise_min(const Vec3 a, const Vec3 b)
+{
+	return (Vec3) {
+		.x = a.x < b.x ? a.x : b.x,
+		.y = a.y < b.y ? a.y : b.y,
+		.z = a.z < b.z ? a.z : b.z,
+	};
+}
+
+Vec3 vec3_componentwise_max(const Vec3 a, const Vec3 b)
+{
+	return (Vec3) {
+		.x = a.x > b.x ? a.x : b.x,
+		.y = a.y > b.y ? a.y : b.y,
+		.z = a.z > b.z ? a.z : b.z,
+	};
+}
+
 typedef struct Vec4
 {
     float x;
@@ -310,6 +344,26 @@ bool vec4_nearly_equal(const Vec4 a, const Vec4 b)
 		&&	f32_nearly_equal(a.y, b.y)
 		&&	f32_nearly_equal(a.z, b.z)
 		&&	f32_nearly_equal(a.w, b.w);
+}
+
+Vec4 vec4_componentwise_min(const Vec4 a, const Vec4 b)
+{
+	return (Vec4) {
+		.x = a.x < b.x ? a.x : b.x,
+		.y = a.y < b.y ? a.y : b.y,
+		.z = a.z < b.z ? a.z : b.z,
+		.w = a.w < b.w ? a.w : b.w,
+	};
+}
+
+Vec4 vec4_componentwise_max(const Vec4 a, const Vec4 b)
+{
+	return (Vec4) {
+		.x = a.x > b.x ? a.x : b.x,
+		.y = a.y > b.y ? a.y : b.y,
+		.z = a.z > b.z ? a.z : b.z,
+		.w = a.w > b.w ? a.w : b.w,
+	};
 }
 
 // Floating point LHS

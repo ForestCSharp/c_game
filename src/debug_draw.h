@@ -4,8 +4,8 @@
 #include "math/math_lib.h"
 
 //FCS TODO: Remove after we support buffer resizing
-const u32 DEBUG_DRAW_MAX_VERTICES =	1000000;
-const u32 DEBUG_DRAW_MAX_INDICES =	1000000;
+const u32 DEBUG_DRAW_MAX_VERTICES =	10000000;
+const u32 DEBUG_DRAW_MAX_INDICES =	10000000;
 
 typedef struct DebugDrawVertex
 {

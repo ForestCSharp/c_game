@@ -429,29 +429,41 @@ int main()
 	PhysicsScene physics_scene = {};
 	physics_scene_init(&physics_scene);
 
-	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-		.position = vec3_new(0,0,0),
-		.orientation = quat_identity,
-		.linear_velocity = vec3_new(10,0,0),
-		.shape = {
-			.type = SHAPE_TYPE_SPHERE,
-			.sphere = {
-				.radius = 5,
-			},
-		},
-		.inverse_mass = 1.f,
-		.elasticity = 0.5f,
-		.friction = 0.5f,
-	});
+	for (i32 x = 0; x < 6; ++x)
+	{
+		for (i32 z = 0; z < 6; ++z)
+		{
+			const float radius = 5.f;
+			const float pos_x = (float)x - 1.0f * radius * 1.5f;
+			const float pos_y = 20;
+			const float pos_z = (float)z - 1.0f * radius * 1.5f;
 
+			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+				.position = vec3_new(pos_x,pos_y,pos_z),
+				.orientation = quat_identity,
+				.linear_velocity = vec3_new(0,0,0),
+				.shape = {
+					.type = SHAPE_TYPE_SPHERE,
+					.sphere = {
+						.radius = radius,
+					},
+				},
+				.inverse_mass = 1.f,
+				.elasticity = 0.5f,
+				.friction = 0.5f,
+			});
+		}
+	}
+
+	const float world_size = 1000;
 	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-		.position = vec3_new(0,-1000,0),
+		.position = vec3_new(0,-world_size, 0),
 		.orientation = quat_identity,
 		.linear_velocity = vec3_zero,
 		.shape = {
 			.type = SHAPE_TYPE_SPHERE,
 			.sphere = {
-				.radius = 1000,
+				.radius = world_size,
 			},
 		},
 		.inverse_mass = 0.f,
