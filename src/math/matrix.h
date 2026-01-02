@@ -59,6 +59,16 @@ Mat3 mat3_mul_mat3(const Mat3 a, const Mat3 b)
     return result;
 }
 
+Mat3 mat3_add_mat3(const Mat3 a, const Mat3 b)
+{
+    Mat3 result = {0};
+	for (i32 col = 0; col < 3; ++col)
+	{
+		result.columns[col] = vec3_add(a.columns[col], b.columns[col]);
+	}
+    return result;
+}
+
 Vec3 mat3_mul_vec3(const Mat3 m, const Vec3 v)
 {
     return (Vec3){

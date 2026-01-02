@@ -23,7 +23,7 @@
 #include "task/task.h"
 #include "string_type.h"
 
-#include "collision/collision.h"
+#include "physics/physics.h"
 
 typedef struct AnimationUpdateTaskData
 {
@@ -62,6 +62,7 @@ void animation_update_task(void* in_arg)
 		}
 	}
 
+	//FCS TODO: Tasks should have an arena that gets automatically freed so we don't have to manually manage this
 	sb_free(task_data->components_to_update);
 	FCS_MEM_FREE(task_data);
 }
@@ -435,7 +436,7 @@ int main()
 		{
 			const float radius = 5.f;
 			const float pos_x = (float)x - 1.0f * radius * 1.5f;
-			const float pos_y = 20;
+			const float pos_y = 30;
 			const float pos_z = (float)z - 1.0f * radius * 1.5f;
 
 			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
@@ -455,7 +456,7 @@ int main()
 		}
 	}
 
-	const float world_size = 1000;
+	const float world_size = 5000;
 	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
 		.position = vec3_new(0,-world_size, 0),
 		.orientation = quat_identity,
@@ -1384,14 +1385,20 @@ int main()
 				{
 					case SHAPE_TYPE_SPHERE: 
 					{
+						// Draw higher res sphere when radius is large enough
+						const i32 latitudes_and_longitudes	
+							= body->shape.sphere.radius > 500
+							? 48
+							: 12;
+
 						debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
 							.center = body->position,
 							.orientation = body->orientation,
 							.radius = body->shape.sphere.radius,
-							.latitudes = 48,
-							.longitudes = 48,
+							.latitudes = latitudes_and_longitudes,
+							.longitudes = latitudes_and_longitudes,
 							.color = vec4_new(1.0,1.0,1.0,1.0),
-							.solid = true,
+							.draw_type = DEBUG_DRAW_TYPE_SOLID,
 							.shade = true,
 						});
 						break;
@@ -1410,6 +1417,16 @@ int main()
 				.latitudes = 12,
 				.longitudes = 12,
 				.color = vec4_new(1,0,0,1),
+				.draw_type = DEBUG_DRAW_TYPE_WIREFRAME,
+			});
+
+			debug_draw_box(&debug_draw_context, &(DebugDrawBox){
+				.center = vec3_new(50,0,-1000),
+				.orientation = quat_new(vec3_new(0,1,0), 45.f * DEGREES_TO_RADIANS),
+				.extents = vec3_new(10,50,5),
+				.color = vec4_new(0,1,0,1),
+				.draw_type = DEBUG_DRAW_TYPE_WIREFRAME,
+				.shade = false,
 			});
 
 			debug_draw_end_frame(&debug_draw_context, &gpu_device, &global_uniform_data.view, &global_uniform_data.projection);

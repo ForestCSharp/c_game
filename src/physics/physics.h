@@ -10,6 +10,14 @@ typedef struct Bounds
 	Vec3 max;
 } Bounds;
 
+Bounds bounds_init()
+{
+	return (Bounds) {
+		.min = vec3_new(FLT_MAX, FLT_MAX, FLT_MAX),
+		.max = vec3_new(-FLT_MAX, -FLT_MAX, -FLT_MAX),
+	};
+}
+
 bool bounds_intersect(const Bounds a, const Bounds b)
 {
 	if (a.max.x < b.min.x || a.max.y < b.min.y || a.max.z < b.min.z)
@@ -48,6 +56,8 @@ void bounds_expand_bounds(Bounds* in_bounds, const Bounds* in_other_bounds)
 typedef enum ShapeType
 {
 	SHAPE_TYPE_SPHERE,
+	SHAPE_TYPE_BOX,
+	SHAPE_TYPE_CONVEX,
 } ShapeType;
 
 typedef struct SphereShape
@@ -55,16 +65,110 @@ typedef struct SphereShape
 	float radius;
 } SphereShape;
 
+typedef struct BoxShape
+{
+	Vec3 points[8];
+	Bounds bounds;
+} BoxShape;
+
+// creates a box from some arbitrary number of points by expanding a bounding box
+BoxShape box_shape_create(Vec3* in_points, i32 in_num_points)
+{
+	Bounds bounds = bounds_init();
+	bounds_expand_points(&bounds, in_points, in_num_points);
+	
+	return (BoxShape) {
+		.points = {
+			vec3_new(bounds.min.x, bounds.min.y, bounds.min.z),
+			vec3_new(bounds.max.x, bounds.min.y, bounds.min.z),
+			vec3_new(bounds.min.x, bounds.max.y, bounds.min.z),
+			vec3_new(bounds.min.x, bounds.min.y, bounds.max.z),
+
+			vec3_new(bounds.max.x, bounds.max.y, bounds.max.z),
+			vec3_new(bounds.min.x, bounds.max.y, bounds.max.z),
+			vec3_new(bounds.max.x, bounds.min.y, bounds.max.z),
+			vec3_new(bounds.max.x, bounds.max.y, bounds.min.z)
+		},
+		.bounds = bounds,
+	};
+}
+
 typedef struct Shape
 {
 	ShapeType type;	
 	union
 	{
 		SphereShape sphere;
+		BoxShape box;
 	};
 
 	Vec3 center_of_mass;
 } Shape;
+
+Mat3 shape_get_inertia_tensor_matrix(Shape* in_shape)
+{
+	switch (in_shape->type)
+	{
+		case SHAPE_TYPE_SPHERE:			
+		{
+			const SphereShape sphere = in_shape->sphere;
+			const float sphere_radius = sphere.radius;
+			const float sphere_radius_squared = sphere_radius * sphere_radius;
+			const float sphere_tensor_value = (2.0f / 5.0f) * sphere_radius_squared;
+			Mat3 sphere_tensor = {
+				.d[0][0] = sphere_tensor_value,
+				.d[1][1] = sphere_tensor_value,
+				.d[2][2] = sphere_tensor_value,
+			};
+			return sphere_tensor;
+		}
+		case SHAPE_TYPE_BOX:
+		{	
+			const BoxShape box = in_shape->box;
+			const float dx = box.bounds.max.x - box.bounds.min.x;
+			const float dy = box.bounds.max.y - box.bounds.min.y;
+			const float dz = box.bounds.max.z - box.bounds.min.z;
+
+			const float dx2 = dx * dx;
+			const float dy2 = dy * dy;
+			const float dz2 = dz * dz;
+
+			// Inertia tensor for box centered at (0,0,0)
+			Mat3 box_tensor = {
+				.d[0][0] = (dy2 + dz2) / 12.0f,
+				.d[1][1] = (dx2 + dz2) / 12.0f,
+				.d[2][2] = (dx2 + dy2) / 12.0f,
+			};
+
+			// Use parallel axis theorem to handle box not centered at origin
+			const Vec3 cm = vec3_new(
+				(box.bounds.max.x + box.bounds.min.x) * 0.5f,
+				(box.bounds.max.y + box.bounds.min.y) * 0.5f,
+				(box.bounds.max.z + box.bounds.min.z) * 0.5f
+			);
+
+			const Vec3 r = vec3_sub(vec3_zero, cm);
+			const f32 r_l2 = vec3_length_squared(r);
+
+			Mat3 pat_tensor = {
+				.columns[0] =	vec3_new(r_l2 - r.x * r.x,	r.x * r.y,			r.x * r.z),
+				.columns[1] =	vec3_new(r.y * r.x, 		r_l2 - r.y * r.y,	r.y * r.z),
+				.columns[2] =	vec3_new(r.z * r.x, 		r.z * r.y,			r_l2 - r.z * r.z)
+			};
+
+			return mat3_add_mat3(box_tensor, pat_tensor);
+
+			break;
+		}
+		case SHAPE_TYPE_CONVEX:
+		{
+			assert(false);
+			return mat3_identity;
+			break;
+		}
+	}
+	assert(false);
+}
 
 typedef struct PhysicsBody
 {
@@ -93,12 +197,48 @@ typedef struct PhysicsContact
 	PhysicsBody* body_b;
 } PhysicsContact;
 
+
+// Returns point on a convex shape that's furthest in a particular direction
+Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const Vec3 in_pos, const Quat in_orientation, const float in_bias)
+{
+	Vec3 out_support = vec3_zero;
+		
+	switch(in_body->shape.type)
+	{
+		case SHAPE_TYPE_SPHERE:
+		{
+			const SphereShape* sphere = &in_body->shape.sphere;
+			out_support = vec3_add(in_pos, vec3_scale(in_dir, sphere->radius * in_bias));
+			break;
+		}
+		case SHAPE_TYPE_BOX:
+		{
+			const BoxShape* box = &in_body->shape.box;
+			
+			break;
+		}
+		case SHAPE_TYPE_CONVEX:
+		{
+			assert(false);	
+			break;
+		}
+		default:
+		{
+			assert(false);
+		}
+	}
+
+	return out_support;
+}
+
+f32 physics_body_get_max_linear_speed(const PhysicsBody* in_body)
+{
+	return 0.f;	
+}
+
 Bounds physics_body_get_bounds(const PhysicsBody* in_body)
 {
-	Bounds out_bounds = {
-		.min = vec3_new(FLT_MAX, FLT_MAX, FLT_MAX),
-		.max = vec3_new(-FLT_MAX, -FLT_MAX, -FLT_MAX),
-	};
+	Bounds out_bounds = bounds_init();
 
 	switch(in_body->shape.type)
 	{
@@ -109,6 +249,16 @@ Bounds physics_body_get_bounds(const PhysicsBody* in_body)
 				.min = vec3_sub(in_body->position, vec3_new(radius, radius, radius)),
 				.max = vec3_add(in_body->position, vec3_new(radius, radius, radius)),
 			};
+			break;
+		}
+		case SHAPE_TYPE_BOX:
+		{	
+			assert(false);
+			break;
+		}
+		case SHAPE_TYPE_CONVEX:
+		{
+			assert(false);
 			break;
 		}
 		default:
@@ -140,24 +290,6 @@ Vec3 physics_body_get_center_of_mass_world(PhysicsBody* in_body)
 	return physics_body_local_to_world_space(in_body, model_space);
 }
 
-Mat3 physics_body_get_inertia_tensor_matrix(PhysicsBody* in_body)
-{
-	switch (in_body->shape.type)
-	{
-		case SHAPE_TYPE_SPHERE:			
-		{
-			const float sphere_radius = in_body->shape.sphere.radius;
-			const float sphere_tensor_value = (2.0f / 5.0f) * sphere_radius * sphere_radius;
-			Mat3 sphere_tensor = {
-				.d[0][0] = sphere_tensor_value,
-				.d[1][1] = sphere_tensor_value,
-				.d[2][2] = sphere_tensor_value,
-			};
-			return sphere_tensor;
-		}
-	}
-}
-
 Mat3 physics_body_get_inverse_inertia_tensor_local(PhysicsBody* in_body)
 {
 	switch (in_body->shape.type)
@@ -166,13 +298,26 @@ Mat3 physics_body_get_inverse_inertia_tensor_local(PhysicsBody* in_body)
 		{
 			//FCS TODO: This code might be common to all shapes...
 			// compute inverse of inertia tensor matrix
-			Mat3 result = optional_get(mat3_inverse(physics_body_get_inertia_tensor_matrix(in_body)));
+			Mat3 result = optional_get(mat3_inverse(shape_get_inertia_tensor_matrix(&in_body->shape)));
 			// scale that matrix by inverse mass
 			result = mat3_mul_f32(result, in_body->inverse_mass);
 			// return that matrix
 			return result;
 		}
+		case SHAPE_TYPE_BOX:
+		{	
+			assert(false);
+			return mat3_identity;
+			break;
+		}
+		case SHAPE_TYPE_CONVEX:
+		{
+			assert(false);
+			return mat3_identity;
+			break;
+		}
 	}
+	assert(false);
 }
 
 Mat3 physics_body_get_inverse_inertia_tensor_world(PhysicsBody* in_body)
@@ -247,7 +392,7 @@ void physics_body_update(PhysicsBody* in_body, float in_delta_time)
 		mat3_mul_mat3(
 			mat3_mul_mat3(
 				orientation_matrix, 
-				physics_body_get_inertia_tensor_matrix(in_body)
+				shape_get_inertia_tensor_matrix(&in_body->shape)
 			),
 			mat3_transpose(orientation_matrix)	
 		);
@@ -556,13 +701,14 @@ int pseudo_physics_body_compare(const void* a, const void* b)
 
 sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBody) in_bodies, const float in_delta_time)
 {
+	// Axis we project our min and max onto 
+	const Vec3 projection_axis = vec3_normalize(vec3_new(1,1,1));
+
 	const i32 num_bodies = sb_count(in_bodies);
 	const i32 num_pseudo_bodies = num_bodies * 2;
 
 	sbuffer(PseudoPhysicsBody) out_pseudo_bodies = NULL;
 	sb_reserve(out_pseudo_bodies, num_pseudo_bodies);
-
-	const Vec3 axis = vec3_normalize(vec3_new(1,1,1));
 
 	for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)
 	{
@@ -584,14 +730,14 @@ sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBo
 		// Create a min and max PseudoPhysicsBody by projecting the bounds min and max onto our 1D axis
 		PseudoPhysicsBody new_pseudo_body_min = {
 			.id = body_idx,
-			.value = vec3_dot(axis, bounds.min),
+			.value = vec3_dot(projection_axis, bounds.min),
 			.is_min = true,
 		};
 		sb_push(out_pseudo_bodies, new_pseudo_body_min);
 
 		PseudoPhysicsBody new_pseudo_body_max = {
 			.id = body_idx,
-			.value = vec3_dot(axis, bounds.max),
+			.value = vec3_dot(projection_axis, bounds.max),
 			.is_min = false,
 		};
 		sb_push(out_pseudo_bodies, new_pseudo_body_max);
@@ -684,10 +830,11 @@ void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
 	// Broadphase
 	sbuffer(CollisionPair) collision_pairs = physics_scene_broad_phase(in_physics_scene, in_delta_time);
 
-	printf("------------------------------\n");
+	printf("\033[2J\033[1;1H");
+	printf("-------------------------------------------\n");
 	printf("Num Collision Pairs: %i\n", sb_count(collision_pairs));
 	printf("Max Possible Pairs:  %i\n", (num_bodies * (num_bodies-1)) / 2);
-	printf("------------------------------\n");
+	printf("-------------------------------------------\n");
 
 	// Narrowphase
 	const i32 max_contacts = num_bodies * num_bodies;
