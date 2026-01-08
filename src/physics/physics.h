@@ -3,55 +3,7 @@
 #include "basic_types.h"
 #include "math/math_lib.h"
 #include "stretchy_buffer.h"
-
-typedef struct Bounds
-{
-	Vec3 min;
-	Vec3 max;
-} Bounds;
-
-Bounds bounds_init()
-{
-	return (Bounds) {
-		.min = vec3_new(FLT_MAX, FLT_MAX, FLT_MAX),
-		.max = vec3_new(-FLT_MAX, -FLT_MAX, -FLT_MAX),
-	};
-}
-
-bool bounds_intersect(const Bounds a, const Bounds b)
-{
-	if (a.max.x < b.min.x || a.max.y < b.min.y || a.max.z < b.min.z)
-	{
-		return false;
-	}
-
-	if (a.min.x > b.max.x || a.min.y > b.max.y || a.min.z > b.max.z)
-	{
-		return false;
-	}
-
-	return true;
-}
-
-void bounds_expand_point(Bounds* in_bounds, const Vec3 in_point)
-{
-	in_bounds->min = vec3_componentwise_min(in_bounds->min, in_point);
-	in_bounds->max = vec3_componentwise_max(in_bounds->max, in_point);	
-}
-
-void bounds_expand_points(Bounds* in_bounds, const Vec3* in_points, const i32 in_num_points)
-{
-	for (i32 idx = 0; idx < in_num_points; ++idx)
-	{
-		bounds_expand_point(in_bounds, in_points[idx]);
-	}	
-}
-
-void bounds_expand_bounds(Bounds* in_bounds, const Bounds* in_other_bounds)
-{
-	bounds_expand_point(in_bounds, in_other_bounds->min);
-	bounds_expand_point(in_bounds, in_other_bounds->max);
-}
+#include "physics/convex_helpers.h"
 
 typedef enum ShapeType
 {
@@ -62,13 +14,16 @@ typedef enum ShapeType
 
 typedef struct SphereShape
 {
-	float radius;
+	f32 radius;
 } SphereShape;
+
+const i32 NUM_BOX_POINTS = 8;
 
 typedef struct BoxShape
 {
-	Vec3 points[8];
+	Vec3 points[NUM_BOX_POINTS];
 	Bounds bounds;
+	Vec3 center_of_mass;
 } BoxShape;
 
 // creates a box from some arbitrary number of points by expanding a bounding box
@@ -76,6 +31,8 @@ BoxShape box_shape_create(Vec3* in_points, i32 in_num_points)
 {
 	Bounds bounds = bounds_init();
 	bounds_expand_points(&bounds, in_points, in_num_points);
+
+	const Vec3 center_of_mass = vec3_scale(vec3_add(bounds.min, bounds.max), 0.5f);
 	
 	return (BoxShape) {
 		.points = {
@@ -90,6 +47,33 @@ BoxShape box_shape_create(Vec3* in_points, i32 in_num_points)
 			vec3_new(bounds.max.x, bounds.max.y, bounds.min.z)
 		},
 		.bounds = bounds,
+		.center_of_mass = center_of_mass,
+	};
+}
+
+typedef struct ConvexShape
+{
+	ConvexHull hull;
+	Bounds bounds;
+	Mat3 inertia_tensor;
+	Vec3 center_of_mass;
+} ConvexShape;
+
+ConvexShape convex_shape_create(const Vec3* in_points, const i32 in_num_points)
+{
+	ConvexHull hull = convex_hull_create(in_points, in_num_points);
+
+	Bounds bounds = bounds_init();
+	bounds_expand_points(&bounds, in_points, in_num_points);
+
+	const Mat3 inertia_tensor = convex_hull_calculate_inertia_tensor(&hull);
+	const Vec3 center_of_mass = convex_hull_calculate_center_of_mass(&hull);
+
+	return (ConvexShape) {
+		.hull = hull,
+		.bounds = bounds,
+		.inertia_tensor = inertia_tensor,
+		.center_of_mass = center_of_mass,
 	};
 }
 
@@ -100,9 +84,8 @@ typedef struct Shape
 	{
 		SphereShape sphere;
 		BoxShape box;
+		ConvexShape convex;
 	};
-
-	Vec3 center_of_mass;
 } Shape;
 
 Mat3 shape_get_inertia_tensor_matrix(Shape* in_shape)
@@ -112,9 +95,9 @@ Mat3 shape_get_inertia_tensor_matrix(Shape* in_shape)
 		case SHAPE_TYPE_SPHERE:			
 		{
 			const SphereShape sphere = in_shape->sphere;
-			const float sphere_radius = sphere.radius;
-			const float sphere_radius_squared = sphere_radius * sphere_radius;
-			const float sphere_tensor_value = (2.0f / 5.0f) * sphere_radius_squared;
+			const f32 sphere_radius = sphere.radius;
+			const f32 sphere_radius_squared = sphere_radius * sphere_radius;
+			const f32 sphere_tensor_value = (2.0f / 5.0f) * sphere_radius_squared;
 			Mat3 sphere_tensor = {
 				.d[0][0] = sphere_tensor_value,
 				.d[1][1] = sphere_tensor_value,
@@ -125,13 +108,13 @@ Mat3 shape_get_inertia_tensor_matrix(Shape* in_shape)
 		case SHAPE_TYPE_BOX:
 		{	
 			const BoxShape box = in_shape->box;
-			const float dx = box.bounds.max.x - box.bounds.min.x;
-			const float dy = box.bounds.max.y - box.bounds.min.y;
-			const float dz = box.bounds.max.z - box.bounds.min.z;
+			const f32 dx = box.bounds.max.x - box.bounds.min.x;
+			const f32 dy = box.bounds.max.y - box.bounds.min.y;
+			const f32 dz = box.bounds.max.z - box.bounds.min.z;
 
-			const float dx2 = dx * dx;
-			const float dy2 = dy * dy;
-			const float dz2 = dz * dz;
+			const f32 dx2 = dx * dx;
+			const f32 dy2 = dy * dy;
+			const f32 dz2 = dz * dz;
 
 			// Inertia tensor for box centered at (0,0,0)
 			Mat3 box_tensor = {
@@ -162,6 +145,7 @@ Mat3 shape_get_inertia_tensor_matrix(Shape* in_shape)
 		}
 		case SHAPE_TYPE_CONVEX:
 		{
+			#warning implement SHAPE_TYPE_CONVEX
 			assert(false);
 			return mat3_identity;
 			break;
@@ -177,9 +161,9 @@ typedef struct PhysicsBody
 	Vec3 linear_velocity;
 	Vec3 angular_velocity;
 	Shape shape;
-	float inverse_mass;
-	float elasticity;
-	float friction;
+	f32 inverse_mass;
+	f32 elasticity;
+	f32 friction;
 } PhysicsBody;
 
 typedef struct PhysicsContact
@@ -190,8 +174,8 @@ typedef struct PhysicsContact
 	Vec3 point_on_b_local;
 
 	Vec3 normal;
-	float separation_distance;
-	float time_of_impact;
+	f32 separation_distance;
+	f32 time_of_impact;
 
 	PhysicsBody* body_a;
 	PhysicsBody* body_b;
@@ -199,7 +183,7 @@ typedef struct PhysicsContact
 
 
 // Returns point on a convex shape that's furthest in a particular direction
-Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const Vec3 in_pos, const Quat in_orientation, const float in_bias)
+Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const Vec3 in_pos, const Quat in_orientation, const f32 in_bias)
 {
 	Vec3 out_support = vec3_zero;
 		
@@ -214,12 +198,28 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const V
 		case SHAPE_TYPE_BOX:
 		{
 			const BoxShape* box = &in_body->shape.box;
+			Vec3 max_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, box->points[0]));
+			f32 max_distance = vec3_dot(in_dir, max_point);
+
+			for (i32 point_idx = 1; point_idx < NUM_BOX_POINTS; ++point_idx)
+			{
+				const Vec3 current_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, box->points[point_idx]));
+				const f32 current_distance = vec3_dot(in_dir, current_point);
+				if (current_distance > max_distance)
+				{
+					max_point = current_point;
+					max_distance = current_distance;
+				}
+			}
+
+			Vec3 norm = vec3_scale(vec3_normalize(in_dir), in_bias);
+			return vec3_add(max_point, norm);	
 			
 			break;
 		}
 		case SHAPE_TYPE_CONVEX:
 		{
-			assert(false);	
+			#warning implement SHAPE_TYPE_CONVEX
 			break;
 		}
 		default:
@@ -231,9 +231,46 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const V
 	return out_support;
 }
 
-f32 physics_body_get_max_linear_speed(const PhysicsBody* in_body)
+f32 physics_body_get_max_linear_speed(const PhysicsBody* in_body, const Vec3 in_angular_velocity, const Vec3 in_dir)
 {
-	return 0.f;	
+	switch(in_body->shape.type)
+	{
+		case SHAPE_TYPE_SPHERE:
+		{
+			return 0.f;
+		}
+		case SHAPE_TYPE_BOX:
+		{
+			const BoxShape box = in_body->shape.box;
+			f32 max_speed = 0.f;
+			for (i32 i = 0; i < NUM_BOX_POINTS; ++i)
+			{
+				const Vec3 r = vec3_sub(box.points[i], box.center_of_mass);
+				const Vec3 linear_velocity = vec3_cross(in_angular_velocity, r);
+				const f32 point_speed = vec3_dot(in_dir, linear_velocity);
+				if (point_speed > max_speed) { max_speed = point_speed; }
+			}
+			return max_speed;
+		}
+		case SHAPE_TYPE_CONVEX:
+		{
+			const ConvexShape convex = in_body->shape.convex;
+			f32 max_speed = 0.f;
+			for (i32 i = 0; i < sb_count(convex.hull.points); ++i)
+			{
+				const Vec3 r = vec3_sub(convex.hull.points[i], convex.center_of_mass);
+				const Vec3 linear_velocity = vec3_cross(in_angular_velocity, r);
+				const f32 point_speed = vec3_dot(in_dir, linear_velocity);
+				if (point_speed > max_speed) { max_speed = point_speed; }
+			}
+			return max_speed;
+		}
+		default:
+		{
+			assert(false);
+			return 0.f;
+		}
+	}
 }
 
 Bounds physics_body_get_bounds(const PhysicsBody* in_body)
@@ -244,7 +281,8 @@ Bounds physics_body_get_bounds(const PhysicsBody* in_body)
 	{
 		case SHAPE_TYPE_SPHERE:
 		{
-			const float radius = in_body->shape.sphere.radius;
+			const SphereShape sphere = in_body->shape.sphere;
+			const f32 radius = sphere.radius;
 			out_bounds = (Bounds) {
 				.min = vec3_sub(in_body->position, vec3_new(radius, radius, radius)),
 				.max = vec3_add(in_body->position, vec3_new(radius, radius, radius)),
@@ -252,13 +290,52 @@ Bounds physics_body_get_bounds(const PhysicsBody* in_body)
 			break;
 		}
 		case SHAPE_TYPE_BOX:
-		{	
-			assert(false);
+		{
+			//FCS TODO: bounds_to_world helper
+			const BoxShape box = in_body->shape.box;
+			Vec3 corners[NUM_BOX_POINTS] =
+			{
+				vec3_new(box.bounds.min.x, box.bounds.min.y, box.bounds.min.z),
+				vec3_new(box.bounds.min.x, box.bounds.min.y, box.bounds.max.z),
+				vec3_new(box.bounds.min.x, box.bounds.max.y, box.bounds.min.z),
+				vec3_new(box.bounds.max.x, box.bounds.min.y, box.bounds.min.z),
+
+				vec3_new(box.bounds.max.x, box.bounds.max.y, box.bounds.max.z),
+				vec3_new(box.bounds.max.x, box.bounds.max.y, box.bounds.min.z),
+				vec3_new(box.bounds.max.x, box.bounds.min.y, box.bounds.max.z),
+				vec3_new(box.bounds.min.x, box.bounds.max.y, box.bounds.max.z),
+			};
+
+			for (i32 i = 0; i < NUM_BOX_POINTS; ++i)
+			{
+				corners[i] = vec3_add(quat_rotate_vec3(in_body->orientation, corners[i]), in_body->position);
+				bounds_expand_point(&out_bounds, corners[i]);
+			}
 			break;
 		}
 		case SHAPE_TYPE_CONVEX:
 		{
-			assert(false);
+			//FCS TODO: bounds_to_world helper
+			const ConvexShape convex = in_body->shape.convex;
+			Vec3 corners[NUM_BOX_POINTS] =
+			{
+				vec3_new(convex.bounds.min.x, convex.bounds.min.y, convex.bounds.min.z),
+				vec3_new(convex.bounds.min.x, convex.bounds.min.y, convex.bounds.max.z),
+				vec3_new(convex.bounds.min.x, convex.bounds.max.y, convex.bounds.min.z),
+				vec3_new(convex.bounds.max.x, convex.bounds.min.y, convex.bounds.min.z),
+
+				vec3_new(convex.bounds.max.x, convex.bounds.max.y, convex.bounds.max.z),
+				vec3_new(convex.bounds.max.x, convex.bounds.max.y, convex.bounds.min.z),
+				vec3_new(convex.bounds.max.x, convex.bounds.min.y, convex.bounds.max.z),
+				vec3_new(convex.bounds.min.x, convex.bounds.max.y, convex.bounds.max.z),
+			};
+
+			for (i32 i = 0; i < NUM_BOX_POINTS; ++i)
+			{
+				corners[i] = vec3_add(quat_rotate_vec3(in_body->orientation, corners[i]), in_body->position);
+				bounds_expand_point(&out_bounds, corners[i]);
+			}
+			break;
 			break;
 		}
 		default:
@@ -286,8 +363,27 @@ Vec3 physics_body_world_to_local_space(PhysicsBody* in_body, Vec3 in_world_point
 
 Vec3 physics_body_get_center_of_mass_world(PhysicsBody* in_body)
 {
-	Vec3 model_space = in_body->shape.center_of_mass;
-	return physics_body_local_to_world_space(in_body, model_space);
+	Vec3 local_space_center_of_mass = vec3_zero;;
+	switch (in_body->shape.type)
+	{
+		case SHAPE_TYPE_SPHERE:			
+		{
+			local_space_center_of_mass = vec3_zero;
+			break;
+		}
+		case SHAPE_TYPE_BOX:
+		{	
+			local_space_center_of_mass = in_body->shape.box.center_of_mass;
+			break;
+		}
+		case SHAPE_TYPE_CONVEX:
+		{
+			local_space_center_of_mass = in_body->shape.convex.center_of_mass;
+			break;
+		}
+	}
+
+	return physics_body_local_to_world_space(in_body, local_space_center_of_mass);
 }
 
 Mat3 physics_body_get_inverse_inertia_tensor_local(PhysicsBody* in_body)
@@ -306,12 +402,13 @@ Mat3 physics_body_get_inverse_inertia_tensor_local(PhysicsBody* in_body)
 		}
 		case SHAPE_TYPE_BOX:
 		{	
-			assert(false);
-			return mat3_identity;
-			break;
+			Mat3 result = optional_get(mat3_inverse(shape_get_inertia_tensor_matrix(&in_body->shape)));
+			result = mat3_mul_f32(result, in_body->inverse_mass);
+			return result;
 		}
 		case SHAPE_TYPE_CONVEX:
 		{
+			#warning implement SHAPE_TYPE_CONVEX
 			assert(false);
 			return mat3_identity;
 			break;
@@ -354,8 +451,8 @@ void physics_body_apply_impulse_angular(PhysicsBody* in_body, Vec3 in_impulse)
 	in_body->angular_velocity = vec3_add(in_body->angular_velocity, delta_angular_velocity);
 
 	// Clamp Angular Velocity to some max angular speed
-	const float max_angular_speed = 30.0f;
-	const float max_angular_speed_squared = max_angular_speed * max_angular_speed;
+	const f32 max_angular_speed = 30.0f;
+	const f32 max_angular_speed_squared = max_angular_speed * max_angular_speed;
 	if (vec3_length_squared(in_body->angular_velocity) > max_angular_speed_squared)
 	{
 		in_body->angular_velocity = vec3_scale(vec3_normalize(in_body->angular_velocity), max_angular_speed);
@@ -377,7 +474,7 @@ void physics_body_apply_impulse(PhysicsBody* in_body, Vec3 in_impulse, Vec3 in_l
 	physics_body_apply_impulse_angular(in_body, impulse_angular);
 }
 
-void physics_body_update(PhysicsBody* in_body, float in_delta_time)
+void physics_body_update(PhysicsBody* in_body, f32 in_delta_time)
 {	
 	// Update position based on linear velocity
 	in_body->position = vec3_add(in_body->position, vec3_scale(in_body->linear_velocity, in_delta_time));
@@ -425,24 +522,24 @@ bool ray_sphere_intersect(
 	const Vec3 in_ray_start, 
 	const Vec3 in_ray_dir, 
 	const Vec3 in_sphere_center, 
-	const float in_sphere_radius, 
-	float* out_t1, 
-	float* out_t2
+	const f32 in_sphere_radius, 
+	f32* out_t1, 
+	f32* out_t2
 )
 {
 	const Vec3 m = vec3_sub(in_sphere_center, in_ray_start);
-	const float a = vec3_dot(in_ray_dir, in_ray_dir);
-	const float b = vec3_dot(m, in_ray_dir);
-	const float c = vec3_dot(m,m) - (in_sphere_radius * in_sphere_radius);
-	const float delta = b * b - a * c;
+	const f32 a = vec3_dot(in_ray_dir, in_ray_dir);
+	const f32 b = vec3_dot(m, in_ray_dir);
+	const f32 c = vec3_dot(m,m) - (in_sphere_radius * in_sphere_radius);
+	const f32 delta = b * b - a * c;
 	if (delta < 0)
 	{
 		// no real solutions exist
 		return false;
 	}
 	
-	const float inv_a = 1.0f / a;
-	const float delta_root = sqrtf(delta);
+	const f32 inv_a = 1.0f / a;
+	const f32 delta_root = sqrtf(delta);
 	*out_t1 = inv_a * (b - delta_root);	
 	*out_t2 = inv_a * (b + delta_root);
 	return true;
@@ -455,10 +552,10 @@ bool physics_body_intersect_sphere_sphere(
 	const Vec3 in_pos_b,
 	const Vec3 in_vel_a,
 	const Vec3 in_vel_b,
-	const float in_delta_time,
+	const f32 in_delta_time,
 	Vec3* out_point_on_a,
 	Vec3* out_point_on_b,
-	float* out_time_of_impact
+	f32* out_time_of_impact
 )
 {
 	const Vec3 relative_velocity = vec3_sub(in_vel_a, in_vel_b);
@@ -467,17 +564,17 @@ bool physics_body_intersect_sphere_sphere(
 	const Vec3 ray_dir = vec3_sub(ray_end, ray_start);
 
 	const Vec3 combined_sphere_pos = in_pos_b;
-	const float combined_sphere_radius = in_sphere_a->radius + in_sphere_b->radius;
+	const f32 combined_sphere_radius = in_sphere_a->radius + in_sphere_b->radius;
 
-	float t0 = 0;
-	float t1 = 0;
+	f32 t0 = 0;
+	f32 t1 = 0;
 
 	if (vec3_length_squared(ray_dir) < 0.001f * 0.001f)
 	{
 		// ray_dir is too short, just check if already intersecting
 		const Vec3 a_to_b = vec3_sub(in_pos_b, in_pos_a);
-		const float radius = combined_sphere_radius + 0.001f;
-		const float radius_squared = radius * radius;
+		const f32 radius = combined_sphere_radius + 0.001f;
+		const f32 radius_squared = radius * radius;
 		if (vec3_length_squared(a_to_b) > radius_squared)
 		{
 			return false;
@@ -497,7 +594,7 @@ bool physics_body_intersect_sphere_sphere(
 		return false;
 	}
 
-	const float time_of_impact = (t0 < 0.0f) ? 0.0f : t0;
+	const f32 time_of_impact = (t0 < 0.0f) ? 0.0f : t0;
 
 	if (time_of_impact > in_delta_time)
 	{
@@ -515,7 +612,7 @@ bool physics_body_intersect_sphere_sphere(
 
 }
 
-bool physics_body_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, const float in_delta_time, PhysicsContact* in_contact)
+bool physics_body_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, const f32 in_delta_time, PhysicsContact* in_contact)
 {
 	in_contact->body_a = in_body_a;
 	in_contact->body_b = in_body_b;
@@ -578,11 +675,11 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 
 	const Vec3 point_on_a = in_contact->point_on_a_world;
 	const Vec3 point_on_b = in_contact->point_on_b_world;
-	const float elasticity = body_a->elasticity * body_b->elasticity;
+	const f32 elasticity = body_a->elasticity * body_b->elasticity;
 
-	const float inverse_mass_a = body_a->inverse_mass;
-	const float inverse_mass_b = body_b->inverse_mass;
-	const float inverse_mass_sum = inverse_mass_a + inverse_mass_b;
+	const f32 inverse_mass_a = body_a->inverse_mass;
+	const f32 inverse_mass_b = body_b->inverse_mass;
+	const f32 inverse_mass_sum = inverse_mass_a + inverse_mass_b;
 	
 	const Mat3 inverse_inertia_tensor_a = physics_body_get_inverse_inertia_tensor_world(body_a);
 	const Mat3 inverse_inertia_tensor_b = physics_body_get_inverse_inertia_tensor_world(body_b);
@@ -603,10 +700,10 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 		// Use inverse inertia tensors, direction vectors, and contact normal to compute angular factors
 		const Vec3 angular_ja = vec3_cross(mat3_mul_vec3(inverse_inertia_tensor_a, vec3_cross(ra, contact_normal)), ra);
 		const Vec3 angular_jb = vec3_cross(mat3_mul_vec3(inverse_inertia_tensor_b, vec3_cross(rb, contact_normal)), rb);
-		const float angular_factor = vec3_dot(vec3_add(angular_ja, angular_jb), contact_normal);
+		const f32 angular_factor = vec3_dot(vec3_add(angular_ja, angular_jb), contact_normal);
 
 		// Calculate collision impulse magnitude
-		const float collision_impulse_magnitude = (1.0f + elasticity) * vec3_dot(velocity_a_to_b, contact_normal) / (inverse_mass_sum + angular_factor);
+		const f32 collision_impulse_magnitude = (1.0f + elasticity) * vec3_dot(velocity_a_to_b, contact_normal) / (inverse_mass_sum + angular_factor);
 		// Collision impulse is in direction of contact normal
 		const Vec3 collision_impulse = vec3_scale(contact_normal, collision_impulse_magnitude);
 
@@ -618,10 +715,10 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 	{	// Friction Impulse
 
 		// Calculate friction values
-		const float friction_a = body_a->friction;
-		const float friction_b = body_b->friction;
+		const f32 friction_a = body_a->friction;
+		const f32 friction_b = body_b->friction;
 		// Total friction is product of both bodies' friction
-		const float friction = friction_a * friction_b;
+		const f32 friction = friction_a * friction_b;
 
 		// Scale contact normal based on similarity of contact normal to velocity_a_to_b
 		const Vec3 velocity_normal = vec3_scale(contact_normal, vec3_dot(contact_normal, velocity_a_to_b));
@@ -632,10 +729,10 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 		const Vec3 inertia_a = vec3_cross(mat3_mul_vec3(inverse_inertia_tensor_a, vec3_cross(ra, relative_velocity_tangent)), ra);
 		const Vec3 inertia_b = vec3_cross(mat3_mul_vec3(inverse_inertia_tensor_b, vec3_cross(rb, relative_velocity_tangent)), rb);
 		// Compute final inverse inertia
-		const float inverse_inertia = vec3_dot(vec3_add(inertia_a, inertia_b), relative_velocity_tangent);
+		const f32 inverse_inertia = vec3_dot(vec3_add(inertia_a, inertia_b), relative_velocity_tangent);
 
 		// Reduce mass by inverse_inertia
-		const float reduced_mass = 1.0f / (inverse_mass_sum + inverse_inertia);
+		const f32 reduced_mass = 1.0f / (inverse_mass_sum + inverse_inertia);
 		// Use reduced mass to compute friction impulse
 		const Vec3 friction_impulse = vec3_scale(velocity_tangent, reduced_mass * friction);
 		physics_body_apply_impulse(body_a, vec3_negate(friction_impulse), point_on_a);
@@ -647,8 +744,8 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 	{
 
 		// Move colliding objects to just outside of each other
-		const float ta = body_a->inverse_mass / inverse_mass_sum;
-		const float tb = body_b->inverse_mass / inverse_mass_sum;
+		const f32 ta = body_a->inverse_mass / inverse_mass_sum;
+		const f32 tb = body_b->inverse_mass / inverse_mass_sum;
 
 		const Vec3 ds = vec3_sub(in_contact->point_on_b_world, in_contact->point_on_a_world);
 		body_a->position = vec3_add(body_a->position, vec3_scale(ds, ta));
@@ -661,8 +758,8 @@ i32 physics_contact_compare(const void* in_a, const void* in_b)
 	const PhysicsContact* in_contact_a = (const PhysicsContact*) in_a;
 	const PhysicsContact* in_contact_b = (const PhysicsContact*) in_b;
 
-	const float toi_a = in_contact_a->time_of_impact;
-	const float toi_b = in_contact_b->time_of_impact;
+	const f32 toi_a = in_contact_a->time_of_impact;
+	const f32 toi_b = in_contact_b->time_of_impact;
 	return		toi_a < toi_b	? 	-1
 	  		:	toi_a == toi_b	?	0
 	  		: 						1;
@@ -687,19 +784,19 @@ void physics_scene_add_body(PhysicsScene* in_physics_scene, PhysicsBody* in_body
 
 typedef struct PseudoPhysicsBody
 {
-	int id;
-	float value;
+	i32 id;
+	f32 value;
 	bool is_min;
 } PseudoPhysicsBody;
 
-int pseudo_physics_body_compare(const void* a, const void* b)
+i32 pseudo_physics_body_compare(const void* a, const void* b)
 {
 	const PseudoPhysicsBody* pseudo_body_a = (const PseudoPhysicsBody*) a;
 	const PseudoPhysicsBody* pseudo_body_b = (const PseudoPhysicsBody*) b;
 	return (pseudo_body_a->value < pseudo_body_b->value) ? -1 : 1;
 }
 
-sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBody) in_bodies, const float in_delta_time)
+sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBody) in_bodies, const f32 in_delta_time)
 {
 	// Axis we project our min and max onto 
 	const Vec3 projection_axis = vec3_normalize(vec3_new(1,1,1));
@@ -723,7 +820,7 @@ sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBo
 		bounds_expand_point(&bounds, expanded_max);
 
 		// Also expand by some arbitrary extent to broader detection/rejection
-		const float epsilon = 0.01f;
+		const f32 epsilon = 0.01f;
 		bounds_expand_point(&bounds, vec3_add(bounds.min, vec3_scale(vec3_new(-1,-1,-1), epsilon)));
 		bounds_expand_point(&bounds, vec3_add(bounds.max, vec3_scale(vec3_new( 1, 1, 1), epsilon)));
 
@@ -749,22 +846,21 @@ sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBo
 	return out_pseudo_bodies;
 }
 
-//FCS TODO: Rename to idx_a, idx_b
 typedef struct CollisionPair
 {
-	int id_a;
-	int id_b;
+	i32 idx_a;
+	i32 idx_b;
 } CollisionPair;
 
 bool collision_pair_equals(CollisionPair* in_lhs, CollisionPair* in_rhs)
 {
-	return	(		(in_lhs->id_a == in_rhs->id_a)
-				&&	(in_lhs->id_b == in_rhs->id_b))
-		||	(		(in_lhs->id_a == in_rhs->id_b)
-				&&	(in_lhs->id_b == in_rhs->id_a));
+	return	(		(in_lhs->idx_a == in_rhs->idx_a)
+				&&	(in_lhs->idx_b == in_rhs->idx_b))
+		||	(		(in_lhs->idx_a == in_rhs->idx_b)
+				&&	(in_lhs->idx_b == in_rhs->idx_a));
 }
 
-sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene, float in_delta_time)
+sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene, f32 in_delta_time)
 {
 	sbuffer(CollisionPair) out_collision_pairs = NULL;
 
@@ -784,7 +880,7 @@ sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene,
 			if (!pseudo_body_a->is_min) { continue; }
 
 			CollisionPair new_collision_pair = {
-				.id_a = pseudo_body_a->id,
+				.idx_a = pseudo_body_a->id,
 			};
 
 			for (i32 j = i+1; j < num_pseudo_bodies; ++j)		
@@ -797,7 +893,7 @@ sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene,
 				// We only record a collision pair if we hit the MIN point of Body B	
 				if (!pseudo_body_b->is_min) { continue; }
 				
-				new_collision_pair.id_b = pseudo_body_b->id;
+				new_collision_pair.idx_b = pseudo_body_b->id;
 				sb_push(out_collision_pairs, new_collision_pair);
 			}
 		}
@@ -810,7 +906,7 @@ sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene,
 	return out_collision_pairs;
 }
 
-void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
+void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 {
 	const i32 num_bodies = sb_count(in_physics_scene->bodies);
 
@@ -821,7 +917,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
 
 		if (body->inverse_mass > 0.f)
 		{
-			float mass = 1.0f / body->inverse_mass;
+			f32 mass = 1.0f / body->inverse_mass;
 			Vec3 impulse_gravity = vec3_scale(vec3_new(0.f, -10.f, 0.f), mass * in_delta_time);
 			physics_body_apply_impulse_linear(body, impulse_gravity);
 		}
@@ -830,11 +926,11 @@ void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
 	// Broadphase
 	sbuffer(CollisionPair) collision_pairs = physics_scene_broad_phase(in_physics_scene, in_delta_time);
 
-	printf("\033[2J\033[1;1H");
-	printf("-------------------------------------------\n");
-	printf("Num Collision Pairs: %i\n", sb_count(collision_pairs));
-	printf("Max Possible Pairs:  %i\n", (num_bodies * (num_bodies-1)) / 2);
-	printf("-------------------------------------------\n");
+	//printf("\033[2J\033[1;1H");
+	//printf("-------------------------------------------\n");
+	//printf("Num Collision Pairs: %i\n", sb_count(collision_pairs));
+	//printf("Max Possible Pairs:  %i\n", (num_bodies * (num_bodies-1)) / 2);
+	//printf("-------------------------------------------\n");
 
 	// Narrowphase
 	const i32 max_contacts = num_bodies * num_bodies;
@@ -844,8 +940,8 @@ void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
 	for (i32 pair_idx = 0; pair_idx < sb_count(collision_pairs); ++pair_idx)
 	{
 		CollisionPair* collision_pair = &collision_pairs[pair_idx];
-		PhysicsBody* body_a = &in_physics_scene->bodies[collision_pair->id_a];
-		PhysicsBody* body_b = &in_physics_scene->bodies[collision_pair->id_b];
+		PhysicsBody* body_a = &in_physics_scene->bodies[collision_pair->idx_a];
+		PhysicsBody* body_b = &in_physics_scene->bodies[collision_pair->idx_b];
 
 		// Skip if both bodies have zero mass
 		if (body_a->inverse_mass <= 0.f && body_b->inverse_mass <= 0.f)
@@ -860,7 +956,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
 		}
 	}
 
-	// Free collision pairs
+	// Done with collision pairs. Free them 
 	sb_free(collision_pairs);
 
 	// Sort contacts by time of impact
@@ -871,12 +967,12 @@ void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
 	}
 
 	// peform physics body updates and contact resolution at each contact time of impact
-	float accumulated_delta_time = 0.f;
+	f32 accumulated_delta_time = 0.f;
 	for (i32 contact_idx = 0; contact_idx < sb_count(contacts); ++contact_idx)
 	{
 		PhysicsContact* contact = &contacts[contact_idx];
 
-		const float contact_delta_time = contact->time_of_impact - accumulated_delta_time;
+		const f32 contact_delta_time = contact->time_of_impact - accumulated_delta_time;
 
 		PhysicsBody* body_a = contact->body_a;
 		PhysicsBody* body_b = contact->body_b;
@@ -902,7 +998,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, float in_delta_time)
 	sb_free(contacts);
 
 	// Update physics bodies for any remaining delta time
-	const float remaining_delta_time = in_delta_time - accumulated_delta_time;
+	const f32 remaining_delta_time = in_delta_time - accumulated_delta_time;
 	if (remaining_delta_time > 0.0f)
 	{
 		for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)

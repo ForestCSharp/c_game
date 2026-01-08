@@ -28,8 +28,8 @@
 typedef struct AnimationUpdateTaskData
 {
 	AnimatedModel* animated_model;
-	float delta_time;
-	float global_animation_rate;
+	f32 delta_time;
+	f32 global_animation_rate;
 	sbuffer(AnimatedModelComponent*) components_to_update;
 } AnimationUpdateTaskData;
 
@@ -37,8 +37,8 @@ void animation_update_task(void* in_arg)
 {
 	AnimationUpdateTaskData* task_data = (AnimationUpdateTaskData*) in_arg;
 	AnimatedModel* animated_model = task_data->animated_model;
-	const float delta_time = task_data->delta_time;
-	const float global_animation_rate = task_data->global_animation_rate;
+	const f32 delta_time = task_data->delta_time;
+	const f32 global_animation_rate = task_data->global_animation_rate;
 
 	for (i32 component_idx = 0; component_idx < sb_count(task_data->components_to_update); ++component_idx)
 	{
@@ -251,18 +251,18 @@ typedef struct CharacterUpdateData
 	Window* window;
 	GameObjectManager* game_object_manager;
 
-	float delta_time;
+	f32 delta_time;
 	Vec2 mouse_delta;
 
 } CharacterUpdateData;
 
-void camera_apply_rotation_clamped(Quat* q, float yaw_delta, float pitch_delta, float pitch_limit_degrees)
+void camera_apply_rotation_clamped(Quat* q, f32 yaw_delta, f32 pitch_delta, f32 pitch_limit_degrees)
 {
-	float pitch_limit_rad = pitch_limit_degrees * DEGREES_TO_RADIANS;
+	f32 pitch_limit_rad = pitch_limit_degrees * DEGREES_TO_RADIANS;
 
     // Extract current pitch
     Vec3 forward = quat_rotate_vec3(*q, vec3_new(0,0,-1)); // engine's forward
-    float current_pitch = asinf(CLAMP(forward.y, -1.0f, 1.0f)); // pitch relative to horizontal plane
+    f32 current_pitch = asinf(CLAMP(forward.y, -1.0f, 1.0f)); // pitch relative to horizontal plane
 
     // Apply yaw freely around world up
     if (!f32_nearly_zero(yaw_delta))
@@ -271,7 +271,7 @@ void camera_apply_rotation_clamped(Quat* q, float yaw_delta, float pitch_delta, 
         *q = quat_mul(q_yaw, *q);
     }
 
-	float allowed_delta = pitch_delta;
+	f32 allowed_delta = pitch_delta;
 
 	// Clamp to upper limit
 	if (current_pitch + pitch_delta > pitch_limit_rad)
@@ -299,7 +299,7 @@ void character_update(CharacterUpdateData* in_update_data)
 	Character* character = in_update_data->character;
 	Window* window = in_update_data->window;
 	GameObjectManager* game_object_manager = in_update_data->game_object_manager;
-	float delta_time = in_update_data->delta_time;
+	f32 delta_time = in_update_data->delta_time;
 	Vec2 mouse_delta = in_update_data->mouse_delta;
 
 	{   // Player Movement
@@ -348,7 +348,7 @@ void character_update(CharacterUpdateData* in_update_data)
 		move_vec = vec3_scale(move_vec, delta_time);
 
 		{
-			const float body_rot_lerp_speed = 10.0 * delta_time;
+			const f32 body_rot_lerp_speed = 10.0 * delta_time;
 
 			root_transform->trs.translation = vec3_add(old_translation, move_vec);
 			Quat old_body_rotation = root_transform->trs.rotation;
@@ -372,7 +372,7 @@ void character_update(CharacterUpdateData* in_update_data)
 			const f32 legs_up_dot_move_vec = fabsf(vec3_dot(legs_up, vec3_normalize(move_vec)));
 			if (!f32_nearly_equal(legs_up_dot_move_vec, 1.0f))
 			{
-				const float legs_rot_lerp_speed = 10.0 * delta_time;
+				const f32 legs_rot_lerp_speed = 10.0 * delta_time;
 				const Quat old_rotation = legs_transform->trs.rotation;
 				const Quat desired_rotation = mat4_to_quat(mat4_from_axes(vec3_normalize(move_vec), legs_up));
 				legs_transform->trs.rotation = quat_slerp(legs_rot_lerp_speed, old_rotation, desired_rotation);
@@ -385,7 +385,7 @@ void character_update(CharacterUpdateData* in_update_data)
 		TransformComponent* cam_root_transform = OBJECT_GET_COMPONENT(TransformComponent, game_object_manager, character->camera_root_object_handle);
 		assert(cam_root_transform);
 
-		const float cam_rotation_speed = 1.0f;
+		const f32 cam_rotation_speed = 1.0f;
 
 		if (!f32_nearly_zero(mouse_delta.x) || !f32_nearly_zero(mouse_delta.y))
 		{
@@ -430,14 +430,15 @@ int main()
 	PhysicsScene physics_scene = {};
 	physics_scene_init(&physics_scene);
 
-	for (i32 x = 0; x < 6; ++x)
+	i32 sqrt_sphere_count = 0;
+	for (i32 x = 0; x < sqrt_sphere_count; ++x)
 	{
-		for (i32 z = 0; z < 6; ++z)
+		for (i32 z = 0; z < sqrt_sphere_count; ++z)
 		{
-			const float radius = 5.f;
-			const float pos_x = (float)x - 1.0f * radius * 1.5f;
-			const float pos_y = 30;
-			const float pos_z = (float)z - 1.0f * radius * 1.5f;
+			const f32 radius = 5.f;
+			const f32 pos_x = (f32)x - 1.0f * radius * 1.5f;
+			const f32 pos_y = 30.f;
+			const f32 pos_z = (f32)z - 1.0f * radius * 1.5f;
 
 			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
 				.position = vec3_new(pos_x,pos_y,pos_z),
@@ -456,21 +457,56 @@ int main()
 		}
 	}
 
-	const float world_size = 5000;
-	physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-		.position = vec3_new(0,-world_size, 0),
-		.orientation = quat_identity,
-		.linear_velocity = vec3_zero,
-		.shape = {
-			.type = SHAPE_TYPE_SPHERE,
-			.sphere = {
-				.radius = world_size,
+	//const f32 world_size = 5000;
+	//physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+	//	.position = vec3_new(0,-world_size, 0),
+	//	.orientation = quat_identity,
+	//	.linear_velocity = vec3_zero,
+	//	.shape = {
+	//		.type = SHAPE_TYPE_SPHERE,
+	//		.sphere = {
+	//			.radius = world_size,
+	//		},
+	//	},
+	//	.inverse_mass = 0.f,
+	//	.elasticity = 1.0f,
+	//	.friction = 0.5f,
+	//});
+
+	{
+		const f32 w = 500;
+		const f32 h = 50;
+		const f32 d = 250;
+
+		Vec3 box_ground_points[] = {
+			vec3_new(	-w,	-h, d),
+			vec3_new(	 w,	-h, d),
+			vec3_new(	-w,	 h,	d),
+			vec3_new(	 w,	 h,	d),
+
+			vec3_new(	-w,	-h, -d),
+			vec3_new(	 w,	-h, -d),
+			vec3_new(	-w,	 h,	-d),
+			vec3_new(	 w,	 h,	-d),
+		};
+
+		physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			.position = vec3_new(0,-200,0),
+			.orientation = quat_new(vec3_new(0,1,0), 45.f * DEGREES_TO_RADIANS),
+			//.orientation = quat_identity,
+			.linear_velocity = vec3_zero,
+			.shape = {
+				.type = SHAPE_TYPE_BOX,
+				.box = box_shape_create(box_ground_points, ARRAY_COUNT(box_ground_points)),
 			},
-		},
-		.inverse_mass = 0.f,
-		.elasticity = 1.0f,
-		.friction = 0.5f,
-	});
+			.inverse_mass = 0.f,
+			.elasticity = 1.0f,
+			.friction = 0.5f,
+		});
+
+		//FCS TODO: Add Convex Shape
+
+	}
 
 	//GameObject + Components Setup
 	GameObjectManager game_object_manager = {};
@@ -497,7 +533,6 @@ int main()
 		printf("Failed to Load Animated Model\n");
 		return 1;
 	}
-
 
 	// Generate some random animated + static meshes
 	const i32 OBJECTS_TO_CREATE = 1000;
@@ -533,13 +568,13 @@ int main()
 			OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, new_object_handle, static_model_component_data);
 		}
 
-		const float spawn_scale = create_animated_model ? OBJECTS_TO_CREATE / 25.0f : OBJECTS_TO_CREATE / 100.0f;
+		const f32 spawn_scale = create_animated_model ? OBJECTS_TO_CREATE / 25.0f : OBJECTS_TO_CREATE / 100.0f;
 		const Vec3 scale = vec3_new(spawn_scale, spawn_scale, spawn_scale);
 		
-		const float spawn_span = OBJECTS_TO_CREATE / 2.0f;
+		const f32 spawn_span = OBJECTS_TO_CREATE / 2.0f;
 		Vec3 translation = vec3_new(
 			rand_f32(-spawn_span, spawn_span),
-			rand_f32(-spawn_span, spawn_span),
+			rand_f32(-spawn_span, spawn_span) + 500,
 			rand_f32(-spawn_span, spawn_span)
 		);
 
@@ -941,7 +976,7 @@ int main()
 		}
 
         // BEGIN Gui
-		static float global_animation_rate = 1.0f;
+		static f32 global_animation_rate = 1.0f;
 
 		GuiFrameState gui_frame_state = {
 			.screen_size = vec2_new(window_width, window_height),
@@ -1073,19 +1108,19 @@ int main()
 				printf("Hovering Third Button\n");
 			}
 
-			static float f = 0.25f;
-			gui_slider_float(&gui_context, &f, vec2_new(0, 2), "My Slider", vec2_new(15, 0), vec2_new(270, 50));
+			static f32 f = 0.25f;
+			gui_slider_f32(&gui_context, &f, vec2_new(0, 2), "My Slider", vec2_new(15, 0), vec2_new(270, 50));
 
-			float top_right_ui_position_y = 5.f;
+			f32 top_right_ui_position_y = 5.f;
 
 			{ // Rolling FPS, resets on click
 				double average_delta_time = accumulated_delta_time / (double)frames_rendered;
-				float average_fps = 1.0 / average_delta_time;
+				f32 average_fps = 1.0 / average_delta_time;
 
 				char buffer[128];
 				snprintf(buffer, sizeof(buffer), "FPS: %.1f", round(average_fps));
-				const float horizontal_padding = 5.f;
-				const float fps_button_size = 155.f;
+				const f32 horizontal_padding = 5.f;
+				const f32 fps_button_size = 155.f;
 				if (
 					gui_button(
 						&gui_context,
@@ -1104,8 +1139,8 @@ int main()
 			{ // Print Anim Update Time on Screen
 				char buffer[256];
 				snprintf(buffer, sizeof(buffer), "Anim Update Time: %.6f ms", anim_update_time_ms);
-				const float horizontal_padding = 5.f;
-				const float button_size = 400.f;
+				const f32 horizontal_padding = 5.f;
+				const f32 button_size = 400.f;
 				gui_button(
 					&gui_context, 
 					buffer, 
@@ -1121,8 +1156,8 @@ int main()
 				char buffer[512];
 				snprintf(buffer, sizeof(buffer), "Alloc Mem Usage: %i (%.2f MiB)", allocated_memory, allocated_memory / 1024.0 / 1024.0);
 
-				const float horizontal_padding = 5.f;
-				const float button_size = 600.f;
+				const f32 horizontal_padding = 5.f;
+				const f32 button_size = 600.f;
 				gui_button(
 					&gui_context, 
 					buffer, 
@@ -1139,8 +1174,8 @@ int main()
 				snprintf(buffer, sizeof(buffer), "Total Mem Usage: %lli (%.2f MiB)", total_memory, total_memory / 1024.0 / 1024.0);
 				//printf("Total Mem Usage: %lli (%.2f MiB)\n", total_memory, total_memory / 1024.0 / 1024.0);
 
-				const float horizontal_padding = 5.f;
-				const float button_size = 600.f;
+				const f32 horizontal_padding = 5.f;
+				const f32 button_size = 600.f;
 				gui_button(
 					&gui_context, 
 					buffer, 
@@ -1206,7 +1241,7 @@ int main()
 				show_bezier = !show_bezier;
 			}
 
-			gui_window_slider_float(&gui_context, &gui_window_1, &global_animation_rate, vec2_new(-5.0, 5.0), "Anim Rate");
+			gui_window_slider_f32(&gui_context, &gui_window_1, &global_animation_rate, vec2_new(-5.0, 5.0), "Anim Rate");
 
 			for (u32 i = 0; i < 12; ++i)
 			{
@@ -1283,12 +1318,12 @@ int main()
 			cam_component->camera_forward = vec3_normalize(vec3_sub(root_position, cam_position));
 			const Vec3 cam_target = vec3_add(cam_position, cam_component->camera_forward);
 			Mat4 view = mat4_look_at(cam_position, cam_target, cam_component->camera_up);
-			Mat4 proj = mat4_perspective(cam_component->fov, (float)window_width / (float)window_height, 0.01f, 4000.0f);
+			Mat4 proj = mat4_perspective(cam_component->fov, (f32)window_width / (f32)window_height, 0.01f, 4000.0f);
 
 			global_uniform_data.view = view;
 			global_uniform_data.projection = proj;
 
-			memcpy(&global_uniform_data.eye, &cam_position, sizeof(float) * 3);
+			memcpy(&global_uniform_data.eye, &cam_position, sizeof(f32) * 3);
 
 			GpuBufferWriteInfo global_uniform_buffer_write_info = {
 				.buffer = &global_uniform_buffers[current_frame],
@@ -1380,7 +1415,7 @@ int main()
 
 			for (i32 body_idx = 0; body_idx < sb_count(physics_scene.bodies); ++body_idx)
 			{
-				PhysicsBody* body = &physics_scene.bodies[body_idx];
+				const PhysicsBody* body = &physics_scene.bodies[body_idx];
 				switch (body->shape.type)
 				{
 					case SHAPE_TYPE_SPHERE: 
@@ -1403,7 +1438,27 @@ int main()
 						});
 						break;
 					}
-					//FCS TODO: Other Shapes
+					case SHAPE_TYPE_BOX:
+					{
+						BoxShape box = body->shape.box;
+						Bounds box_bounds = box.bounds;
+						Vec3 box_extents = bounds_get_dimensions(&box_bounds);
+
+						debug_draw_box(&debug_draw_context, &(DebugDrawBox){
+							.center = body->position,
+							.orientation = body->orientation,
+							.extents = box_extents,
+							.color = vec4_new(0,1,0,1),
+							.draw_type = DEBUG_DRAW_TYPE_SOLID,
+							.shade = true,
+						});
+						break;
+					}
+					case SHAPE_TYPE_CONVEX:
+					{
+						#warning Convex Shape rendering
+						break;
+					}
 				}
 			}	
 		}
@@ -1411,7 +1466,7 @@ int main()
 		// Debug Draw Pass
 		{
 			debug_draw_sphere(&debug_draw_context, &(DebugDrawSphere){
-				.center = vec3_new(0,0,-1000),
+				.center = vec3_new(0,200,-1000),
 				.orientation = quat_identity,
 				.radius = 25,
 				.latitudes = 12,
@@ -1421,7 +1476,7 @@ int main()
 			});
 
 			debug_draw_box(&debug_draw_context, &(DebugDrawBox){
-				.center = vec3_new(50,0,-1000),
+				.center = vec3_new(50,200,-1000),
 				.orientation = quat_new(vec3_new(0,1,0), 45.f * DEGREES_TO_RADIANS),
 				.extents = vec3_new(10,50,5),
 				.color = vec4_new(0,1,0,1),

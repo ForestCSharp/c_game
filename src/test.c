@@ -6,11 +6,13 @@
 #include "math/trs.h"
 #include "basic_types.h"
 #include "stdio.h"
+#include "stretchy_buffer.h"
 
 bool test_mat3_inverse();
 bool test_mat4_inverse();
 bool test_mat4_decompose();
 bool test_quat_mat_conversions();
+bool test_stretchy_buffer();
 
 int main()
 {
@@ -19,6 +21,7 @@ int main()
 	success &= test_mat4_inverse();
 	success &= test_mat4_decompose();
 	success &= test_quat_mat_conversions();
+	success &= test_stretchy_buffer();
 
 
 	if (!success)
@@ -111,4 +114,61 @@ bool test_quat_mat_conversions()
 	Mat4 m2 = quat_to_mat4(q2);
 
 	return quat_nearly_equal(q1, q2) && mat4_nearly_equal(m1,m2);
+}
+
+bool test_stretchy_buffer()
+{
+	sbuffer(i32) my_stretchy_buffer = NULL;
+
+	i32 my_array[4] = {
+		1,
+		2,
+		3,
+		4,
+	};
+
+	sb_append_array(my_stretchy_buffer, my_array, ARRAY_COUNT(my_array));
+
+	if (sb_count(my_stretchy_buffer) != ARRAY_COUNT(my_array))
+	{
+		printf("sb_append_array not behaving as expected. Counts differ.\n");
+		return false;
+	}
+
+	bool success = true;
+
+	for (i32 i = 0; i < sb_count(my_stretchy_buffer); ++i)
+	{
+		if (my_stretchy_buffer[i] != my_array[i])
+		{
+			printf("sb_append_array not behaving as expected. Elements differ.\n");
+			success = false;
+			break;
+		}
+	}
+
+	sbuffer(i32) new_stretchy_buffer = NULL;
+	sb_copy(new_stretchy_buffer, my_stretchy_buffer);
+
+	if (sb_count(new_stretchy_buffer) != sb_count(my_stretchy_buffer))
+	{
+		printf("sb_copy not behaving as expected. Counts differ.\n");
+		return false;
+	}
+
+
+	for (i32 i = 0; i < sb_count(new_stretchy_buffer); ++i)
+	{
+		if (new_stretchy_buffer[i] != my_stretchy_buffer[i])
+		{
+			printf("sb_copy not behaving as expected. Elements differ.\n");
+			success = false;
+			break;
+		}
+	}
+
+	sb_free(new_stretchy_buffer);
+	sb_free(my_stretchy_buffer);
+
+	return success;
 }

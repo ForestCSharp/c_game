@@ -27,18 +27,26 @@ const Mat3 mat3_identity = {
     },
 };
 
+const Mat3 mat3_zero = {
+    .d = {	
+        0, 0, 0,
+        0, 0, 0,
+        0, 0, 0
+    },
+};
+
 static inline void mat3_print(const Mat3 m)
 {
     printf("[");
-    for (u32 row = 0; row < 3; ++row)
+    for (i32 col = 0; col < 3; ++col)
     {
-        if (row > 0) printf(" ");
-        for (u32 col = 0; col < 3; ++col)
+        if (col > 0) printf(" ");
+        for (i32 row = 0; row < 3; ++row)
         {
-            printf("%f", m.d[row][col]);
-            if (row < 2 || col < 2) printf(", ");
+            printf("%f", m.d[col][row]);
+            if (col < 2 || row < 2) printf(", ");
         }
-        if (row < 2) printf("\n");
+        if (col < 2) printf("\n");
     }
     printf("]\n");
 }
@@ -46,13 +54,13 @@ static inline void mat3_print(const Mat3 m)
 Mat3 mat3_mul_mat3(const Mat3 a, const Mat3 b)
 {
     Mat3 result = {0};
-    for (i32 row = 0; row < 3; ++row)
+    for (i32 col = 0; col < 3; ++col)
     {
-        for (i32 col = 0; col < 3; ++col)
+    	for (i32 row = 0; row < 3; ++row)
         {
             for (i32 i = 0; i < 3; ++i)
             {
-                result.d[row][col] += a.d[row][i] * b.d[i][col];
+                result.d[col][row] += a.d[col][i] * b.d[i][row];
             }
         }
     }
@@ -81,18 +89,27 @@ Vec3 mat3_mul_vec3(const Mat3 m, const Vec3 v)
 Mat3 mat3_mul_f32(const Mat3 m, const float f)
 {
     Mat3 result = m;
-    for (i32 row = 0; row < 3; ++row)
-        for (i32 col = 0; col < 3; ++col)
-            result.d[row][col] *= f;
+
+    for (i32 col = 0; col < 3; ++col)
+	{
+    	for (i32 row = 0; row < 3; ++row)
+		{
+            result.d[col][row] *= f;
+		}
+	}
     return result;
 }
 
 Mat3 mat3_transpose(const Mat3 in_mat)
 {
     Mat3 result = {};
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-            result.d[i][j] = in_mat.d[j][i];
+    for (i32 col = 0; col < 3; ++col)
+	{
+        for (i32 row = 0; row < 3; ++row)
+		{
+            result.d[col][row] = in_mat.d[row][col];
+		}
+	}
     return result;
 }
 
@@ -145,12 +162,42 @@ optional(Mat3) mat3_inverse(Mat3 in_mat)
     return out_matrix;
 }
 
+float mat3_minor(const Mat3 m, i32 row, i32 col)
+{
+    // Create a 2x2 submatrix by skipping the specified row and column
+    Mat3 sub = {0};
+    i32 sub_row = 0;
+    for (i32 i = 0; i < 3; ++i)
+    {
+        if (i == row) { continue; }
+        i32 sub_col = 0;
+        for (i32 j = 0; j < 3; ++j)
+        {
+            if (j == col) { continue; }
+            sub.d[sub_row][sub_col] = m.d[i][j];
+            sub_col++;
+        }
+        sub_row++;
+    }
+    // The minor is the determinant of the 2x2 submatrix
+    return (sub.d[0][0] * sub.d[1][1]) - (sub.d[0][1] * sub.d[1][0]);
+}
+
+
+float mat3_cofactor(const Mat3 m, i32 row, i32 col)
+{
+    float minor = mat3_minor(m, row, col);
+    return ((row + col) % 2 == 0) ? minor : -minor;
+}
+
 bool mat3_nearly_equal(const Mat3 a, const Mat3 b)
 {
     for (i32 column_idx = 0; column_idx < 3; ++column_idx)
     {
         if (!vec3_nearly_equal(a.columns[column_idx], b.columns[column_idx]))
+		{
             return false;
+		}
     }
     return true;
 }
@@ -159,8 +206,10 @@ Mat3 mat3_lerp(float t, const Mat3 a, const Mat3 b)
 {
     t = CLAMP(t, 0.0f, 1.0f);
     Mat3 result = {};
-    for (i32 i = 0; i < 3; ++i)
-        result.columns[i] = vec3_lerp(t, a.columns[i], b.columns[i]);
+    for (i32 col = 0; col < 3; ++col)
+	{
+        result.columns[col] = vec3_lerp(t, a.columns[col], b.columns[col]);
+	}
     return result;
 }
 
@@ -184,24 +233,34 @@ const Mat4 mat4_identity = {
 	},
 };
 
+const Mat4 mat4_zero = {
+    .d = {	
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0, 
+		0, 0, 0, 0
+	},
+};
+
 static inline void mat4_print(const Mat4 m)
 {
     printf("[");
-    for (u32 row = 0; row < 4; ++row)
+    for (i32 col = 0; col < 4; ++col)
     {
-        if (row > 0)
+        if (col > 0)
         {
             printf(" ");
         }
-        for (u32 col = 0; col < 4; ++col)
+
+    	for (i32 row = 0; row < 4; ++row)
         {
-            printf("%f", m.d[row][col]);
+            printf("%f", m.d[col][row]);
             if (row < 3 || col < 3)
             {
                 printf(", ");
             }
         }
-        if (row < 3)
+        if (col < 3)
         {
             printf("\n");
         }
@@ -213,13 +272,13 @@ Mat4 mat4_mul_mat4(const Mat4 a, const Mat4 b)
 {
     Mat4 result = {0};
 
-    for (i32 row = 0; row < 4; ++row)
+    for (i32 col = 0; col < 4; ++col)
     {
-        for (i32 col = 0; col < 4; ++col)
+    	for (i32 row = 0; row < 4; ++row)
         {
             for (i32 i = 0; i < 4; ++i)
             {
-                result.d[row][col] += a.d[row][i] * b.d[i][col];
+                result.d[col][row] += a.d[col][i] * b.d[i][row];
             }
         }
     }
@@ -240,11 +299,11 @@ Vec4 mat4_mul_vec4(const Mat4 m, const Vec4 v)
 Mat4 mat4_mul_f32(const Mat4 m, const float f)
 {
 	Mat4 result = m;
-	for (i32 row = 0; row < 4; ++row)
+    for (i32 col = 0; col < 4; ++col)
     {
-        for (i32 col = 0; col < 4; ++col)
+		for (i32 row = 0; row < 4; ++row)
         {
-	 		result.d[row][col] *= f; 
+	 		result.d[col][row] *= f; 
 		}
 	}
 	return result;
@@ -253,11 +312,11 @@ Mat4 mat4_mul_f32(const Mat4 m, const float f)
 Mat4 mat4_transpose(const Mat4 in_mat)
 {
 	Mat4 result = {};
-	for (int i = 0; i < 4; ++i)
+	for (i32 col = 0; col < 4; ++col)
 	{
-		for (int j = 0; j < 4; ++j)
+		for (i32 row = 0; row < 4; ++row)
 		{
-			result.d[i][j] = in_mat.d[j][i];
+			result.d[col][row] = in_mat.d[row][col];
 		}
 	}
 	return result;
@@ -392,6 +451,34 @@ optional(Mat4) mat4_inverse(Mat4 in_mat)
     return out_matrix;
 }
 
+
+float mat4_minor(const Mat4 m, i32 row, i32 col)
+{
+    // Create a 3x3 submatrix by skipping the specified row and column
+    Mat3 sub = {0};
+    i32 sub_row = 0;
+    for (i32 i = 0; i < 4; ++i)
+    {
+        if (i == row) { continue; }
+        i32 sub_col = 0;
+        for (i32 j = 0; j < 4; ++j)
+        {
+            if (j == col) { continue; }
+            sub.d[sub_row][sub_col] = m.d[i][j];
+            sub_col++;
+        }
+        sub_row++;
+    }
+    // The minor is the determinant of the 3x3 submatrix
+    return mat3_determinant(sub);
+}
+
+float mat4_cofactor(const Mat4 m, i32 row, i32 col)
+{
+    float minor = mat4_minor(m, row, col);
+    return ((row + col) % 2 == 0) ? minor : -minor;
+}
+
 bool mat4_nearly_equal(const Mat4 a, const Mat4 b)
 {
 	for (i32 column_idx = 0; column_idx < 4; ++column_idx)
@@ -409,9 +496,9 @@ Mat4 mat4_lerp(float t, const Mat4 a, const Mat4 b)
 {
 	t = CLAMP(t, 0.0f, 1.0f);
 	Mat4 result = {};
-	for (i32 i = 0; i < 4; ++i)
+	for (i32 col = 0; col < 4; ++col)
 	{
-		result.columns[i] = vec4_lerp(t, a.columns[i], b.columns[i]);
+		result.columns[col] = vec4_lerp(t, a.columns[col], b.columns[col]);
 	}
 	return result;
 }

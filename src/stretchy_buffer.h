@@ -14,6 +14,8 @@
 #define sb_add   stb_sb_add
 #define sb_last stb_sb_last
 #define sb_reserve stb_sb_reserve
+#define sb_copy stb_sb_copy
+#define sb_append_array stb_sb_append_array
 
 #define sb_del  stb_sb_del
 #define sb_deln stb_sb_deln
@@ -36,6 +38,20 @@
 #define stb_sb_insn(a, i, n) (stb_sb_add((a), (n)), memmove(&(a)[(i) + (n)], &(a)[i], sizeof *(a) * (stb__sbn(a) - (n) - (i))))
 #define stb_sb_ins(a, i, v)  (stb_sb_insn((a), (i), 1), (a)[i] = (v))
 // END FCS: adapted from stbds
+
+// BEGIN FCS: copy operation
+#define stb_sb_copy(dst, src) \
+    (stb_sb_reserve(dst, stb_sb_count(src)), \
+     memcpy((dst), (src), sizeof *(src) * stb_sb_count(src)), \
+     stb__sbn(dst) = stb_sb_count(src))
+// END FCS copy operation
+
+// BEGIN FCS: append array operation
+#define stb_sb_append_array(a, ptr, count) \
+    (stb__sbmaybegrow(a, count), \
+     memcpy((a) + stb__sbn(a), (ptr), sizeof *(a) * (count)), \
+     stb__sbn(a) += (count))
+// END FCS: append array operation
 
 #define stb__sbraw(a) ((int*) (void*) (a) -2) // actual start of mem_alloc'd data (the two integers described below)
 #define stb__sbm(a)   stb__sbraw(a)[0] // array capacity

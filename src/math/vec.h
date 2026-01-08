@@ -3,10 +3,13 @@
 #include <stdio.h>
 #include "math/basic_math.h"
 
-typedef struct Vec2
+typedef union Vec2
 {
-    float x;
-    float y;
+	struct {
+    	f32 x;
+    	f32 y;
+	};
+	f32 v[2];
 } Vec2;
 
 const Vec2 vec2_zero = {.x = 0, .y = 0};
@@ -16,7 +19,7 @@ void vec2_print(const Vec2 vec)
     printf("[%f %f] ", vec.x, vec.y);
 }
 
-Vec2 vec2_new(float x, float y)
+Vec2 vec2_new(f32 x, f32 y)
 {
     Vec2 v = {
         .x = x,
@@ -33,7 +36,7 @@ Vec2 vec2_negate(const Vec2 v)
     };
 }
 
-Vec2 vec2_scale(const Vec2 v, float a)
+Vec2 vec2_scale(const Vec2 v, f32 a)
 {
     return (Vec2){
         .x = v.x * a,
@@ -55,31 +58,31 @@ Vec2 vec2_sub(const Vec2 a, const Vec2 b)
     return vec2_add(a, vec2_negate(b));
 }
 
-float vec2_length_squared(const Vec2 v)
+f32 vec2_length_squared(const Vec2 v)
 {
     return v.x * v.x + v.y * v.y;
 }
 
-float vec2_length(const Vec2 v)
+f32 vec2_length(const Vec2 v)
 {
     return sqrt(vec2_length_squared(v));
 }
 
 Vec2 vec2_normalize(const Vec2 v)
 {
-    float length = vec2_length(v);
+    f32 length = vec2_length(v);
     return (Vec2){
         .x = v.x / length,
         .y = v.y / length,
     };
 }
 
-Vec2 vec2_lerp(const float t, const Vec2 a, const Vec2 b)
+Vec2 vec2_lerp(const f32 t, const Vec2 a, const Vec2 b)
 {
     return vec2_add(vec2_scale(a, 1.0f - t), vec2_scale(b, t));
 }
 
-Vec2 vec2_rotate(const Vec2 v, const float radians)
+Vec2 vec2_rotate(const Vec2 v, const f32 radians)
 {
     return (Vec2){
         .x = v.x * cos(radians) - v.y * sin(radians),
@@ -109,11 +112,14 @@ Vec2 vec2_componentwise_max(const Vec2 a, const Vec2 b)
 	};
 }
 
-typedef struct Vec3
+typedef union Vec3
 {
-    float x;
-    float y;
-    float z;
+	struct {
+    	f32 x;
+    	f32 y;
+    	f32 z;
+	};
+	f32 v[3];
 } Vec3;
 
 declare_optional_type(Vec3);
@@ -126,7 +132,7 @@ void vec3_print(const Vec3 vec)
     printf("[%f %f %f] ", vec.x, vec.y, vec.z);
 }
 
-Vec3 vec3_new(float x, float y, float z)
+Vec3 vec3_new(f32 x, f32 y, f32 z)
 {
     Vec3 v = {.x = x, .y = y, .z = z};
     return v;
@@ -141,7 +147,7 @@ Vec3 vec3_negate(const Vec3 v)
     };
 }
 
-Vec3 vec3_scale(const Vec3 v, float a)
+Vec3 vec3_scale(const Vec3 v, f32 a)
 {
     return (Vec3){
         .x = v.x * a,
@@ -170,7 +176,7 @@ Vec3 vec3_mul_componentwise(const Vec3 a, const Vec3 b)
 	return vec3_new(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
-float vec3_dot(const Vec3 a, const Vec3 b)
+f32 vec3_dot(const Vec3 a, const Vec3 b)
 {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
@@ -185,19 +191,19 @@ Vec3 vec3_cross(const Vec3 a, const Vec3 b)
     return result;
 }
 
-float vec3_length_squared(const Vec3 v)
+f32 vec3_length_squared(const Vec3 v)
 {
     return vec3_dot(v, v);
 }
 
-float vec3_length(const Vec3 v)
+f32 vec3_length(const Vec3 v)
 {
     return sqrt(vec3_length_squared(v));
 }
 
 Vec3 vec3_normalize(const Vec3 v)
 {
-    float length = vec3_length(v);
+    f32 length = vec3_length(v);
 	if (length == 0.f)
 	{
 		return v;
@@ -210,14 +216,14 @@ Vec3 vec3_normalize(const Vec3 v)
     };
 }
 
-Vec3 vec3_lerp(const float t, const Vec3 a, const Vec3 b)
+Vec3 vec3_lerp(const f32 t, const Vec3 a, const Vec3 b)
 {
     return vec3_add(vec3_scale(a, 1.0f - t), vec3_scale(b, t));
 }
 
 Vec3 vec3_projection(const Vec3 v, const Vec3 dir)
 {
-    float dir_length_squared = vec3_length_squared(dir);
+    f32 dir_length_squared = vec3_length_squared(dir);
     return vec3_scale(dir, vec3_dot(v, dir) / dir_length_squared);
 }
 
@@ -251,12 +257,15 @@ Vec3 vec3_componentwise_max(const Vec3 a, const Vec3 b)
 	};
 }
 
-typedef struct Vec4
+typedef union Vec4
 {
-    float x;
-    float y;
-    float z;
-    float w;
+	struct {
+    	f32 x;
+    	f32 y;
+    	f32 z;
+    	f32 w;
+	};
+	f32 v[4];
 } Vec4;
 
 declare_optional_type(Vec4);
@@ -268,12 +277,12 @@ void vec4_print(const Vec4 vec)
     printf("[%f %f %f %f] \n", vec.x, vec.y, vec.z, vec.w);
 }
 
-Vec4 vec4_new(float x, float y, float z, float w)
+Vec4 vec4_new(f32 x, f32 y, f32 z, f32 w)
 {
     return (Vec4){.x = x, .y = y, .z = z, .w = w};
 }
 
-Vec4 vec4_from_vec3(const Vec3 v, const float w)
+Vec4 vec4_from_vec3(const Vec3 v, const f32 w)
 {
     return (Vec4){
         .x = v.x,
@@ -293,7 +302,7 @@ Vec4 vec4_negate(const Vec4 v)
     };
 }
 
-Vec4 vec4_scale(const Vec4 v, float a)
+Vec4 vec4_scale(const Vec4 v, f32 a)
 {
     return (Vec4){
         .x = v.x * a,
@@ -318,13 +327,13 @@ Vec4 vec4_sub(const Vec4 a, const Vec4 b)
     return vec4_add(a, vec4_negate(b));
 }
 
-float vec4_dot(const Vec4 a, const Vec4 b)
+f32 vec4_dot(const Vec4 a, const Vec4 b)
 {
-    float result = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+    f32 result = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
     return result;
 }
 
-Vec4 vec4_lerp(const float t, const Vec4 a, const Vec4 b)
+Vec4 vec4_lerp(const f32 t, const Vec4 a, const Vec4 b)
 {
     return vec4_add(vec4_scale(a, 1.0f - t), vec4_scale(b, t));
 }
@@ -366,9 +375,9 @@ Vec4 vec4_componentwise_max(const Vec4 a, const Vec4 b)
 	};
 }
 
-// Floating point LHS
+// f32ing point LHS
 
-Vec2 float_div_vec2(float a, const Vec2 v)
+Vec2 f32_div_vec2(f32 a, const Vec2 v)
 {
     return (Vec2){
         .x = a / v.x,
@@ -376,7 +385,7 @@ Vec2 float_div_vec2(float a, const Vec2 v)
     };
 }
 
-Vec3 float_div_vec3(float a, const Vec3 v)
+Vec3 f32_div_vec3(f32 a, const Vec3 v)
 {
     return (Vec3){
         .x = a / v.x,
@@ -385,7 +394,7 @@ Vec3 float_div_vec3(float a, const Vec3 v)
     };
 }
 
-Vec4 float_div_vec4(float a, const Vec4 v)
+Vec4 f32_div_vec4(f32 a, const Vec4 v)
 {
     return (Vec4){
         .x = a / v.x,

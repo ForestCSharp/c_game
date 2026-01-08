@@ -44,7 +44,7 @@ typedef struct GuiWindow
 {
     char name[256];
     GuiRect window_rect;
-    float scroll_amount;
+    f32 scroll_amount;
     bool is_expanded;
     bool is_open;
     bool is_resizable;
@@ -123,7 +123,7 @@ typedef struct GuiButtonStyleArgs
     Vec4 hovered_color;
     Vec4 held_color;
     GuiAlignment text_alignment;
-    float text_padding;
+    f32 text_padding;
 } GuiButtonStyleArgs;
 
 static const GuiButtonStyleArgs default_button_style = {
@@ -226,11 +226,11 @@ bool gui_font_get_uvs(const GuiFont* const in_font, char in_char, GuiRect* out_u
         i32 row = (in_char - in_font->first_char) / chars_per_row;
         i32 col = (in_char - in_font->first_char) - (row * chars_per_row);
 
-        float row_factor = (float) in_font->cell_height / (float) in_font->image_height;
-        float col_factor = (float) in_font->cell_width / (float) in_font->image_width;
+        f32 row_factor = (f32) in_font->cell_height / (f32) in_font->image_height;
+        f32 col_factor = (f32) in_font->cell_width / (f32) in_font->image_width;
 
-        float min_u = col * col_factor;
-        float min_v = row * row_factor;
+        f32 min_u = col * col_factor;
+        f32 min_v = row * row_factor;
 
         *out_uv_rect = (GuiRect){
 			.position =
@@ -417,7 +417,7 @@ void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect,
 	);
 }
 
-Vec2 recursive_bezier(const float t, const u32 num_points, const Vec2* in_points)
+Vec2 recursive_bezier(const f32 t, const u32 num_points, const Vec2* in_points)
 {
     assert(num_points > 0);
 
@@ -430,7 +430,7 @@ Vec2 recursive_bezier(const float t, const u32 num_points, const Vec2* in_points
     }
 }
 
-Vec2 recursive_bezier_deriv(const float t, const u32 num_points, const Vec2* in_points)
+Vec2 recursive_bezier_deriv(const f32 t, const u32 num_points, const Vec2* in_points)
 {
     assert(num_points > 0);
 
@@ -449,18 +449,18 @@ Vec2 recursive_bezier_deriv(const float t, const u32 num_points, const Vec2* in_
     }
 }
 
-void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const float width)
+void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const f32 width)
 {
     assert(num_points > 0);
     assert(num_samples > 0);
 
-    const float step_amount = 1.0f / (float) num_samples;
+    const f32 step_amount = 1.0f / (f32) num_samples;
 
-    float current_t = 0.0f;
+    f32 current_t = 0.0f;
 
     for (u32 current_idx = 0; current_idx < num_samples; ++current_idx)
     {
-        const float next_t = current_t + step_amount;
+        const f32 next_t = current_t + step_amount;
 
         const Vec2 current_pos = recursive_bezier(current_t, num_points, points);
         const Vec2 next_pos = recursive_bezier(next_t, num_points, points);
@@ -509,7 +509,7 @@ void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2
 }
 
 /* Same as above, but in screen-space */
-void gui_bezier(GuiContext* const in_context, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const float width)
+void gui_bezier(GuiContext* const in_context, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const f32 width)
 {
     Vec2 normalized_points[num_points];
     memcpy(normalized_points, points, sizeof(Vec2) * num_points);
@@ -532,17 +532,17 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
     {
         size_t num_chars = strlen(in_text);
 
-        const float char_size = 22.5f; // TODO: style setting
-        const float spacing = -12.0f; // TODO: style setting
+        const f32 char_size = 22.5f; // TODO: style setting
+        const f32 spacing = -12.0f; // TODO: style setting
 
         // TODO: Ensure we have enough height for char_size
 
         // Compute max possible chars
-        float bounding_rect_width = in_bounding_rect->size.x;
+        f32 bounding_rect_width = in_bounding_rect->size.x;
 
         // Compute baed on bounding rect width, but never greater than num_chars
         size_t max_possible_chars = MIN(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
-        float text_width = max_possible_chars * (char_size + spacing);
+        f32 text_width = max_possible_chars * (char_size + spacing);
 
         Vec2 current_offset;
         switch (in_alignment)
@@ -554,7 +554,7 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
             }
         case GUI_ALIGN_CENTER:
             {
-                float text_start_x = (in_bounding_rect->position.x + in_bounding_rect->size.x / 2.f) - text_width / 2.f;
+                f32 text_start_x = (in_bounding_rect->position.x + in_bounding_rect->size.x / 2.f) - text_width / 2.f;
                 current_offset = vec2_new(text_start_x, in_bounding_rect->position.y);
                 break;
             }
@@ -581,7 +581,7 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
                     .position = current_offset,
                     .size = vec2_new(char_size, char_size),
                 },
-                float_div_vec2(1.0, in_context->frame_state.screen_size));
+                f32_div_vec2(1.0, in_context->frame_state.screen_size));
 
             Vec4 text_color = vec4_new(1, 1, 1, 1); // TODO: arg
             gui_draw_box(&in_context->draw_data, &box_rect, &text_color, &uv_rect);
@@ -652,7 +652,7 @@ GuiClickState gui_make_button(
     {
         Vec4 button_color = gui_style_get_button_color(in_style_args, out_click_state);
 
-        const GuiRect normalized_draw_rect = gui_rect_scale(*in_draw_rect, float_div_vec2(1.0, in_context->frame_state.screen_size));
+        const GuiRect normalized_draw_rect = gui_rect_scale(*in_draw_rect, f32_div_vec2(1.0, in_context->frame_state.screen_size));
         gui_draw_box(&in_context->draw_data, &normalized_draw_rect, &button_color, NULL);
 
         GuiRect text_rect = *in_draw_rect;
@@ -674,7 +674,7 @@ GuiClickState gui_button(GuiContext* const in_context, const char* in_label, Vec
     return gui_make_button(in_context, in_label, &rect, &rect, &default_button_style, true);
 }
 
-GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const GuiRect* const in_rect, const bool is_active)
+GuiClickState gui_make_slider_f32(GuiContext* const in_context, f32* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const GuiRect* const in_rect, const bool is_active)
 {
 
     GuiButtonStyleArgs slider_button_style = default_button_style;
@@ -683,13 +683,13 @@ GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const d
     GuiClickState clicked_state = gui_make_button(in_context, "", in_rect, in_rect, &slider_button_style, is_active);
     if (clicked_state == GUI_HELD)
     {
-        const float current_mouse_x = in_context->frame_state.mouse_pos.x;
-        const float new_value = remap_clamped((current_mouse_x - in_rect->position.x) / in_rect->size.x, 0.0, 1.0, in_slider_bounds.x, in_slider_bounds.y);
+        const f32 current_mouse_x = in_context->frame_state.mouse_pos.x;
+        const f32 new_value = remap_clamped((current_mouse_x - in_rect->position.x) / in_rect->size.x, 0.0, 1.0, in_slider_bounds.x, in_slider_bounds.y);
         *data_ptr = new_value;
     }
 
-    const float current_percent = remap_clamped(*data_ptr, in_slider_bounds.x, in_slider_bounds.y, 0.0, 1.0);
-    const float filled_width = in_rect->size.x * current_percent;
+    const f32 current_percent = remap_clamped(*data_ptr, in_slider_bounds.x, in_slider_bounds.y, 0.0, 1.0);
+    const f32 filled_width = in_rect->size.x * current_percent;
     GuiRect normalized_filled_rect = gui_rect_scale(
         (GuiRect){
             .position = in_rect->position,
@@ -699,7 +699,7 @@ GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const d
                     .y = in_rect->size.y,
                 },
         },
-        float_div_vec2(1.0, in_context->frame_state.screen_size));
+        f32_div_vec2(1.0, in_context->frame_state.screen_size));
 
     const GuiButtonStyleArgs slider_filled_style = {
         .released_color = default_button_style.hovered_color,
@@ -720,9 +720,9 @@ GuiClickState gui_make_slider_float(GuiContext* const in_context, float* const d
     return clicked_state;
 }
 
-GuiClickState gui_slider_float(GuiContext* const in_context, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const Vec2 in_position, const Vec2 in_size)
+GuiClickState gui_slider_f32(GuiContext* const in_context, f32* const data_ptr, const Vec2 in_slider_bounds, const char* in_label, const Vec2 in_position, const Vec2 in_size)
 {
-    return gui_make_slider_float(in_context, data_ptr, in_slider_bounds, in_label,
+    return gui_make_slider_f32(in_context, data_ptr, in_slider_bounds, in_label,
         &(GuiRect){
             .position = in_position,
             .size = in_size,
@@ -731,12 +731,12 @@ GuiClickState gui_slider_float(GuiContext* const in_context, float* const data_p
 }
 
 // TODO: GuiWindowStyleArgs //TODO: Style Struct
-static const float window_top_bar_height = 35.0f;
-static const float window_row_padding_y = 2.5f;
-static const float window_row_height = 35.0f;
-static const float min_window_width = 50.0f;
-static const float window_scrollbar_width = 20.0f;
-static const float window_scrollbar_height = 40.0f;
+static const f32 window_top_bar_height = 35.0f;
+static const f32 window_row_padding_y = 2.5f;
+static const f32 window_row_height = 35.0f;
+static const f32 min_window_width = 50.0f;
+static const f32 window_scrollbar_width = 20.0f;
+static const f32 window_scrollbar_height = 40.0f;
 static const Vec2 window_resize_control_size = {15.f, 15.f};
 static const Vec4 window_color = {.2, .2, .2, .9};
 static const bool window_allow_overscroll = false;
@@ -757,7 +757,7 @@ void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window)
         // Main window area
         if (in_window->is_expanded)
         {
-            const GuiRect normalized_window_rect = gui_rect_scale(*window_rect, float_div_vec2(1.0, in_context->frame_state.screen_size));
+            const GuiRect normalized_window_rect = gui_rect_scale(*window_rect, f32_div_vec2(1.0, in_context->frame_state.screen_size));
             gui_draw_box(&in_context->draw_data, &normalized_window_rect, &window_color, NULL);
         }
 
@@ -818,7 +818,7 @@ bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_re
 
         // FCS TODO: Scrolling math
         const u32 first_visible_index = (u32) in_window->scroll_amount;
-        // const float first_visible_offset 322_fractional(in_window->scroll_amount);
+        // const f32 first_visible_offset 322_fractional(in_window->scroll_amount);
         const u32 max_visible_controls = (in_window->window_rect.size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
         const u32 last_visible_index = first_visible_index + max_visible_controls;
 
@@ -827,7 +827,7 @@ bool gui_window_compute_control_rect(GuiWindow* const in_window, GuiRect* out_re
         const Vec2 window_size = window_rect->size;
 
         // Need padding after first element as well, so add 1 to control index to account for that
-        float y_offset = window_pos.y + window_top_bar_height + ((window_row_height) * (float) control_index) + (window_row_padding_y * (float) (control_index + 1));
+        f32 y_offset = window_pos.y + window_top_bar_height + ((window_row_height) * (f32) control_index) + (window_row_padding_y * (f32) (control_index + 1));
         y_offset -= (window_row_height + window_row_padding_y) * first_visible_index;
 
         if (control_index >= first_visible_index && control_index < last_visible_index)
@@ -866,7 +866,7 @@ GuiClickState gui_window_button(GuiContext* const in_context, GuiWindow* const i
     return out_click_state;
 }
 
-GuiClickState gui_window_slider_float(GuiContext* const in_context, GuiWindow* const in_window, float* const data_ptr, const Vec2 in_slider_bounds, const char* in_label)
+GuiClickState gui_window_slider_f32(GuiContext* const in_context, GuiWindow* const in_window, f32* const data_ptr, const Vec2 in_slider_bounds, const char* in_label)
 {
     GuiClickState out_click_state = GUI_RELEASED;
 
@@ -874,7 +874,7 @@ GuiClickState gui_window_slider_float(GuiContext* const in_context, GuiWindow* c
     if (gui_window_compute_control_rect(in_window, &button_rect))
     {
 		const bool should_allow_input = !in_window->is_resizing && !in_window->is_scrolling;
-        out_click_state = gui_make_slider_float(in_context, data_ptr, in_slider_bounds, in_label, &button_rect, should_allow_input);
+        out_click_state = gui_make_slider_f32(in_context, data_ptr, in_slider_bounds, in_label, &button_rect, should_allow_input);
     }
 
     return out_click_state;
@@ -896,20 +896,20 @@ void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window)
             Vec2 prev_mouse_pos = in_context->prev_frame_state.mouse_pos;
             Vec2 mouse_delta = vec2_sub(mouse_pos, prev_mouse_pos);
 
-            const float scroll_area_length = window_rect->size.y - window_top_bar_height - window_resize_control_size.y;
+            const f32 scroll_area_length = window_rect->size.y - window_top_bar_height - window_resize_control_size.y;
             const bool has_space_for_scrollbar = scroll_area_length > window_scrollbar_height;
             if (has_space_for_scrollbar)
             { // Scrollbar FCS TODO: only draw if we need to be able to scroll
 
                 // TODO: option to allow overscrolling
                 const u32 max_visible_controls = (window_rect->size.y - window_top_bar_height) / (window_row_height + window_row_padding_y);
-                const float max_scroll_amount = (float) MAX(0, in_window->num_controls - (window_allow_overscroll ? 1 : max_visible_controls));
+                const f32 max_scroll_amount = (f32) MAX(0, in_window->num_controls - (window_allow_overscroll ? 1 : max_visible_controls));
                 in_window->scroll_amount = CLAMP(in_window->scroll_amount, 0.0, max_scroll_amount);
 
-                const float scrollbar_x = window_rect->position.x + window_rect->size.x - window_scrollbar_width;
-                const float scrollbar_y_min = window_rect->position.y + window_top_bar_height;
-                const float scrollbar_y_max = window_rect->position.y + window_rect->size.y - window_scrollbar_height - window_resize_control_size.y;
-                const float scrollbar_y = remap_clamped(in_window->scroll_amount, 0.0, max_scroll_amount, scrollbar_y_min, scrollbar_y_max);
+                const f32 scrollbar_x = window_rect->position.x + window_rect->size.x - window_scrollbar_width;
+                const f32 scrollbar_y_min = window_rect->position.y + window_top_bar_height;
+                const f32 scrollbar_y_max = window_rect->position.y + window_rect->size.y - window_scrollbar_height - window_resize_control_size.y;
+                const f32 scrollbar_y = remap_clamped(in_window->scroll_amount, 0.0, max_scroll_amount, scrollbar_y_min, scrollbar_y_max);
 
                 const GuiRect scrollbar_draw_rect = {
                     .position =
@@ -931,7 +931,7 @@ void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window)
                 if (in_window->is_scrolling)
                 {
                     // Compute dragged amount in window-space, and use that to recompute scroll_amount
-                    const float new_scrollbar_y = scrollbar_draw_rect.position.y + mouse_delta.y;
+                    const f32 new_scrollbar_y = scrollbar_draw_rect.position.y + mouse_delta.y;
                     in_window->scroll_amount = remap_clamped(new_scrollbar_y, scrollbar_y_min, scrollbar_y_max, 0.0, max_scroll_amount);
                 }
             }
@@ -954,7 +954,7 @@ void gui_window_end(GuiContext* const in_context, GuiWindow* const in_window)
                     window_rect->size.x = MAX(min_window_width, window_rect->size.x);
                     window_rect->size.y = MAX(window_resize_control_size.y, window_rect->size.y);
 
-                    float minimum_window_height = window_top_bar_height + window_resize_control_size.y;
+                    f32 minimum_window_height = window_top_bar_height + window_resize_control_size.y;
                     window_rect->size.y = MAX(minimum_window_height, window_rect->size.y);
                 }
             }

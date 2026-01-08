@@ -20,6 +20,13 @@ typedef int8_t i8;
 typedef float f32;
 typedef double f64;
 
+// ---- Swap ---- //
+#define SWAP(type, x, y) do { \
+    type temp = x;            \
+    x = y;                    \
+    y = temp;                 \
+} while(0)
+
 // ---- Array Size ---- //
 #define ARRAY_COUNT(in_array) (sizeof(in_array) / sizeof(in_array[0]))
 
