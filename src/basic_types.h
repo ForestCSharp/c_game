@@ -34,8 +34,20 @@ typedef double f64;
 #define BIT_COMPARE(bits, single_bit) ((bits & single_bit) == single_bit)
 
 // ---- Static Block  ---- //
-
 #define static_block(...) { static bool has_run = false; if (!has_run) { has_run = true, __VA_ARGS__ } }
+
+// ---- Alignment Helpers ---- //
+#define IS_POWER_OF_TWO(val) (((val) != 0) && (((val) & ((val) - 1)) == 0 ))
+#define ALIGN_PTR(ptr, align) \
+({ \
+	assert(IS_POWER_OF_TWO(align) && "Alignment must be a power of two"); \
+	(void *)(((uintptr_t)(ptr) + (align) - 1) & ~((align) - 1)); \
+})
+#define ALIGN_SIZE(size, align) \
+({ \
+	assert(IS_POWER_OF_TWO(align) && "Alignment must be a power of two"); \
+	(((size) + (align) - 1) & ~((align) - 1)); \
+})
 
 // ---- Optional Type ---- //
 #define declare_optional_type(type) \

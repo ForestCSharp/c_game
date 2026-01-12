@@ -3,6 +3,8 @@
 #include "basic_types.h"
 #include "math/math_lib.h"
 
+/* ------------------------------------------------ Bounds Helpers ------------------------------------------------ */
+
 typedef struct Bounds
 {
 	Vec3 min;
@@ -56,6 +58,8 @@ void bounds_expand_bounds(Bounds* in_bounds, const Bounds* in_other_bounds)
 	bounds_expand_point(in_bounds, in_other_bounds->min);
 	bounds_expand_point(in_bounds, in_other_bounds->max);
 }
+
+/* ------------------------------------------------ Convex Helpers ------------------------------------------------ */
 
 i32 furthest_point_in_dir(const Vec3* in_points, const i32 in_num_points, const Vec3 in_dir)
 {
@@ -135,17 +139,19 @@ Vec3 furthest_point_from_triangle(const Vec3* in_points, const i32 in_num_points
 	return in_points[max_idx];
 }
 
-typedef struct ConvexHullTri 
+/* ------------------------------------------------ Convex Hull ------------------------------------------------ */
+
+typedef struct ConvexTri 
 {
 	i32 a;
 	i32 b;
 	i32 c;
-} ConvexHullTri;
+} ConvexTri;
 
 typedef struct ConvexHull
 {
 	sbuffer(Vec3) points;
-	sbuffer(ConvexHullTri) tris;
+	sbuffer(ConvexTri) tris;
 } ConvexHull;
 
 ConvexHull convex_hull_build_tetrahedron(const Vec3* in_points, const i32 in_num_points)
@@ -185,22 +191,22 @@ ConvexHull convex_hull_build_tetrahedron(const Vec3* in_points, const i32 in_num
 	sb_push(out_hull.points, points[3]);
 
 	// Add tris
-	sb_push(out_hull.tris, ((ConvexHullTri) {
+	sb_push(out_hull.tris, ((ConvexTri) {
 		.a = 0,
 		.b = 1,
 		.c = 2,
 	}));
-	sb_push(out_hull.tris, ((ConvexHullTri) {
+	sb_push(out_hull.tris, ((ConvexTri) {
 		.a = 0,
 		.b = 2,
 		.c = 3,
 	}));
-	sb_push(out_hull.tris, ((ConvexHullTri) {
+	sb_push(out_hull.tris, ((ConvexTri) {
 		.a = 2,
 		.b = 1,
 		.c = 3,
 	}));
-	sb_push(out_hull.tris, ((ConvexHullTri) {
+	sb_push(out_hull.tris, ((ConvexTri) {
 		.a = 1,
 		.b = 0,
 		.c = 3,
@@ -218,7 +224,7 @@ void convex_hull_remove_internal_points(ConvexHull* in_convex_hull, sbuffer(Vec3
 		bool is_external = false;
 		for (int t = 0; t < sb_count(in_convex_hull->tris); ++t)
 		{
-			const ConvexHullTri* tri = &in_convex_hull->tris[t];
+			const ConvexTri* tri = &in_convex_hull->tris[t];
 			const Vec3 a = in_convex_hull->points[tri->a];
 			const Vec3 b = in_convex_hull->points[tri->b];
 			const Vec3 c = in_convex_hull->points[tri->c];
@@ -273,7 +279,7 @@ bool convex_edge_equals(const ConvexEdge lhs, const ConvexEdge rhs)
 		||	(lhs.a == rhs.b && lhs.b == rhs.a);
 }
 
-bool is_edge_unique(sbuffer(ConvexHullTri) in_tris, sbuffer(i32) in_facing_tri_idices, i32 in_ignore_tri, const ConvexEdge in_edge)
+bool is_edge_unique(sbuffer(ConvexTri) in_tris, sbuffer(i32) in_facing_tri_idices, i32 in_ignore_tri, const ConvexEdge in_edge)
 {
 	for (i32 i = 0; i < sb_count(in_facing_tri_idices); ++i)
 	{
@@ -283,7 +289,7 @@ bool is_edge_unique(sbuffer(ConvexHullTri) in_tris, sbuffer(i32) in_facing_tri_i
 			continue;
 		}
 
-		const ConvexHullTri tri = in_tris[tri_idx];
+		const ConvexTri tri = in_tris[tri_idx];
 		ConvexEdge edges[3] = {
 			{
 				.a = tri.a,
@@ -319,7 +325,7 @@ void convex_hull_add_point(ConvexHull* in_convex_hull, const Vec3 in_point)
 	sbuffer(i32) facing_tri_indices = NULL;
 	for (i32 i = sb_count(in_convex_hull->tris); i >= 0; --i)
 	{
-		const ConvexHullTri tri = in_convex_hull->tris[i];
+		const ConvexTri tri = in_convex_hull->tris[i];
 		const Vec3 a = in_convex_hull->points[tri.a];
 		const Vec3 b = in_convex_hull->points[tri.b];
 		const Vec3 c = in_convex_hull->points[tri.c];
@@ -335,7 +341,7 @@ void convex_hull_add_point(ConvexHull* in_convex_hull, const Vec3 in_point)
 	for (i32 i = 0; i < sb_count(facing_tri_indices); ++i)
 	{
 		const i32 tri_idx = facing_tri_indices[i];
-		const ConvexHullTri tri = in_convex_hull->tris[tri_idx];
+		const ConvexTri tri = in_convex_hull->tris[tri_idx];
 
 		ConvexEdge edges[3] = {
 			{
@@ -375,7 +381,7 @@ void convex_hull_add_point(ConvexHull* in_convex_hull, const Vec3 in_point)
 	for (i32 i = 0; i < sb_count(unique_edges); ++i)
 	{
 		const ConvexEdge edge = unique_edges[i];
-		sb_push(in_convex_hull->tris, ((ConvexHullTri) {
+		sb_push(in_convex_hull->tris, ((ConvexTri) {
 			.a = edge.a,
 			.b = edge.b,
 			.c = new_point_idx,
@@ -393,7 +399,7 @@ void convex_hull_remove_unreferenced_points(ConvexHull* in_convex_hull)
 		bool is_used = false;
 		for (i32 tri_idx = 0; tri_idx < sb_count(in_convex_hull->tris); ++tri_idx)
 		{
-			ConvexHullTri tri = in_convex_hull->tris[tri_idx];
+			ConvexTri tri = in_convex_hull->tris[tri_idx];
 			if (tri.a == point_idx || tri.b == point_idx || tri.c == point_idx)
 			{
 				is_used = true;
@@ -408,7 +414,7 @@ void convex_hull_remove_unreferenced_points(ConvexHull* in_convex_hull)
 
 		for (i32 tri_idx = 0; tri_idx < sb_count(in_convex_hull->tris); ++tri_idx)
 		{
-			ConvexHullTri* tri = &in_convex_hull->tris[tri_idx];
+			ConvexTri* tri = &in_convex_hull->tris[tri_idx];
 			if (tri->a > point_idx)
 			{
 				tri->a -= 1;
@@ -473,7 +479,7 @@ bool convex_hull_is_point_external(const ConvexHull* in_convex_hull, const Vec3 
 	bool is_external = false;
 	for (i32 t = 0; t < sb_count(in_convex_hull->tris); ++t)
 	{
-		const ConvexHullTri tri = in_convex_hull->tris[t];
+		const ConvexTri tri = in_convex_hull->tris[t];
 		const Vec3 a = in_convex_hull->points[tri.a];
 		const Vec3 b = in_convex_hull->points[tri.b];	
 		const Vec3 c = in_convex_hull->points[tri.c];
@@ -578,6 +584,8 @@ void convex_hull_destroy(ConvexHull* in_convex_hull)
 	sb_free(in_convex_hull->tris);
 }
 
+/* ------------------------------------------------ Signed Volume Helpers ------------------------------------------------ */
+
 i32 compare_signs(f32 a, f32 b)
 {
 	if (a > 0.0f && b > 0.0f)
@@ -593,7 +601,7 @@ i32 compare_signs(f32 a, f32 b)
 	return 0;
 }
 
-Vec2 signed_volume_1D(const Vec3 s1, const Vec3 s2)
+Vec2 signed_volume_1d(const Vec3 s1, const Vec3 s2)
 {
 	const Vec3 ab = vec3_sub(s2, s1);
 	const Vec3 ap = vec3_sub(vec3_zero, s1);
@@ -631,7 +639,7 @@ Vec2 signed_volume_1D(const Vec3 s1, const Vec3 s2)
 	return vec2_new(0.0f, 1.0f);
 }
 
-Vec3 signed_volume_2D(const Vec3 s1, const Vec3 s2, const Vec3 s3)
+Vec3 signed_volume_2d(const Vec3 s1, const Vec3 s2, const Vec3 s3)
 {
 	const Vec3 normal = vec3_cross(vec3_sub(s2, s1), vec3_sub(s3, s1));
 	const Vec3 p0 = vec3_scale(normal, vec3_dot(s1, normal) / vec3_length_squared(normal));
@@ -642,8 +650,8 @@ Vec3 signed_volume_2D(const Vec3 s1, const Vec3 s2, const Vec3 s3)
 	f32 area_max_squared = 0.f;
 	for (i32 i = 0; i < 3; ++i)
 	{
-		const i32 j = (i+1) % 3;		
-		const i32 k = (i+2) % 3;
+		const i32 j = (i + 1) % 3;		
+		const i32 k = (i + 2) % 3;
 
 		const Vec2 a = vec2_new(s1.v[j], s1.v[k]);
 		const Vec2 b = vec2_new(s2.v[j], s2.v[k]);
@@ -675,8 +683,8 @@ Vec3 signed_volume_2D(const Vec3 s1, const Vec3 s2, const Vec3 s3)
 	Vec3 areas;
 	for (i32 i = 0; i < 3; ++i)
 	{
-		const i32 j = (i+1) % 3;		
-		const i32 k = (i+2) % 3;
+		const i32 j = (i + 1) % 3;		
+		const i32 k = (i + 2) % 3;
 		
 		const Vec2 a = p;
 		const Vec2 b = s[j];
@@ -702,8 +710,8 @@ Vec3 signed_volume_2D(const Vec3 s1, const Vec3 s2, const Vec3 s3)
 	Vec3 lambdas = vec3_new(1,0,0);
 	for (i32 i = 0; i < 3; ++i)
 	{
-		const i32 k = (i+1) % 3;		
-		const i32 l = (i+2) % 3;
+		const i32 k = (i + 1) % 3;		
+		const i32 l = (i + 2) % 3;
 
 		const Vec3 edges_pts[3] = {
 			s1,
@@ -711,7 +719,7 @@ Vec3 signed_volume_2D(const Vec3 s1, const Vec3 s2, const Vec3 s3)
 			s3
 		};
 
-		Vec2 lambda_edge = signed_volume_1D(edges_pts[k], edges_pts[l]);
+		Vec2 lambda_edge = signed_volume_1d(edges_pts[k], edges_pts[l]);
 		Vec3 pt = vec3_add(vec3_scale(edges_pts[k], lambda_edge.x), vec3_scale(edges_pts[l], lambda_edge.y));
 		f32 pt_length_squared = vec3_length_squared(pt);
 		if (pt_length_squared < dist)
@@ -727,7 +735,7 @@ Vec3 signed_volume_2D(const Vec3 s1, const Vec3 s2, const Vec3 s3)
 }
 
 
-Vec4 signed_volume_3D(const Vec3 s1, const Vec3 s2, const Vec3 s3, const Vec3 s4)
+Vec4 signed_volume_3d(const Vec3 s1, const Vec3 s2, const Vec3 s3, const Vec3 s4)
 {
 	Mat4 m = {
 		.columns = {
@@ -739,10 +747,10 @@ Vec4 signed_volume_3D(const Vec3 s1, const Vec3 s2, const Vec3 s3, const Vec3 s4
 	};
 
 	Vec4 c4 = vec4_new(
-		mat4_cofactor(m, 3, 0),
-		mat4_cofactor(m, 3, 1),
-		mat4_cofactor(m, 3, 2),
-		mat4_cofactor(m, 3, 2)
+		mat4_cofactor(m, 0, 3),
+		mat4_cofactor(m, 1, 3),
+		mat4_cofactor(m, 2, 3),
+		mat4_cofactor(m, 3, 3)
 	);
 
 	const f32 det_m = c4.x + c4.y + c4.z + c4.w;
@@ -772,7 +780,7 @@ Vec4 signed_volume_3D(const Vec3 s1, const Vec3 s2, const Vec3 s3, const Vec3 s4
 			s4
 		};
 
-		const Vec3 lambdas_face = signed_volume_2D(face_pts[i], face_pts[j], face_pts[k]);
+		const Vec3 lambdas_face = signed_volume_2d(face_pts[i], face_pts[j], face_pts[k]);
 		Vec3 pt = vec3_zero;
 	  	pt = vec3_add(pt, vec3_scale(face_pts[i], lambdas_face.x));	
 	  	pt = vec3_add(pt, vec3_scale(face_pts[j], lambdas_face.y));
@@ -790,4 +798,386 @@ Vec4 signed_volume_3D(const Vec3 s1, const Vec3 s2, const Vec3 s3, const Vec3 s4
 	return lambdas;
 }
 
-#error: TODO: test_signed_volume_projection()
+void signed_volume_projection_test_case_pts(const Vec3 pts[4])
+{	
+	printf("-----------------------------------------------------------\n");
+
+	Vec4 lambdas = signed_volume_3d(pts[0], pts[1], pts[2], pts[3]);
+
+	Vec3 v = vec3_zero;
+	for (i32 i = 0; i < 4; ++i)
+	{	
+		v = vec3_add(v, vec3_scale(pts[i], lambdas.v[i]));
+	}
+	printf("Lambdas: %.3f %.3f %.3f %.3f\n", lambdas.x, lambdas.y, lambdas.z, lambdas.w);
+	printf("v: %.3f %.3f %.3f\n", v.x, v.y, v.z);
+}
+
+void signed_volume_projection_test_case_offset(Vec3 in_offset)
+{
+	const Vec3 pts[4] =
+	{
+		vec3_add(vec3_new(0,0,0), in_offset),
+		vec3_add(vec3_new(1,0,0), in_offset),
+		vec3_add(vec3_new(0,1,0), in_offset),
+		vec3_add(vec3_new(0,0,1), in_offset),
+	};
+
+	signed_volume_projection_test_case_pts(pts);
+}
+
+void signed_volume_projection_test()
+{
+	signed_volume_projection_test_case_offset(vec3_new(1,1,1));
+	signed_volume_projection_test_case_offset(vec3_scale(vec3_new(-1,-1,-1), 0.25f));
+	signed_volume_projection_test_case_offset(vec3_new(-1,-1,-1));
+	signed_volume_projection_test_case_offset(vec3_new(1,1,-0.5));
+
+	const Vec3 pts[4] =
+	{
+		vec3_new(51.1996613f, 26.1989613f, 1.91339576f),
+		vec3_new(-51.0567360f, -26.0565681f, -0.436143428f),
+		vec3_new(50.8978920f, -24.1035538f, -1.04042661f),
+		vec3_new(-49.1021080f, 25.8964462f, -1.04042661f),
+	};
+	signed_volume_projection_test_case_pts(pts);
+
+	exit(0);	
+}
+
+/* ------------------------------------------------ Minkowski Helpers ------------------------------------------------ */
+
+typedef struct MinkowskiPoint
+{
+	Vec3 xyz;
+	Vec3 pt_a;
+	Vec3 pt_b;
+} MinkowskiPoint;
+
+bool minkowski_point_equals(const MinkowskiPoint* a, const MinkowskiPoint* b)
+{
+	return 	vec3_equals(a->xyz, b->xyz)
+		&&	vec3_equals(a->pt_a, b->pt_a)
+		&&	vec3_equals(a->pt_b, b->pt_b);
+}
+
+bool simplex_signed_volumes(MinkowskiPoint* in_points, const i32 in_num_points, Vec3* out_new_dir, Vec4* out_lambdas)
+{
+	assert(in_points && in_num_points > 0);
+
+	*out_lambdas = vec4_zero;
+
+	const f32 epsilon_squared = 0.0001f * 0.0001f;
+
+	bool does_intersect = false;
+	switch (in_num_points)
+	{
+		case 2:
+		{
+			const Vec2 lambdas = signed_volume_1d(in_points[0].xyz, in_points[1].xyz);
+			Vec3 v = vec3_zero;
+			for (i32 i = 0; i < 2; ++i)
+			{
+				v = vec3_add(v, vec3_scale(in_points[i].xyz, lambdas.v[i]));
+			}
+			does_intersect = vec3_length_squared(v) < epsilon_squared;
+			*out_new_dir = vec3_negate(v);
+			*out_lambdas = vec4_new(lambdas.x, lambdas.y, 0.f, 0.f);
+			break;
+		}
+		case 3:
+		{
+			const Vec3 lambdas = signed_volume_2d(in_points[0].xyz, in_points[1].xyz, in_points[2].xyz);
+			Vec3 v = vec3_zero;
+			for (i32 i = 0; i < 3; ++i)
+			{
+				v = vec3_add(v, vec3_scale(in_points[i].xyz, lambdas.v[i]));
+			}
+			does_intersect = vec3_length_squared(v) < epsilon_squared;
+			*out_new_dir = vec3_negate(v);
+			*out_lambdas = vec4_new(lambdas.x, lambdas.y, lambdas.z, 0.f);
+			break;
+		}
+		case 4:
+		{
+			const Vec4 lambdas = signed_volume_3d(in_points[0].xyz, in_points[1].xyz, in_points[2].xyz, in_points[3].xyz);
+			Vec3 v = vec3_zero;
+			for (i32 i = 0; i < 4; ++i)
+			{
+				v = vec3_add(v, vec3_scale(in_points[i].xyz, lambdas.v[i]));
+			}
+			does_intersect = vec3_length_squared(v) < epsilon_squared;
+			*out_new_dir = vec3_negate(v);
+			*out_lambdas = vec4_new(lambdas.x, lambdas.y, lambdas.z, lambdas.w);
+			break;
+		}
+	}
+
+	return does_intersect;
+}
+
+bool simplex_has_point(const MinkowskiPoint* in_simplex_points, const i32 in_num_simplex_points, const MinkowskiPoint* in_new_point)
+{
+	const f32 precision = 1e-6f;
+	const f32 precision_squared = precision * precision;
+	for (i32 i = 0; i < in_num_simplex_points; ++i)
+	{
+		const MinkowskiPoint* current_point = &in_simplex_points[i];
+		const Vec3 delta = vec3_sub(current_point->xyz, in_new_point->xyz);
+		if (vec3_length_squared(delta) < precision_squared)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void sort_valids(MinkowskiPoint in_out_simplex_points[4], Vec4* in_out_lambdas)
+{
+	bool valids[4];
+
+	for (i32 i = 0; i < 4; ++i)
+	{
+		valids[i] = in_out_lambdas->v[i] != 0.0f ? true : false;
+	}
+
+	MinkowskiPoint valid_points[4];
+	memset(valid_points, 0, sizeof(MinkowskiPoint) * 4);
+	Vec4 valid_lambdas = vec4_zero;
+
+	int valid_count = 0;
+	for (i32 i = 0; i < 4; ++i)
+	{
+		if (valids[i])
+		{
+			valid_points[valid_count] = in_out_simplex_points[i];	
+			valid_lambdas.v[valid_count] = in_out_lambdas->v[i];
+			++valid_count;
+		}
+	}
+
+	for (i32 i = 0; i < 4; ++i)
+	{
+		in_out_simplex_points[i] = valid_points[i];
+		in_out_lambdas->v[i] = valid_lambdas.v[i];
+	}
+}
+
+i32 num_valids(const Vec4 in_lambdas)
+{
+	i32 num = 0;
+	for (i32 i = 0; i < 4; ++i)
+	{
+		if (in_lambdas.v[i] != 0.0f)
+		{
+			++num;
+		}
+	}
+	return num;
+}
+
+/* ------------------------------------------------ EPA Helpers ------------------------------------------------ */
+
+Vec3 barycentric_coordinates(Vec3 s1, Vec3 s2, Vec3 s3, const Vec3 in_pt)
+{
+	s1 = vec3_sub(s1,in_pt);
+	s2 = vec3_sub(s2,in_pt);
+	s3 = vec3_sub(s3,in_pt);
+
+	const Vec3 normal = vec3_cross(vec3_sub(s2,s1), vec3_sub(s3,s1));
+	const Vec3 p0 = vec3_scale(normal, vec3_dot(s1,normal) / vec3_length_squared(normal));
+	
+	// Find axis with greatest projected area
+	i32 idx = 0;
+	f32 area_max = 0;
+	for (i32 i = 0; i < 3; ++i)
+	{
+		i32 j = (i + 1) % 3;
+		i32 k = (i + 2) % 3;
+		const Vec2 a = vec2_new(s1.v[j], s1.v[k]);
+		const Vec2 b = vec2_new(s2.v[j], s2.v[k]);
+		const Vec2 c = vec2_new(s3.v[j], s3.v[k]);
+		const Vec2 ab = vec2_sub(b,a);
+		const Vec2 ac = vec2_sub(c,a);
+
+		f32 area = ab.x * ac.y - ab.y * ac.x;
+		if (area * area > area_max * area_max)
+		{
+			idx = i;
+			area_max = area;
+		}
+	}
+
+	// Project onto appropriate axis
+	const i32 x = (idx + 1) % 3;
+	const i32 y = (idx + 2) % 3;
+	const Vec2 s[3] =
+	{
+		vec2_new(s1.v[x], s1.v[y]),
+		vec2_new(s2.v[x], s2.v[y]),
+		vec2_new(s3.v[x], s3.v[y]),
+	};
+	const Vec2 p = vec2_new(p0.v[x], p0.v[y]);
+
+	// Get the sub-areas of the triangles formed from the projected origin and the edges
+	Vec3 areas;
+	for (i32 i = 0; i < 3; ++i)
+	{	
+		i32 j = (i + 1) % 3;
+		i32 k = (i + 2) % 3;
+
+		const Vec2 a = p;
+		const Vec2 b = s[j];
+		const Vec2 c = s[k];
+		const Vec2 ab = vec2_sub(b,a);
+		const Vec2 ac = vec2_sub(c,a);
+
+		areas.v[i] = ab.x * ac.y - ab.y * ac.x;
+	}
+
+	Vec3 lambdas = vec3_scale(areas, area_max);
+	if (!vec3_is_valid(lambdas))
+	{
+		lambdas = vec3_new(1,0,0);
+	}
+	return lambdas;	
+}
+
+Vec3 triangle_normal_direction(const ConvexTri in_tri, const MinkowskiPoint* in_points, const i32 in_num_points)
+{
+	assert(in_tri.a < in_num_points);
+	assert(in_tri.b < in_num_points);
+	assert(in_tri.c < in_num_points);
+
+	const Vec3 a = in_points[in_tri.a].xyz;
+	const Vec3 b = in_points[in_tri.b].xyz;
+	const Vec3 c = in_points[in_tri.c].xyz;
+	const Vec3 ab = vec3_sub(b,a);
+	const Vec3 ac = vec3_sub(c,a);
+
+	const Vec3 normal = vec3_normalize(vec3_cross(ab,ac));
+	return normal;
+}
+
+f32 signed_distance_to_triangle(const ConvexTri in_tri, const Vec3 in_test_point, const MinkowskiPoint* in_points, const i32 in_num_points)
+{
+	const Vec3 normal = triangle_normal_direction(in_tri, in_points, in_num_points);
+	const Vec3 a = in_points[in_tri.a].xyz;
+	const Vec3 a_to_test_point = vec3_sub(in_test_point, a);
+	const f32 dist = vec3_dot(normal, a_to_test_point);
+	return dist;
+}
+
+i32 closest_triangle(const ConvexTri* in_tris, const i32 in_num_tris, const MinkowskiPoint* in_points, const i32 in_num_points)
+{
+	i32 idx = -1;
+	f32 min_dist_squared = 1e10;
+	for (i32 i = 0; i < in_num_tris; ++i)
+	{
+		const ConvexTri tri = in_tris[i];
+		f32 dist = signed_distance_to_triangle(tri, vec3_new(0.f,0.f,0.f), in_points, in_num_points);
+		f32 dist_squared = dist * dist;
+		if (dist_squared < min_dist_squared)
+		{
+			idx = i;	
+			min_dist_squared = dist_squared;
+		}
+	}
+	return idx;
+}
+
+bool triangle_has_point(const Vec3 w, const ConvexTri* in_tris, const i32 in_num_tris, const MinkowskiPoint* in_points, const i32 in_num_points)
+{
+	const f32 epsilons = 0.001f * 0.001f;
+
+	for (i32 i = 0; i < in_num_tris; ++i)
+	{
+		const ConvexTri tri = in_tris[i];
+
+		if (vec3_length_squared(vec3_sub(w, in_points[tri.a].xyz)) < epsilons)
+		{
+			return true;
+		}
+
+		if (vec3_length_squared(vec3_sub(w, in_points[tri.b].xyz)) < epsilons)
+		{
+			return true;
+		}
+
+		if (vec3_length_squared(vec3_sub(w, in_points[tri.c].xyz)) < epsilons)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+i32 remove_triangles_facing_point(const Vec3 pt, sbuffer(ConvexTri)* in_out_tris, const MinkowskiPoint* in_points, const i32 in_num_points)
+{
+	i32 num_removed = 0;
+
+	for (i32 i = 0; i < sb_count(*in_out_tris); ++i)
+	{	
+		const ConvexTri tri = (*in_out_tris)[i];
+		if (signed_distance_to_triangle(tri, pt, in_points, in_num_points) > 0.f)
+		{
+			sb_del(*in_out_tris, i);	
+			--i;
+			++num_removed;
+		}
+	}
+	return num_removed;
+}
+
+void find_dangling_edges(const ConvexTri* in_tris, const i32 in_num_tris, sbuffer(ConvexEdge)* out_dangling_edges)
+{
+	assert(out_dangling_edges != NULL);
+	
+	// Reset out dangling edges
+	sb_free(*out_dangling_edges);
+
+	sbuffer(ConvexEdge) out_edges = NULL;
+
+	for (i32 idx_1 = 0; idx_1 < in_num_tris; ++idx_1)
+	{
+		const ConvexTri tri_1 = in_tris[idx_1];
+		ConvexEdge edges_1[3] =
+		{
+			{ .a = tri_1.a, .b = tri_1.b },
+			{ .a = tri_1.b, .b = tri_1.c },
+			{ .a = tri_1.c, .b = tri_1.a },
+		};
+
+		i32 counts[3] = {0,0,0};
+
+		for (i32 idx_2 = 0; idx_2 < in_num_tris; ++idx_2)
+		{
+			if (idx_2 == idx_1) { continue; }
+
+			const ConvexTri tri_2 = in_tris[idx_2];
+			ConvexEdge edges_2[3] =
+			{
+				{ .a = tri_2.a, .b = tri_2.b },
+				{ .a = tri_2.b, .b = tri_2.c },
+				{ .a = tri_2.c, .b = tri_2.a },
+			};	
+
+			for (i32 edges_1_idx = 0; edges_1_idx < 3; ++edges_1_idx)
+			{
+				if (convex_edge_equals(edges_1[edges_1_idx], edges_2[0])) { counts[edges_1_idx] += 1; }
+				if (convex_edge_equals(edges_1[edges_1_idx], edges_2[1])) { counts[edges_1_idx] += 1; }
+				if (convex_edge_equals(edges_1[edges_1_idx], edges_2[2])) { counts[edges_1_idx] += 1; }
+			}	
+		}
+
+		// An edge that isn't shared is dangling
+		for (i32 edges_1_idx = 0; edges_1_idx < 3; ++edges_1_idx)
+		{
+			if (counts[edges_1_idx] == 0)
+			{
+				sb_push(*out_dangling_edges, edges_1[edges_1_idx]);
+			}
+		}		
+	}
+}
+

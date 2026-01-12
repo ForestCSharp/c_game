@@ -90,6 +90,21 @@ Vec2 vec2_rotate(const Vec2 v, const f32 radians)
     };
 }
 
+bool vec2_is_valid(const Vec2 v)
+{
+	if (v.x * 0.f != v.x * 0.f)
+	{
+		return false;
+	}
+
+	if (v.y * 0.f != v.y * 0.f)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 bool vec2_nearly_equal(const Vec2 a, const Vec2 b)
 {
 	return 	f32_nearly_equal(a.x, b.x)
@@ -110,6 +125,12 @@ Vec2 vec2_componentwise_max(const Vec2 a, const Vec2 b)
 		.x = a.x > b.x ? a.x : b.x,
 		.y = a.y > b.y ? a.y : b.y,
 	};
+}
+
+bool vec2_equals(const Vec2 a, const Vec2 b)
+{
+	return a.x == b.x 
+		&& a.y == b.y;
 }
 
 typedef union Vec3
@@ -232,6 +253,26 @@ Vec3 vec3_plane_projection(const Vec3 v, const Vec3 plane_normal)
     return vec3_sub(v, vec3_projection(v, plane_normal));
 }
 
+bool vec3_is_valid(const Vec3 v)
+{
+	if (v.x * 0.f != v.x * 0.f)
+	{
+		return false;
+	}
+
+	if (v.y * 0.f != v.y * 0.f)
+	{
+		return false;
+	}
+
+	if (v.z * 0.f != v.z * 0.f)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 bool vec3_nearly_equal(const Vec3 a, const Vec3 b)
 {
 		return 	f32_nearly_equal(a.x, b.x)
@@ -255,6 +296,13 @@ Vec3 vec3_componentwise_max(const Vec3 a, const Vec3 b)
 		.y = a.y > b.y ? a.y : b.y,
 		.z = a.z > b.z ? a.z : b.z,
 	};
+}
+
+bool vec3_equals(const Vec3 a, const Vec3 b)
+{
+	return a.x == b.x 
+		&& a.y == b.y
+		&& a.z == b.z;
 }
 
 typedef union Vec4
@@ -347,6 +395,31 @@ Vec3 vec4_xyz(const Vec4 v)
     };
 }
 
+bool vec4_is_valid(const Vec4 v)
+{
+	if (v.x * 0.f != v.x * 0.f)
+	{
+		return false;
+	}
+
+	if (v.y * 0.f != v.y * 0.f)
+	{
+		return false;
+	}
+
+	if (v.z * 0.f != v.z * 0.f)
+	{
+		return false;
+	}
+
+	if (v.w * 0.f != v.w * 0.f)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 bool vec4_nearly_equal(const Vec4 a, const Vec4 b)
 {
 	return  f32_nearly_equal(a.x, b.x)
@@ -373,6 +446,14 @@ Vec4 vec4_componentwise_max(const Vec4 a, const Vec4 b)
 		.z = a.z > b.z ? a.z : b.z,
 		.w = a.w > b.w ? a.w : b.w,
 	};
+}
+
+bool vec4_equals(const Vec4 a, const Vec4 b)
+{
+	return a.x == b.x 
+		&& a.y == b.y
+		&& a.z == b.z
+		&& a.w == b.w;
 }
 
 // f32ing point LHS

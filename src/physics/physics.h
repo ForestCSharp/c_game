@@ -140,15 +140,10 @@ Mat3 shape_get_inertia_tensor_matrix(Shape* in_shape)
 			};
 
 			return mat3_add_mat3(box_tensor, pat_tensor);
-
-			break;
 		}
 		case SHAPE_TYPE_CONVEX:
 		{
-			#warning implement SHAPE_TYPE_CONVEX
-			assert(false);
-			return mat3_identity;
-			break;
+			return in_shape->convex.inertia_tensor;
 		}
 	}
 	assert(false);
@@ -219,7 +214,27 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const V
 		}
 		case SHAPE_TYPE_CONVEX:
 		{
-			#warning implement SHAPE_TYPE_CONVEX
+			const ConvexShape* convex = &in_body->shape.convex;
+			const ConvexHull* hull = &convex->hull;	
+			i32 num_convex_points = sb_count(hull->points);
+			assert(num_convex_points > 0);
+
+			Vec3 max_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, hull->points[0]));
+			f32 max_distance = vec3_dot(in_dir, max_point);
+
+			for (i32 point_idx = 1; point_idx < num_convex_points; ++point_idx)
+			{
+				const Vec3 current_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, hull->points[point_idx]));
+				const f32 current_distance = vec3_dot(in_dir, current_point);
+				if (current_distance > max_distance)
+				{
+					max_point = current_point;
+					max_distance = current_distance;
+				}
+			}
+
+			Vec3 norm = vec3_scale(vec3_normalize(in_dir), in_bias);
+			return vec3_add(max_point, norm);	
 			break;
 		}
 		default:
@@ -229,6 +244,273 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const V
 	}
 
 	return out_support;
+}
+
+/** Calls physics_body_support on both bodies, storing the results as well as their difference */
+MinkowskiPoint physics_bodies_minkowski_support(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, const Vec3 in_dir, const f32 in_bias)
+{
+	MinkowskiPoint out_point = {};
+
+	// Find point in body a furthest in dir
+	const Vec3 normalized_dir = vec3_normalize(in_dir);	
+	out_point.pt_a = physics_body_support(in_body_a, normalized_dir, in_body_a->position, in_body_a->orientation, in_bias);
+
+	// Find point in body b furthest in dir
+	const Vec3 reversed_dir = vec3_negate(normalized_dir);
+	out_point.pt_b = physics_body_support(in_body_b, reversed_dir, in_body_b->position, in_body_b->orientation, in_bias);
+
+	// xyz is minkowski sum point
+	out_point.xyz = vec3_sub(out_point.pt_a, out_point.pt_b);
+
+	return out_point;
+}
+
+bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b)
+{
+	const Vec3 origin = vec3_zero;
+
+	i32 num_points = 1;
+	MinkowskiPoint simplex_points[4];
+
+	simplex_points[0] = physics_bodies_minkowski_support(in_body_a, in_body_b, vec3_new(1,1,1), 0.0f);
+
+	f32 closest_dist = 1e10f;
+	bool contains_origin = false;
+	Vec3 new_dir = vec3_negate(simplex_points[0].xyz);
+	do
+	{
+		MinkowskiPoint new_point = physics_bodies_minkowski_support(in_body_a, in_body_b, new_dir, 0.0f);
+
+		// if new point is same as previous, then we can't expand further
+		if (simplex_has_point(simplex_points, num_points, &new_point))
+		{
+			break;
+		}
+
+		// Add new MinkowskiPoint to our array of points
+		simplex_points[num_points] = new_point;
+		++num_points;
+
+		// if the new point hasn't moved past the origin, then the origin cannot be in the set, so break
+		const f32 dot_dot = vec3_dot(new_dir, vec3_sub(new_point.xyz, origin));
+		if (dot_dot < 0.0f)
+		{
+			break;
+		}
+
+		// run simplex_signed_volumes, modifying new_dir and lambdas 
+		Vec4 lambdas;
+		contains_origin = simplex_signed_volumes(simplex_points, num_points, &new_dir, &lambdas);
+
+		// break if we contain the origin
+		if (contains_origin)
+		{
+			break;
+		}
+
+		// if new projection isn't closer, break
+		f32 dist = vec3_length_squared(new_dir);
+		if (dist >= closest_dist)
+		{
+			break;		
+		}
+
+		// Update closest_dist
+		closest_dist = dist;
+
+		// Use lambdas that support the new search dir, and invalidate any points that don't support it
+		sort_valids(simplex_points, &lambdas);
+		num_points = num_valids(lambdas);
+
+		// If we reached 4 total points in our simplex, then we contain the origin and the two bodies intersect
+		contains_origin = (num_points == 4);
+	}
+	while (!contains_origin);
+
+	return contains_origin;
+}
+
+f32 physics_bodies_epa_expand(
+	const PhysicsBody* in_body_a, 
+	const PhysicsBody* in_body_b, 
+	const f32 in_bias, 
+	const MinkowskiPoint in_simplex_points[4],
+	Vec3* out_point_on_a,
+	Vec3* out_point_on_b
+)
+{
+	sbuffer(MinkowskiPoint) points = NULL;
+	sbuffer(ConvexTri) tris = NULL;
+	sbuffer(ConvexEdge) dangling_edges = NULL;
+
+	// Add points from in_simplex_points and determine center
+	Vec3 center = vec3_zero;
+	for (i32 i = 0; i < 4; ++i)
+	{
+		sb_push(points, in_simplex_points[i]);
+		center = vec3_add(center, in_simplex_points[i].xyz);
+	}
+	center = vec3_scale(center, 0.25f);
+
+	// Build up triangles
+	for (i32 i = 0; i < 4; ++i)
+	{
+		const i32 j = (i + 1) % 4;	
+		const i32 k = (i + 2) % 4;
+
+		ConvexTri tri = {
+			.a = i,
+			.b = j,
+			.c = k,
+		};
+		
+		i32 unused_idx = (i + 3) % 4;
+
+		if (signed_distance_to_triangle(tri, points[unused_idx].xyz, points, sb_count(points)) > 0.0f)
+		{
+			SWAP(i32, tri.a, tri.b);
+		}
+
+		sb_push(tris, tri);
+	}
+
+	// Expand the simplex to find the closest face of the CSO to the origin
+	while (1)
+	{
+		const i32 idx = closest_triangle(tris, sb_count(tris), points, sb_count(points));
+		const Vec3 normal = triangle_normal_direction(tris[idx], points, sb_count(points));
+		const MinkowskiPoint new_point = physics_bodies_minkowski_support(in_body_a, in_body_b, normal, in_bias);
+
+		// if w already exists, we can't expand further
+		if (triangle_has_point(new_point.xyz, tris, sb_count(tris), points, sb_count(points)))
+		{
+			break;	
+		}
+
+		// if distance isn't beyond origin, can't expand
+		if (signed_distance_to_triangle(tris[idx], new_point.xyz, points, sb_count(points)) <= 0.0f)
+		{
+			break;
+		}
+
+		// Add new point
+		const i32 new_idx = sb_count(points);	
+		sb_push(points, new_point);
+
+		// Remove triangles that face this point
+		i32 num_removed = remove_triangles_facing_point(new_point.xyz, &tris, points, sb_count(points));
+		if (num_removed == 0)
+		{
+			break;
+		}
+
+		// Find dangling edges
+		find_dangling_edges(tris, sb_count(tris), &dangling_edges);
+		if (sb_count(dangling_edges) == 0)
+		{
+			break;
+		}
+
+		for (i32 i = 0; i < sb_count(dangling_edges); ++i)
+		{
+			const ConvexEdge edge = dangling_edges[i];
+
+			ConvexTri tri = {
+				.a = new_idx,
+				.b = edge.b,
+				.c = edge.a,
+			};
+
+			if (signed_distance_to_triangle(tri, center, points, sb_count(points)) > 0.0f)
+			{
+				SWAP(i32, tri.b, tri.c);
+			}
+
+			sb_push(tris, tri);
+		}
+	}
+
+	const i32 tri_idx = closest_triangle(tris, sb_count(tris), points, sb_count(points));
+	const ConvexTri tri = tris[tri_idx];
+
+	const Vec3 pt_a_xyz = points[tri.a].xyz;
+	const Vec3 pt_b_xyz = points[tri.b].xyz;	
+	const Vec3 pt_c_xyz = points[tri.c].xyz;
+	const Vec3 lambdas = barycentric_coordinates(pt_a_xyz, pt_b_xyz, pt_c_xyz, vec3_zero);
+
+	const Vec3 pt_a_a = points[tri.a].pt_a;
+	const Vec3 pt_b_a = points[tri.b].pt_a;	
+	const Vec3 pt_c_a = points[tri.c].pt_a;
+	*out_point_on_a = vec3_add(vec3_scale(pt_a_a, lambdas.v[0]), vec3_add(vec3_scale(pt_b_a, lambdas.v[1]), vec3_scale(pt_c_a, lambdas.v[2])));
+
+	const Vec3 pt_a_b = points[tri.a].pt_b;
+	const Vec3 pt_b_b = points[tri.b].pt_b;	
+	const Vec3 pt_c_b = points[tri.c].pt_b;
+	*out_point_on_b = vec3_add(vec3_scale(pt_a_b, lambdas.v[0]), vec3_add(vec3_scale(pt_b_b, lambdas.v[1]), vec3_scale(pt_c_b, lambdas.v[2])));
+
+	sb_free(points);
+	sb_free(tris);
+	sb_free(dangling_edges);
+
+	const Vec3 delta = vec3_sub(*out_point_on_b, *out_point_on_a);
+	return vec3_length(delta);
+}
+
+void physics_bodies_gjk_closest_points(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, Vec3* out_point_on_a, Vec3* out_point_on_b)
+{
+	assert(out_point_on_a != NULL);
+	assert(out_point_on_b != NULL);
+
+	const Vec3 origin = vec3_zero;
+
+	f32 closest_dist_squared = 1e10;
+	const f32 bias = 0.0f;
+
+	i32 num_points = 1;
+	MinkowskiPoint simplex_points[4];
+
+	simplex_points[0] = physics_bodies_minkowski_support(in_body_a, in_body_b, vec3_new(1,1,1), bias);
+
+	Vec4 lambdas = vec4_new(1,0,0,0);
+	Vec3 new_dir = vec3_negate(simplex_points[0].xyz);
+
+	do
+	{
+		const MinkowskiPoint new_point = physics_bodies_minkowski_support(in_body_a, in_body_b, new_dir, bias);
+
+		// if the new point is the same as a previous point: break
+		if (simplex_has_point(simplex_points, num_points, &new_point))
+		{
+			break;
+		}
+
+		// Add new point to simplex
+		simplex_points[num_points] = new_point;
+		num_points += 1;
+
+		// Update new_dir and lambdas
+		simplex_signed_volumes(simplex_points, num_points, &new_dir, &lambdas);
+		sort_valids(simplex_points, &lambdas);
+		num_points = num_valids(lambdas);
+
+		// If we failed to find a closer point: break
+		f32 dist_squared = vec3_length_squared(new_dir);
+		if (dist_squared >= closest_dist_squared)
+		{
+			break;	
+		}
+
+		// Found a new closest distance
+		closest_dist_squared = dist_squared;
+	} while (num_points < 4);
+
+	*out_point_on_a = vec3_zero;
+	*out_point_on_b = vec3_zero;
+	for (i32 i = 0; i < 4; ++i)
+	{
+		*out_point_on_a = vec3_add(*out_point_on_a, vec3_scale(simplex_points[i].pt_a, lambdas.v[i]));
+		*out_point_on_b = vec3_add(*out_point_on_b, vec3_scale(simplex_points[i].pt_b, lambdas.v[i]));
+	}
 }
 
 f32 physics_body_get_max_linear_speed(const PhysicsBody* in_body, const Vec3 in_angular_velocity, const Vec3 in_dir)
@@ -388,33 +670,9 @@ Vec3 physics_body_get_center_of_mass_world(PhysicsBody* in_body)
 
 Mat3 physics_body_get_inverse_inertia_tensor_local(PhysicsBody* in_body)
 {
-	switch (in_body->shape.type)
-	{
-		case SHAPE_TYPE_SPHERE:			
-		{
-			//FCS TODO: This code might be common to all shapes...
-			// compute inverse of inertia tensor matrix
-			Mat3 result = optional_get(mat3_inverse(shape_get_inertia_tensor_matrix(&in_body->shape)));
-			// scale that matrix by inverse mass
-			result = mat3_mul_f32(result, in_body->inverse_mass);
-			// return that matrix
-			return result;
-		}
-		case SHAPE_TYPE_BOX:
-		{	
-			Mat3 result = optional_get(mat3_inverse(shape_get_inertia_tensor_matrix(&in_body->shape)));
-			result = mat3_mul_f32(result, in_body->inverse_mass);
-			return result;
-		}
-		case SHAPE_TYPE_CONVEX:
-		{
-			#warning implement SHAPE_TYPE_CONVEX
-			assert(false);
-			return mat3_identity;
-			break;
-		}
-	}
-	assert(false);
+	Mat3 result = optional_get(mat3_inverse(shape_get_inertia_tensor_matrix(&in_body->shape)));
+	result = mat3_mul_f32(result, in_body->inverse_mass);
+	return result;
 }
 
 Mat3 physics_body_get_inverse_inertia_tensor_world(PhysicsBody* in_body)
@@ -623,44 +881,49 @@ bool physics_body_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, cons
 	const Vec3 vel_a = in_body_a->linear_velocity;	
 	const Vec3 vel_b = in_body_b->linear_velocity;
 
-	assert(in_body_a->shape.type == SHAPE_TYPE_SPHERE);
-	assert(in_body_b->shape.type == SHAPE_TYPE_SPHERE);
-
-	const SphereShape* sphere_a = &in_body_a->shape.sphere;
-	const SphereShape* sphere_b = &in_body_b->shape.sphere;
-
-	if (physics_body_intersect_sphere_sphere(
-		sphere_a,
-		sphere_b,
-		pos_a,
-		pos_b,
-		vel_a,
-		vel_b,
-		in_delta_time, 
-		&in_contact->point_on_a_world, 
-		&in_contact->point_on_b_world, 
-		&in_contact->time_of_impact)
-	)
+	if (	in_body_a->shape.type == SHAPE_TYPE_SPHERE
+		&&	in_body_b->shape.type == SHAPE_TYPE_SPHERE)
 	{
-		// Update to time of impact
-		physics_body_update(in_body_a, in_contact->time_of_impact);
-		physics_body_update(in_body_b, in_contact->time_of_impact);
+		const SphereShape* sphere_a = &in_body_a->shape.sphere;
+		const SphereShape* sphere_b = &in_body_b->shape.sphere;
 
-		// Compute local space points and normal
-		in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
-		in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);
-		in_contact->normal = vec3_normalize(vec3_sub(in_body_a->position, in_body_b->position));
-		
-		// Roll back
-		physics_body_update(in_body_a, -in_contact->time_of_impact);
-		physics_body_update(in_body_b, -in_contact->time_of_impact);
+		if (physics_body_intersect_sphere_sphere(
+			sphere_a,
+			sphere_b,
+			pos_a,
+			pos_b,
+			vel_a,
+			vel_b,
+			in_delta_time, 
+			&in_contact->point_on_a_world, 
+			&in_contact->point_on_b_world, 
+			&in_contact->time_of_impact)
+		)
+		{
+			// Update to time of impact
+			physics_body_update(in_body_a, in_contact->time_of_impact);
+			physics_body_update(in_body_b, in_contact->time_of_impact);
 
-		// Compute separation distance
-		const Vec3 a_to_b = vec3_sub(in_body_b->position, in_body_a->position);
-		in_contact->separation_distance = vec3_length(a_to_b) - (sphere_a->radius + sphere_b->radius);
+			// Compute local space points and normal
+			in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
+			in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);
+			in_contact->normal = vec3_normalize(vec3_sub(in_body_a->position, in_body_b->position));
+			
+			// Roll back
+			physics_body_update(in_body_a, -in_contact->time_of_impact);
+			physics_body_update(in_body_b, -in_contact->time_of_impact);
 
-		// Intersection: return true 
-		return true;
+			// Compute separation distance
+			const Vec3 a_to_b = vec3_sub(in_body_b->position, in_body_a->position);
+			in_contact->separation_distance = vec3_length(a_to_b) - (sphere_a->radius + sphere_b->radius);
+
+			// Intersection: return true 
+			return true;
+		}
+	}
+	else
+	{
+		#ERROR "TODO: GENERAL COLLISION"
 	}
 
 	// No intersect: return false

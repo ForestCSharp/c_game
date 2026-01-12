@@ -430,7 +430,7 @@ int main()
 	PhysicsScene physics_scene = {};
 	physics_scene_init(&physics_scene);
 
-	i32 sqrt_sphere_count = 0;
+	i32 sqrt_sphere_count = 4;
 	for (i32 x = 0; x < sqrt_sphere_count; ++x)
 	{
 		for (i32 z = 0; z < sqrt_sphere_count; ++z)

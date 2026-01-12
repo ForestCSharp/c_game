@@ -183,7 +183,6 @@ float mat3_minor(const Mat3 m, i32 row, i32 col)
     return (sub.d[0][0] * sub.d[1][1]) - (sub.d[0][1] * sub.d[1][0]);
 }
 
-
 float mat3_cofactor(const Mat3 m, i32 row, i32 col)
 {
     float minor = mat3_minor(m, row, col);
@@ -450,7 +449,6 @@ optional(Mat4) mat4_inverse(Mat4 in_mat)
 
     return out_matrix;
 }
-
 
 float mat4_minor(const Mat4 m, i32 row, i32 col)
 {
