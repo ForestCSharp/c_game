@@ -27,10 +27,26 @@ typedef struct BoxShape
 } BoxShape;
 
 // creates a box from some arbitrary number of points by expanding a bounding box
-BoxShape box_shape_create(Vec3* in_points, i32 in_num_points)
+BoxShape box_shape_create(const Vec3 in_extents)
 {
+	const f32 w = in_extents.x;
+	const f32 h = in_extents.y;
+	const f32 d = in_extents.z;
+
+	Vec3 box_points[NUM_BOX_POINTS] = {
+		vec3_new(	-w,	-h, d),
+		vec3_new(	 w,	-h, d),
+		vec3_new(	-w,	 h,	d),
+		vec3_new(	 w,	 h,	d),
+
+		vec3_new(	-w,	-h, -d),
+		vec3_new(	 w,	-h, -d),
+		vec3_new(	-w,	 h,	-d),
+		vec3_new(	 w,	 h,	-d),
+	};
+
 	Bounds bounds = bounds_init();
-	bounds_expand_points(&bounds, in_points, in_num_points);
+	bounds_expand_points(&bounds, box_points, ARRAY_COUNT(box_points));
 
 	const Vec3 center_of_mass = vec3_scale(vec3_add(bounds.min, bounds.max), 0.5f);
 	
@@ -159,6 +175,9 @@ typedef struct PhysicsBody
 	f32 inverse_mass;
 	f32 elasticity;
 	f32 friction;
+
+	Vec3 debug_color;
+
 } PhysicsBody;
 
 typedef struct PhysicsContact
@@ -178,27 +197,24 @@ typedef struct PhysicsContact
 
 
 // Returns point on a convex shape that's furthest in a particular direction
-Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const Vec3 in_pos, const Quat in_orientation, const f32 in_bias)
-{
-	Vec3 out_support = vec3_zero;
-		
+Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const f32 in_bias)
+{	
 	switch(in_body->shape.type)
 	{
 		case SHAPE_TYPE_SPHERE:
 		{
 			const SphereShape* sphere = &in_body->shape.sphere;
-			out_support = vec3_add(in_pos, vec3_scale(in_dir, sphere->radius * in_bias));
-			break;
+			return vec3_add(in_body->position, vec3_scale(in_dir, sphere->radius + in_bias));
 		}
 		case SHAPE_TYPE_BOX:
 		{
 			const BoxShape* box = &in_body->shape.box;
-			Vec3 max_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, box->points[0]));
+			Vec3 max_point = vec3_add(quat_rotate_vec3(in_body->orientation, box->points[0]), in_body->position);
 			f32 max_distance = vec3_dot(in_dir, max_point);
 
 			for (i32 point_idx = 1; point_idx < NUM_BOX_POINTS; ++point_idx)
 			{
-				const Vec3 current_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, box->points[point_idx]));
+				const Vec3 current_point = vec3_add(quat_rotate_vec3(in_body->orientation, box->points[point_idx]), in_body->position);
 				const f32 current_distance = vec3_dot(in_dir, current_point);
 				if (current_distance > max_distance)
 				{
@@ -209,8 +225,6 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const V
 
 			Vec3 norm = vec3_scale(vec3_normalize(in_dir), in_bias);
 			return vec3_add(max_point, norm);	
-			
-			break;
 		}
 		case SHAPE_TYPE_CONVEX:
 		{
@@ -219,12 +233,12 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const V
 			i32 num_convex_points = sb_count(hull->points);
 			assert(num_convex_points > 0);
 
-			Vec3 max_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, hull->points[0]));
+			Vec3 max_point = vec3_add(quat_rotate_vec3(in_body->orientation, hull->points[0]), in_body->position);
 			f32 max_distance = vec3_dot(in_dir, max_point);
 
 			for (i32 point_idx = 1; point_idx < num_convex_points; ++point_idx)
 			{
-				const Vec3 current_point = vec3_add(in_pos, quat_rotate_vec3(in_body->orientation, hull->points[point_idx]));
+				const Vec3 current_point = vec3_add(quat_rotate_vec3(in_body->orientation, hull->points[point_idx]), in_body->position);
 				const f32 current_distance = vec3_dot(in_dir, current_point);
 				if (current_distance > max_distance)
 				{
@@ -235,99 +249,30 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const V
 
 			Vec3 norm = vec3_scale(vec3_normalize(in_dir), in_bias);
 			return vec3_add(max_point, norm);	
-			break;
-		}
-		default:
-		{
-			assert(false);
 		}
 	}
 
-	return out_support;
+	assert(false);
+	return vec3_zero;
 }
 
 /** Calls physics_body_support on both bodies, storing the results as well as their difference */
-MinkowskiPoint physics_bodies_minkowski_support(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, const Vec3 in_dir, const f32 in_bias)
+MinkowskiPoint physics_bodies_support(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, const Vec3 in_dir, const f32 in_bias)
 {
 	MinkowskiPoint out_point = {};
 
 	// Find point in body a furthest in dir
 	const Vec3 normalized_dir = vec3_normalize(in_dir);	
-	out_point.pt_a = physics_body_support(in_body_a, normalized_dir, in_body_a->position, in_body_a->orientation, in_bias);
+	out_point.pt_a = physics_body_support(in_body_a, normalized_dir, in_bias);
 
 	// Find point in body b furthest in dir
-	const Vec3 reversed_dir = vec3_negate(normalized_dir);
-	out_point.pt_b = physics_body_support(in_body_b, reversed_dir, in_body_b->position, in_body_b->orientation, in_bias);
+	const Vec3 reversed_dir = vec3_scale(normalized_dir, -1.0f);
+	out_point.pt_b = physics_body_support(in_body_b, reversed_dir, in_bias);
 
 	// xyz is minkowski sum point
 	out_point.xyz = vec3_sub(out_point.pt_a, out_point.pt_b);
 
 	return out_point;
-}
-
-bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b)
-{
-	const Vec3 origin = vec3_zero;
-
-	i32 num_points = 1;
-	MinkowskiPoint simplex_points[4];
-
-	simplex_points[0] = physics_bodies_minkowski_support(in_body_a, in_body_b, vec3_new(1,1,1), 0.0f);
-
-	f32 closest_dist = 1e10f;
-	bool contains_origin = false;
-	Vec3 new_dir = vec3_negate(simplex_points[0].xyz);
-	do
-	{
-		MinkowskiPoint new_point = physics_bodies_minkowski_support(in_body_a, in_body_b, new_dir, 0.0f);
-
-		// if new point is same as previous, then we can't expand further
-		if (simplex_has_point(simplex_points, num_points, &new_point))
-		{
-			break;
-		}
-
-		// Add new MinkowskiPoint to our array of points
-		simplex_points[num_points] = new_point;
-		++num_points;
-
-		// if the new point hasn't moved past the origin, then the origin cannot be in the set, so break
-		const f32 dot_dot = vec3_dot(new_dir, vec3_sub(new_point.xyz, origin));
-		if (dot_dot < 0.0f)
-		{
-			break;
-		}
-
-		// run simplex_signed_volumes, modifying new_dir and lambdas 
-		Vec4 lambdas;
-		contains_origin = simplex_signed_volumes(simplex_points, num_points, &new_dir, &lambdas);
-
-		// break if we contain the origin
-		if (contains_origin)
-		{
-			break;
-		}
-
-		// if new projection isn't closer, break
-		f32 dist = vec3_length_squared(new_dir);
-		if (dist >= closest_dist)
-		{
-			break;		
-		}
-
-		// Update closest_dist
-		closest_dist = dist;
-
-		// Use lambdas that support the new search dir, and invalidate any points that don't support it
-		sort_valids(simplex_points, &lambdas);
-		num_points = num_valids(lambdas);
-
-		// If we reached 4 total points in our simplex, then we contain the origin and the two bodies intersect
-		contains_origin = (num_points == 4);
-	}
-	while (!contains_origin);
-
-	return contains_origin;
 }
 
 f32 physics_bodies_epa_expand(
@@ -379,7 +324,7 @@ f32 physics_bodies_epa_expand(
 	{
 		const i32 idx = closest_triangle(tris, sb_count(tris), points, sb_count(points));
 		const Vec3 normal = triangle_normal_direction(tris[idx], points, sb_count(points));
-		const MinkowskiPoint new_point = physics_bodies_minkowski_support(in_body_a, in_body_b, normal, in_bias);
+		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, normal, in_bias);
 
 		// if w already exists, we can't expand further
 		if (triangle_has_point(new_point.xyz, tris, sb_count(tris), points, sb_count(points)))
@@ -433,20 +378,28 @@ f32 physics_bodies_epa_expand(
 	const i32 tri_idx = closest_triangle(tris, sb_count(tris), points, sb_count(points));
 	const ConvexTri tri = tris[tri_idx];
 
-	const Vec3 pt_a_xyz = points[tri.a].xyz;
-	const Vec3 pt_b_xyz = points[tri.b].xyz;	
-	const Vec3 pt_c_xyz = points[tri.c].xyz;
-	const Vec3 lambdas = barycentric_coordinates(pt_a_xyz, pt_b_xyz, pt_c_xyz, vec3_zero);
+	const Vec3 lambdas = barycentric_coordinates(
+		points[tri.a].xyz, 
+		points[tri.b].xyz, 
+		points[tri.c].xyz, 
+		vec3_zero
+	);
 
-	const Vec3 pt_a_a = points[tri.a].pt_a;
-	const Vec3 pt_b_a = points[tri.b].pt_a;	
-	const Vec3 pt_c_a = points[tri.c].pt_a;
-	*out_point_on_a = vec3_add(vec3_scale(pt_a_a, lambdas.v[0]), vec3_add(vec3_scale(pt_b_a, lambdas.v[1]), vec3_scale(pt_c_a, lambdas.v[2])));
+	*out_point_on_a = vec3_add(
+		vec3_scale(points[tri.a].pt_a, lambdas.v[0]), 
+		vec3_add(
+			vec3_scale(points[tri.b].pt_a, lambdas.v[1]), 
+			vec3_scale(points[tri.c].pt_a, lambdas.v[2])
+		)
+	);
 
-	const Vec3 pt_a_b = points[tri.a].pt_b;
-	const Vec3 pt_b_b = points[tri.b].pt_b;	
-	const Vec3 pt_c_b = points[tri.c].pt_b;
-	*out_point_on_b = vec3_add(vec3_scale(pt_a_b, lambdas.v[0]), vec3_add(vec3_scale(pt_b_b, lambdas.v[1]), vec3_scale(pt_c_b, lambdas.v[2])));
+	*out_point_on_b = vec3_add(
+		vec3_scale(points[tri.a].pt_b, lambdas.v[0]), 
+		vec3_add(
+			vec3_scale(points[tri.b].pt_b, lambdas.v[1]), 
+			vec3_scale(points[tri.c].pt_b, lambdas.v[2])
+		)
+	);
 
 	sb_free(points);
 	sb_free(tris);
@@ -454,6 +407,129 @@ f32 physics_bodies_epa_expand(
 
 	const Vec3 delta = vec3_sub(*out_point_on_b, *out_point_on_a);
 	return vec3_length(delta);
+}
+
+bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, const f32 in_bias, Vec3* out_pt_on_a, Vec3* out_pt_on_b)
+{
+	assert(out_pt_on_a != NULL);
+	assert(out_pt_on_b != NULL);
+
+	const Vec3 origin = vec3_zero;
+
+	i32 num_points = 1;
+	MinkowskiPoint simplex_points[4] = {0};
+	simplex_points[0] = physics_bodies_support(in_body_a, in_body_b, vec3_new(1,1,1), 0.0f);
+
+	f32 closest_dist = 1e10f;
+	bool contains_origin = false;
+	Vec3 new_dir = vec3_scale(simplex_points[0].xyz, -1.0f);
+	do
+	{
+		MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, new_dir, 0.0f);
+
+		// if new point is same as previous, then we can't expand further
+		if (simplex_has_point(simplex_points, num_points, &new_point))
+		{
+			break;
+		}
+
+		// Add new MinkowskiPoint to our array of points
+		simplex_points[num_points] = new_point;
+		++num_points;
+
+		// if the new point hasn't moved past the origin, then the origin cannot be in the set, so break
+		const f32 dot_dot = vec3_dot(new_dir, vec3_sub(new_point.xyz, origin));
+		if (dot_dot < 0.0f)
+		{
+			break;
+		}
+
+		// run simplex_signed_volumes, modifying new_dir and lambdas 
+		Vec4 lambdas;
+		contains_origin = simplex_signed_volumes(simplex_points, num_points, &new_dir, &lambdas);
+
+		// break if we contain the origin
+		if (contains_origin)
+		{
+			break;
+		}
+
+		// if new projection isn't closer, break
+		f32 dist = vec3_length_squared(new_dir);
+		if (dist >= closest_dist)
+		{
+			break;		
+		}
+
+		// Update closest_dist
+		closest_dist = dist;
+
+		// Use lambdas that support the new search dir, and invalidate any points that don't support it
+		sort_valids(simplex_points, &lambdas);
+		num_points = num_valids(lambdas);
+
+		// If we reached 4 total points in our simplex, then we contain the origin and the two bodies intersect
+		contains_origin = (num_points == 4);
+	}
+	while (!contains_origin);
+
+	// Only run EPA on successful intersections
+	if (!contains_origin) { return false; }
+
+	// EPA Needs 4 points
+	if (num_points == 1)
+	{
+		const Vec3 search_dir = vec3_negate(simplex_points[0].xyz);
+		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, search_dir, 0.0f);
+		simplex_points[num_points] = new_point;
+		num_points += 1;
+	}
+
+	if (num_points == 2)
+	{
+		const Vec3 ab = vec3_sub(simplex_points[1].xyz, simplex_points[0].xyz);
+		Vec3 u,v;
+		vec3_get_ortho(ab, &u, &v);
+
+		const Vec3 search_dir = u;
+		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, search_dir, 0.0f);
+		simplex_points[num_points] = new_point;
+		num_points += 1;
+	}
+
+	if (num_points == 3)
+	{	
+		const Vec3 ab = vec3_sub(simplex_points[1].xyz, simplex_points[0].xyz);
+		const Vec3 ac = vec3_sub(simplex_points[2].xyz, simplex_points[0].xyz);
+		const Vec3 norm = vec3_cross(ab,ac);
+
+		const Vec3 search_dir = norm;
+		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, search_dir, 0.0f);
+		simplex_points[num_points] = new_point;
+		num_points += 1;
+	}
+
+	assert(num_points == 4);
+
+	Vec3 avg = vec3_zero;
+	for (i32 i = 0; i < num_points; ++i)
+	{
+		avg = vec3_add(avg, simplex_points[i].xyz);
+	}
+	avg = vec3_scale(avg, 0.25f);
+
+	// Now expand simplex by bias amount
+	for (i32 i = 0; i < num_points; ++i)
+	{
+		MinkowskiPoint* pt = &simplex_points[i];
+		const Vec3 dir = vec3_normalize(vec3_sub(pt->xyz, avg));
+		pt->pt_a = vec3_add(pt->pt_a, vec3_scale(dir, in_bias));
+		pt->pt_b = vec3_sub(pt->pt_b, vec3_scale(dir, in_bias));
+		pt->xyz = vec3_sub(pt->pt_a, pt->pt_b);
+	}
+
+	physics_bodies_epa_expand(in_body_a, in_body_b, in_bias, simplex_points, out_pt_on_a, out_pt_on_b);
+	return true;
 }
 
 void physics_bodies_gjk_closest_points(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, Vec3* out_point_on_a, Vec3* out_point_on_b)
@@ -467,16 +543,16 @@ void physics_bodies_gjk_closest_points(const PhysicsBody* in_body_a, const Physi
 	const f32 bias = 0.0f;
 
 	i32 num_points = 1;
-	MinkowskiPoint simplex_points[4];
+	MinkowskiPoint simplex_points[4] = {0};
 
-	simplex_points[0] = physics_bodies_minkowski_support(in_body_a, in_body_b, vec3_new(1,1,1), bias);
+	simplex_points[0] = physics_bodies_support(in_body_a, in_body_b, vec3_new(1,1,1), bias);
 
 	Vec4 lambdas = vec4_new(1,0,0,0);
 	Vec3 new_dir = vec3_negate(simplex_points[0].xyz);
 
 	do
 	{
-		const MinkowskiPoint new_point = physics_bodies_minkowski_support(in_body_a, in_body_b, new_dir, bias);
+		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, new_dir, bias);
 
 		// if the new point is the same as a previous point: break
 		if (simplex_has_point(simplex_points, num_points, &new_point))
@@ -618,7 +694,6 @@ Bounds physics_body_get_bounds(const PhysicsBody* in_body)
 				bounds_expand_point(&out_bounds, corners[i]);
 			}
 			break;
-			break;
 		}
 		default:
 		{
@@ -629,21 +704,21 @@ Bounds physics_body_get_bounds(const PhysicsBody* in_body)
 	return out_bounds;
 }
 
-Vec3 physics_body_local_to_world_space(PhysicsBody* in_body, Vec3 in_body_space_point)
+Vec3 physics_body_local_to_world_space(const PhysicsBody* in_body, Vec3 in_body_space_point)
 {
 	Vec3 rotated = quat_rotate_vec3(in_body->orientation, in_body_space_point);
 	Vec3 translated = vec3_add(rotated, in_body->position);
 	return translated;
 }
 
-Vec3 physics_body_world_to_local_space(PhysicsBody* in_body, Vec3 in_world_point)
+Vec3 physics_body_world_to_local_space(const PhysicsBody* in_body, Vec3 in_world_point)
 {
 	Vec3 untranslated = vec3_sub(in_world_point, in_body->position);
 	Vec3 unrotated = quat_rotate_vec3(quat_inverse(in_body->orientation), untranslated);
 	return unrotated;
 }
 
-Vec3 physics_body_get_center_of_mass_world(PhysicsBody* in_body)
+Vec3 physics_body_get_center_of_mass_world(const PhysicsBody* in_body)
 {
 	Vec3 local_space_center_of_mass = vec3_zero;;
 	switch (in_body->shape.type)
@@ -867,7 +942,6 @@ bool physics_body_intersect_sphere_sphere(
 	*out_point_on_b = vec3_sub(new_pos_b, vec3_scale(a_to_b_norm, in_sphere_b->radius));
 	*out_time_of_impact = time_of_impact;
 	return true;
-
 }
 
 bool physics_body_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, const f32 in_delta_time, PhysicsContact* in_contact)
@@ -923,7 +997,32 @@ bool physics_body_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, cons
 	}
 	else
 	{
-		#ERROR "TODO: GENERAL COLLISION"
+		const f32 bias = 0.001f;
+		Vec3 pt_on_a;
+		Vec3 pt_on_b;
+		if (physics_bodies_gjk_intersect(in_body_a, in_body_b, bias, &pt_on_a, &pt_on_b))
+		{
+			const Vec3 normal = vec3_normalize(vec3_sub(pt_on_b, pt_on_a));
+
+			const Vec3 biased_normal = vec3_scale(normal,bias);
+			pt_on_a = vec3_sub(pt_on_a, biased_normal);
+			pt_on_b = vec3_add(pt_on_b, biased_normal);
+
+			in_contact->normal = normal;
+			in_contact->point_on_a_world = pt_on_a;
+			in_contact->point_on_b_world = pt_on_b;
+			in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
+			in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);
+			in_contact->separation_distance = -vec3_length(vec3_sub(pt_on_a, pt_on_b));
+			return true;
+		}
+
+		physics_bodies_gjk_closest_points(in_body_a, in_body_b, &pt_on_a, &pt_on_b);	
+		in_contact->point_on_a_world = pt_on_a;
+		in_contact->point_on_b_world = pt_on_b;
+		in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
+		in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);	
+		in_contact->separation_distance = vec3_length(vec3_sub(pt_on_a, pt_on_b));
 	}
 
 	// No intersect: return false

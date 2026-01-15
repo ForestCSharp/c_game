@@ -19,9 +19,14 @@ Bounds bounds_init()
 	};
 }
 
-Vec3 bounds_get_dimensions(const Bounds* in_bounds)
+Vec3 bounds_get_extents(const Bounds* in_bounds)
 {
 	return vec3_sub(in_bounds->max, in_bounds->min);
+}
+
+Vec3 bounds_get_half_extents(const Bounds* in_bounds)
+{
+	return vec3_scale(bounds_get_extents(in_bounds), 0.5f);
 }
 
 bool bounds_intersect(const Bounds a, const Bounds b)
@@ -63,6 +68,8 @@ void bounds_expand_bounds(Bounds* in_bounds, const Bounds* in_other_bounds)
 
 i32 furthest_point_in_dir(const Vec3* in_points, const i32 in_num_points, const Vec3 in_dir)
 {
+	assert(in_num_points > 0);
+
 	i32 max_idx = 0;
 	f32 max_dist = vec3_dot(in_dir, in_points[0]);
 	for (i32 idx = 1; idx < in_num_points; ++idx)
@@ -93,6 +100,8 @@ f32 distance_from_line(const Vec3 in_a, const Vec3 in_b, const Vec3 in_pt)
 
 Vec3 furthest_point_from_line(const Vec3* in_points, const i32 in_num_points, const Vec3 in_a, const Vec3 in_b)
 {
+	assert(in_num_points > 0);
+
 	i32 max_idx = 0;
 	f32 max_dist = distance_from_line(in_a, in_b, in_points[0]);
 	for (i32 idx = 1; idx < in_num_points; ++idx)
@@ -123,6 +132,8 @@ f32 distance_from_triangle(const Vec3 in_a, const Vec3 in_b, const Vec3 in_c, co
 
 Vec3 furthest_point_from_triangle(const Vec3* in_points, const i32 in_num_points, const Vec3 in_a, const Vec3 in_b, const Vec3 in_c)
 {
+	assert(in_num_points > 0);
+
 	i32 max_idx = 0;
 	const f32 max_dist = distance_from_triangle(in_a, in_b, in_c, in_points[0]);
 	f32 max_dist_squared = max_dist * max_dist;
@@ -317,8 +328,6 @@ bool is_edge_unique(sbuffer(ConvexTri) in_tris, sbuffer(i32) in_facing_tri_idice
 	return true;
 }
 
-//FCS TODO: HERE: Check functions below this line
-
 void convex_hull_add_point(ConvexHull* in_convex_hull, const Vec3 in_point)
 {
 	// Find all triangles that face this point
@@ -500,7 +509,7 @@ Vec3 convex_hull_calculate_center_of_mass(const ConvexHull* in_convex_hull)
 	Bounds bounds = bounds_init();
 	bounds_expand_points(&bounds, in_convex_hull->points, sb_count(in_convex_hull->points));
 
-	Vec3 bounds_dimensions = bounds_get_dimensions(&bounds);
+	Vec3 bounds_dimensions = bounds_get_extents(&bounds);
 
 	const f32 dx = bounds_dimensions.x / num_samples;
 	const f32 dy = bounds_dimensions.y / num_samples;
@@ -537,7 +546,7 @@ Mat3 convex_hull_calculate_inertia_tensor(const ConvexHull* in_convex_hull)
 	Bounds bounds = bounds_init();
 	bounds_expand_points(&bounds, in_convex_hull->points, sb_count(in_convex_hull->points));
 
-	Vec3 bounds_dimensions = bounds_get_dimensions(&bounds);
+	Vec3 bounds_dimensions = bounds_get_extents(&bounds);
 
 	const f32 dx = bounds_dimensions.x / num_samples;
 	const f32 dy = bounds_dimensions.y / num_samples;
@@ -631,7 +640,7 @@ Vec2 signed_volume_1d(const Vec3 s1, const Vec3 s2)
 		return vec2_new(c2 / mu_max, c1 / mu_max);
 	}
 
-	if ((a <= b && p <= a) || (a >= b && b >= a))
+	if ((a <= b && p <= a) || (a >= b && p >= a))
 	{
 		return vec2_new(1.0f, 0.0f);
 	}
@@ -746,6 +755,7 @@ Vec4 signed_volume_3d(const Vec3 s1, const Vec3 s2, const Vec3 s3, const Vec3 s4
 		}
 	};
 
+	//FCS TODO: Verify this
 	Vec4 c4 = vec4_new(
 		mat4_cofactor(m, 0, 3),
 		mat4_cofactor(m, 1, 3),
@@ -881,7 +891,7 @@ bool simplex_signed_volumes(MinkowskiPoint* in_points, const i32 in_num_points, 
 				v = vec3_add(v, vec3_scale(in_points[i].xyz, lambdas.v[i]));
 			}
 			does_intersect = vec3_length_squared(v) < epsilon_squared;
-			*out_new_dir = vec3_negate(v);
+			*out_new_dir = vec3_scale(v, -1.0f);
 			*out_lambdas = vec4_new(lambdas.x, lambdas.y, 0.f, 0.f);
 			break;
 		}
@@ -894,7 +904,7 @@ bool simplex_signed_volumes(MinkowskiPoint* in_points, const i32 in_num_points, 
 				v = vec3_add(v, vec3_scale(in_points[i].xyz, lambdas.v[i]));
 			}
 			does_intersect = vec3_length_squared(v) < epsilon_squared;
-			*out_new_dir = vec3_negate(v);
+			*out_new_dir = vec3_scale(v, -1.0f);
 			*out_lambdas = vec4_new(lambdas.x, lambdas.y, lambdas.z, 0.f);
 			break;
 		}
@@ -907,7 +917,7 @@ bool simplex_signed_volumes(MinkowskiPoint* in_points, const i32 in_num_points, 
 				v = vec3_add(v, vec3_scale(in_points[i].xyz, lambdas.v[i]));
 			}
 			does_intersect = vec3_length_squared(v) < epsilon_squared;
-			*out_new_dir = vec3_negate(v);
+			*out_new_dir = vec3_scale(v, -1.0f);
 			*out_lambdas = vec4_new(lambdas.x, lambdas.y, lambdas.z, lambdas.w);
 			break;
 		}
@@ -916,6 +926,7 @@ bool simplex_signed_volumes(MinkowskiPoint* in_points, const i32 in_num_points, 
 	return does_intersect;
 }
 
+// FCS TODO: passing count in to this so we don't check uninitialized simplex points
 bool simplex_has_point(const MinkowskiPoint* in_simplex_points, const i32 in_num_simplex_points, const MinkowskiPoint* in_new_point)
 {
 	const f32 precision = 1e-6f;
@@ -935,17 +946,21 @@ bool simplex_has_point(const MinkowskiPoint* in_simplex_points, const i32 in_num
 void sort_valids(MinkowskiPoint in_out_simplex_points[4], Vec4* in_out_lambdas)
 {
 	bool valids[4];
-
 	for (i32 i = 0; i < 4; ++i)
 	{
-		valids[i] = in_out_lambdas->v[i] != 0.0f ? true : false;
+		valids[i] = true;
+		if (in_out_lambdas->v[i] == 0.0f)
+		{
+			valids[i] = false;
+		}
 	}
 
+
+	Vec4 valid_lambdas = vec4_zero;
+	i32 valid_count = 0;
 	MinkowskiPoint valid_points[4];
 	memset(valid_points, 0, sizeof(MinkowskiPoint) * 4);
-	Vec4 valid_lambdas = vec4_zero;
 
-	int valid_count = 0;
 	for (i32 i = 0; i < 4; ++i)
 	{
 		if (valids[i])
@@ -1035,7 +1050,7 @@ Vec3 barycentric_coordinates(Vec3 s1, Vec3 s2, Vec3 s3, const Vec3 in_pt)
 		areas.v[i] = ab.x * ac.y - ab.y * ac.x;
 	}
 
-	Vec3 lambdas = vec3_scale(areas, area_max);
+	Vec3 lambdas = vec3_scale(areas, 1.0f / area_max);
 	if (!vec3_is_valid(lambdas))
 	{
 		lambdas = vec3_new(1,0,0);
@@ -1075,8 +1090,8 @@ i32 closest_triangle(const ConvexTri* in_tris, const i32 in_num_tris, const Mink
 	for (i32 i = 0; i < in_num_tris; ++i)
 	{
 		const ConvexTri tri = in_tris[i];
-		f32 dist = signed_distance_to_triangle(tri, vec3_new(0.f,0.f,0.f), in_points, in_num_points);
-		f32 dist_squared = dist * dist;
+		const f32 dist = signed_distance_to_triangle(tri, vec3_zero, in_points, in_num_points);
+		const f32 dist_squared = dist * dist;
 		if (dist_squared < min_dist_squared)
 		{
 			idx = i;	
@@ -1122,8 +1137,8 @@ i32 remove_triangles_facing_point(const Vec3 pt, sbuffer(ConvexTri)* in_out_tris
 		if (signed_distance_to_triangle(tri, pt, in_points, in_num_points) > 0.f)
 		{
 			sb_del(*in_out_tris, i);	
-			--i;
-			++num_removed;
+			i -= 1;
+			num_removed += 1;
 		}
 	}
 	return num_removed;

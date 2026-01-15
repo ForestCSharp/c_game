@@ -253,6 +253,18 @@ Vec3 vec3_plane_projection(const Vec3 v, const Vec3 plane_normal)
     return vec3_sub(v, vec3_projection(v, plane_normal));
 }
 
+void vec3_get_ortho(const Vec3 in_vec, Vec3* out_u, Vec3* out_v)
+{
+	const Vec3 n = vec3_normalize(in_vec);
+	const Vec3 w = (n.z * n.z > 0.9f * 0.9f) ? vec3_new(1,0,0) : vec3_new(0,0,1);
+	Vec3 u = vec3_normalize(vec3_cross(w,n));
+	Vec3 v = vec3_normalize(vec3_cross(n,u));
+	u = vec3_normalize(vec3_cross(v, n));
+
+	*out_u = u;
+	*out_v = v;
+}
+
 bool vec3_is_valid(const Vec3 v)
 {
 	if (v.x * 0.f != v.x * 0.f)

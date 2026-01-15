@@ -456,7 +456,7 @@ typedef struct DebugDrawBox
 {
 	Vec3 center;
 	Quat orientation;
-	Vec3 extents;
+	Vec3 half_extents;
 	Vec4 color;
 	DebugDrawType draw_type;
 	bool shade;
@@ -469,7 +469,7 @@ void debug_draw_box(DebugDrawContext* debug_draw_context, const DebugDrawBox* de
 
     const Mat3 orientation_matrix = quat_to_mat3(debug_draw_box->orientation);
     const Vec3 center = debug_draw_box->center;
-    const Vec3 half_extents = debug_draw_box->extents;
+    const Vec3 half_extents = debug_draw_box->half_extents;
     const Vec4 color = debug_draw_box->color;
 
     // Calculate the 8 corners of the box in local space

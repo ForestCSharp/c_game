@@ -430,78 +430,85 @@ int main()
 	PhysicsScene physics_scene = {};
 	physics_scene_init(&physics_scene);
 
-	i32 sqrt_sphere_count = 4;
-	for (i32 x = 0; x < sqrt_sphere_count; ++x)
-	{
-		for (i32 z = 0; z < sqrt_sphere_count; ++z)
+	{	// Add lots of bodies
+		const i32 sqrt_iter_count = 2;
+		for (i32 x = 0; x < sqrt_iter_count; ++x)
 		{
-			const f32 radius = 5.f;
-			const f32 pos_x = (f32)x - 1.0f * radius * 1.5f;
-			const f32 pos_y = 30.f;
-			const f32 pos_z = (f32)z - 1.0f * radius * 1.5f;
+			for (i32 z = 0; z < sqrt_iter_count; ++z)
+			{
+				const f32 spacing = 50.0f;
+				const f32 pos_x = (x - sqrt_iter_count/4) * spacing; 
+				const f32 pos_z = (z - sqrt_iter_count/4) * spacing;
 
-			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-				.position = vec3_new(pos_x,pos_y,pos_z),
-				.orientation = quat_identity,
-				.linear_velocity = vec3_new(0,0,0),
-				.shape = {
-					.type = SHAPE_TYPE_SPHERE,
-					.sphere = {
-						.radius = radius,
-					},
-				},
-				.inverse_mass = 1.f,
-				.elasticity = 0.5f,
-				.friction = 0.5f,
-			});
+				{	// Spheres
+
+					const f32 radius = 5.f;
+					physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+						.position = vec3_new(pos_x,50.f,pos_z),
+						.orientation = quat_identity,
+						.linear_velocity = vec3_new(0,0,0),
+						.shape = {
+							.type = SHAPE_TYPE_SPHERE,
+							.sphere = {
+								.radius = radius,
+							},
+						},
+						.inverse_mass = 1.f,
+						.elasticity = 0.5f,
+						.friction = 0.5f,
+					});
+				}
+
+				if (false) {	// Boxes
+					
+					const f32 w = 5;
+					const f32 h = 5;
+					const f32 d = 5;
+
+					physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+						.position = vec3_new(pos_x,-100.f,pos_z),
+						.orientation = quat_identity,
+						.linear_velocity = vec3_zero,
+						.shape = {
+							.type = SHAPE_TYPE_BOX,
+							.box = box_shape_create(vec3_new(w,h,d)),
+						},
+						.inverse_mass = 1.f,
+						.elasticity = 1.0f,
+						.friction = 0.5f,
+					});
+				}
+			}
 		}
 	}
 
-	//const f32 world_size = 5000;
-	//physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-	//	.position = vec3_new(0,-world_size, 0),
-	//	.orientation = quat_identity,
-	//	.linear_velocity = vec3_zero,
-	//	.shape = {
-	//		.type = SHAPE_TYPE_SPHERE,
-	//		.sphere = {
-	//			.radius = world_size,
-	//		},
-	//	},
-	//	.inverse_mass = 0.f,
-	//	.elasticity = 1.0f,
-	//	.friction = 0.5f,
-	//});
-
 	{
-		const f32 w = 500;
-		const f32 h = 50;
-		const f32 d = 250;
-
-		Vec3 box_ground_points[] = {
-			vec3_new(	-w,	-h, d),
-			vec3_new(	 w,	-h, d),
-			vec3_new(	-w,	 h,	d),
-			vec3_new(	 w,	 h,	d),
-
-			vec3_new(	-w,	-h, -d),
-			vec3_new(	 w,	-h, -d),
-			vec3_new(	-w,	 h,	-d),
-			vec3_new(	 w,	 h,	-d),
-		};
-
 		physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-			.position = vec3_new(0,-200,0),
-			.orientation = quat_new(vec3_new(0,1,0), 45.f * DEGREES_TO_RADIANS),
-			//.orientation = quat_identity,
+			.position = vec3_new(0,20,0),
+			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
 			.shape = {
 				.type = SHAPE_TYPE_BOX,
-				.box = box_shape_create(box_ground_points, ARRAY_COUNT(box_ground_points)),
+				.box = box_shape_create(vec3_new(5,5,5)),
+			},
+			.inverse_mass = 1.f,
+			.elasticity = 1.0f,
+			.friction = 0.5f,
+			.debug_color = vec3_new(1,0,0),
+		});
+
+		physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			.position = vec3_new(0,0,0),
+			.orientation = quat_identity,
+			.linear_velocity = vec3_zero,
+			.shape = {
+				.type = SHAPE_TYPE_BOX,
+				.box = box_shape_create(vec3_new(100,5,100)),
 			},
 			.inverse_mass = 0.f,
 			.elasticity = 1.0f,
 			.friction = 0.5f,
+			.debug_color = vec3_new(0,1,0),
 		});
 
 		//FCS TODO: Add Convex Shape
@@ -1432,7 +1439,7 @@ int main()
 							.radius = body->shape.sphere.radius,
 							.latitudes = latitudes_and_longitudes,
 							.longitudes = latitudes_and_longitudes,
-							.color = vec4_new(1.0,1.0,1.0,1.0),
+							.color = vec4_from_vec3(body->debug_color, 1.0f),
 							.draw_type = DEBUG_DRAW_TYPE_SOLID,
 							.shade = true,
 						});
@@ -1440,15 +1447,15 @@ int main()
 					}
 					case SHAPE_TYPE_BOX:
 					{
-						BoxShape box = body->shape.box;
-						Bounds box_bounds = box.bounds;
-						Vec3 box_extents = bounds_get_dimensions(&box_bounds);
+						const BoxShape box = body->shape.box;
+						const Bounds box_bounds = box.bounds;
+						const Vec3 half_extents = bounds_get_half_extents(&box_bounds);
 
 						debug_draw_box(&debug_draw_context, &(DebugDrawBox){
 							.center = body->position,
 							.orientation = body->orientation,
-							.extents = box_extents,
-							.color = vec4_new(0,1,0,1),
+							.half_extents = half_extents,
+							.color = vec4_from_vec3(body->debug_color, 1.0f),
 							.draw_type = DEBUG_DRAW_TYPE_SOLID,
 							.shade = true,
 						});
@@ -1478,7 +1485,7 @@ int main()
 			debug_draw_box(&debug_draw_context, &(DebugDrawBox){
 				.center = vec3_new(50,200,-1000),
 				.orientation = quat_new(vec3_new(0,1,0), 45.f * DEGREES_TO_RADIANS),
-				.extents = vec3_new(10,50,5),
+				.half_extents = vec3_new(10,50,5),
 				.color = vec4_new(0,1,0,1),
 				.draw_type = DEBUG_DRAW_TYPE_WIREFRAME,
 				.shade = false,
