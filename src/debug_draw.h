@@ -557,3 +557,49 @@ void debug_draw_box(DebugDrawContext* debug_draw_context, const DebugDrawBox* de
         }
     }
 }
+
+typedef struct DebugDrawMesh
+{	
+	Vec3 center;
+	Quat orientation;
+
+	Vec3* vertex_positions;
+	i32 num_vertex_positions;
+
+	i32* indices;
+	i32 num_indices;
+
+	Vec4 color;
+	DebugDrawType draw_type;
+	bool shade;
+} DebugDrawMesh;
+
+void debug_draw_mesh(DebugDrawContext* debug_draw_context, const DebugDrawMesh* debug_draw_mesh)
+{
+    DebugDrawList* draw_list = debug_draw_get_current_draw_list(debug_draw_context, debug_draw_mesh->draw_type);
+
+	const Mat3 orientation_matrix = quat_to_mat3(debug_draw_mesh->orientation);
+
+    u32 index_offset = sb_count(draw_list->vertices);
+
+	for (i32 v = 0; v < debug_draw_mesh->num_vertex_positions; ++v)
+	{
+		DebugDrawVertex vertex = {};
+		Vec3 position = debug_draw_mesh->vertex_positions[v];
+		position = mat3_mul_vec3(orientation_matrix, position);
+		position = vec3_add(position, debug_draw_mesh->center);
+
+		vertex.position = vec4_from_vec3(position, 1.0f);
+		//vertex.normal = vec4_from_vec3(face_normals[face], 0.0f);
+		vertex.normal = vec4_from_vec3(vec3_normalize(vec3_sub(position, debug_draw_mesh->center)), 0.0f);
+		vertex.color = debug_draw_mesh->color;
+		sb_push(draw_list->vertices, vertex);	
+	}
+
+	for (i32 i = 0; i < debug_draw_mesh->num_indices; ++i)
+	{	
+        sb_push(draw_list->indices, index_offset + debug_draw_mesh->indices[i]);
+	}
+
+	
+}

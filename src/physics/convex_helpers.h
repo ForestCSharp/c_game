@@ -231,7 +231,7 @@ void convex_hull_remove_internal_points(ConvexHull* in_convex_hull, sbuffer(Vec3
 	// Remove internal points
 	for (i32 i = 0; i < sb_count(*in_points); ++i)
 	{
-		const Vec3 point = *in_points[i];
+		const Vec3 point = (*in_points)[i];
 		bool is_external = false;
 		for (int t = 0; t < sb_count(in_convex_hull->tris); ++t)
 		{
@@ -257,7 +257,7 @@ void convex_hull_remove_internal_points(ConvexHull* in_convex_hull, sbuffer(Vec3
 	// Remove points too close too hull points
 	for (i32 i = 0; i < sb_count(*in_points); ++i)
 	{
-		const Vec3 point = *in_points[i];
+		const Vec3 point = (*in_points)[i];
 		bool is_too_close = false;
 		for (i32 hull_pt_idx = 0; hull_pt_idx < sb_count(in_convex_hull->points); ++hull_pt_idx)
 		{
@@ -500,6 +500,83 @@ bool convex_hull_is_point_external(const ConvexHull* in_convex_hull, const Vec3 
 	}
 
 	return is_external;
+}
+
+Vec3 convex_hull_calculate_center_of_mass_monte_carlo(const ConvexHull* in_convex_hull)
+{
+	const i32 num_samples = 10000;
+
+	Bounds bounds = bounds_init();
+	bounds_expand_points(&bounds, in_convex_hull->points, sb_count(in_convex_hull->points));
+
+	Vec3 bounds_dimensions = bounds_get_extents(&bounds);
+
+	Vec3 center_of_mass = vec3_zero;
+	i32 sample_count = 0;
+
+	for (i32 i = 0; i < num_samples; ++i)
+	{
+		Vec3 point = vec3_new(
+			bounds.min.x + rand_f32(0.f, bounds_dimensions.x),
+			bounds.min.y + rand_f32(0.f, bounds_dimensions.y),
+			bounds.min.z + rand_f32(0.f, bounds_dimensions.z)
+		);
+
+		if (convex_hull_is_point_external(in_convex_hull, point))
+		{
+			continue;
+		}
+
+		center_of_mass = vec3_add(center_of_mass, point);
+		sample_count += 1;
+	}
+
+	center_of_mass = vec3_scale(center_of_mass, 1.0 / (f32) sample_count);
+	return center_of_mass;
+}
+
+Mat3 convex_hull_calculate_inertia_tensor_monte_carlo(const ConvexHull* in_convex_hull)
+{
+	const i32 num_samples = 10000;
+
+	Bounds bounds = bounds_init();
+	bounds_expand_points(&bounds, in_convex_hull->points, sb_count(in_convex_hull->points));
+
+	Vec3 bounds_dimensions = bounds_get_extents(&bounds);
+
+	Mat3 inertia_tensor = mat3_zero;
+	i32 sample_count = 0;
+
+	for (i32 i = 0; i < num_samples; ++i)
+	{
+		Vec3 point = vec3_new(
+			bounds.min.x + rand_f32(0.f, bounds_dimensions.x),
+			bounds.min.y + rand_f32(0.f, bounds_dimensions.y),
+			bounds.min.z + rand_f32(0.f, bounds_dimensions.z)
+		);
+
+		if (convex_hull_is_point_external(in_convex_hull, point))
+		{
+			continue;
+		}
+
+		inertia_tensor.columns[0].x += point.y * point.y + point.z * point.z;
+		inertia_tensor.columns[1].y += point.z * point.z + point.x * point.x;
+		inertia_tensor.columns[2].z += point.x * point.x + point.y * point.y;
+
+		inertia_tensor.columns[0].y += -1.0f * point.x * point.y;
+		inertia_tensor.columns[0].z += -1.0f * point.x * point.z;
+		inertia_tensor.columns[1].z += -1.0f * point.y * point.z;
+
+		inertia_tensor.columns[1].x += -1.0f * point.x * point.y;
+		inertia_tensor.columns[2].x += -1.0f * point.x * point.z;
+		inertia_tensor.columns[2].y += -1.0f * point.y * point.z;
+
+		sample_count += 1;
+	}
+
+	inertia_tensor = mat3_mul_f32(inertia_tensor, 1.0 / (f32) sample_count);
+	return inertia_tensor;
 }
 
 Vec3 convex_hull_calculate_center_of_mass(const ConvexHull* in_convex_hull)

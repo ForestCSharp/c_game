@@ -431,7 +431,7 @@ int main()
 	physics_scene_init(&physics_scene);
 
 	{	// Add lots of bodies
-		const i32 sqrt_iter_count = 2;
+		const i32 sqrt_iter_count = 3;
 		for (i32 x = 0; x < sqrt_iter_count; ++x)
 		{
 			for (i32 z = 0; z < sqrt_iter_count; ++z)
@@ -456,17 +456,17 @@ int main()
 						.inverse_mass = 1.f,
 						.elasticity = 0.5f,
 						.friction = 0.5f,
+						.debug_color = vec3_new(1,1,0),
 					});
 				}
 
-				if (false) {	// Boxes
-					
+				{	// Boxes	
 					const f32 w = 5;
 					const f32 h = 5;
 					const f32 d = 5;
 
 					physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-						.position = vec3_new(pos_x,-100.f,pos_z),
+						.position = vec3_new(pos_x,60.f,pos_z),
 						.orientation = quat_identity,
 						.linear_velocity = vec3_zero,
 						.shape = {
@@ -474,8 +474,9 @@ int main()
 							.box = box_shape_create(vec3_new(w,h,d)),
 						},
 						.inverse_mass = 1.f,
-						.elasticity = 1.0f,
+						.elasticity = 0.25f,
 						.friction = 0.5f,
+						.debug_color = vec3_new(1,1,0),
 					});
 				}
 			}
@@ -498,12 +499,12 @@ int main()
 		});
 
 		physics_scene_add_body(&physics_scene, &(PhysicsBody) {
-			.position = vec3_new(0,0,0),
+			.position = vec3_new(0,-50,0),
 			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
 			.shape = {
 				.type = SHAPE_TYPE_BOX,
-				.box = box_shape_create(vec3_new(100,5,100)),
+				.box = box_shape_create(vec3_new(1000,50,1000)),
 			},
 			.inverse_mass = 0.f,
 			.elasticity = 1.0f,
@@ -511,8 +512,68 @@ int main()
 			.debug_color = vec3_new(0,1,0),
 		});
 
-		//FCS TODO: Add Convex Shape
+		{
+			// side length s
+			const f32 s = 15.0f;
+			const f32 a = s / (2.0f * sqrtf(2.0f));
+			const Vec3 tetrahedron_points[] = 
+			{
+				vec3_new( s / 2.0f,  0.0f,      -a),
+				vec3_new(-s / 2.0f,  0.0f,      -a),
+				vec3_new( 0.0f,      s / 2.0f,   a),
+				vec3_new( 0.0f,     -s / 2.0f,   a)
+			};
 
+			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+				.position = vec3_new(0,5,0),
+				.orientation = quat_identity,
+				.linear_velocity = vec3_zero,
+				.shape = {
+					.type = SHAPE_TYPE_CONVEX,
+					.convex = convex_shape_create(
+						tetrahedron_points, 
+						ARRAY_COUNT(tetrahedron_points)
+					),
+				},
+				.inverse_mass = 1.f,
+				.elasticity = 0.75f,
+				.friction = 0.5f,
+				.debug_color = vec3_new(0,1,1),
+			});
+
+			const f32 w = 5;
+			const f32 h = 5;
+			const f32 d = 5;
+			const Vec3 box_points[] =
+			{
+				vec3_new(-w,-h,d),
+				vec3_new( w,-h,d),
+				vec3_new(-w, h,d),
+				vec3_new( w, h,d),
+
+				vec3_new(-w,-h,-d),
+				vec3_new( w,-h,-d),
+				vec3_new(-w, h,-d),
+				vec3_new( w, h,-d),
+			};
+
+			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+				.position = vec3_new(-50,50,0),
+				.orientation = quat_identity,
+				.linear_velocity = vec3_zero,
+				.shape = {
+					.type = SHAPE_TYPE_CONVEX,
+					.convex = convex_shape_create(
+						box_points, 
+						ARRAY_COUNT(box_points)
+					),
+				},
+				.inverse_mass = 1.f,
+				.elasticity = 1.0f,
+				.friction = 0.5f,
+				.debug_color = vec3_new(0,1,1),
+			});
+		}
 	}
 
 	//GameObject + Components Setup
@@ -1084,8 +1145,6 @@ int main()
 			}	
 		}
 
-		physics_scene_update(&physics_scene, delta_time);
-
 		// Need to wait on animation update
 		task_system_wait_tasks(&task_system, animation_tasks);
 
@@ -1095,6 +1154,9 @@ int main()
 
 		u64 anim_update_end_time = time_now();
 		const double anim_update_time_ms = time_seconds(anim_update_end_time - anim_update_start_time) * 1000;
+
+		// Update Physics scene
+		physics_scene_update(&physics_scene, delta_time);
 
 		// GUI
 		if (show_mouse)
@@ -1463,7 +1525,21 @@ int main()
 					}
 					case SHAPE_TYPE_CONVEX:
 					{
-						#warning Convex Shape rendering
+						const ConvexShape* convex = &body->shape.convex;
+						const ConvexHull* hull = &convex->hull;
+
+						debug_draw_mesh(&debug_draw_context, &(DebugDrawMesh){
+							.center = body->position,
+							.orientation = body->orientation,
+							.vertex_positions = hull->points,
+							.num_vertex_positions = sb_count(hull->points),
+							.indices = (i32*) hull->tris,
+							.num_indices = sb_count(hull->tris) * 3,
+							.color = vec4_from_vec3(body->debug_color, 1.0f),
+							.draw_type = DEBUG_DRAW_TYPE_SOLID,
+							.shade = true,
+						});
+						
 						break;
 					}
 				}
