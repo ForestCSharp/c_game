@@ -185,7 +185,7 @@ typedef struct GpuBindGroupUpdateInfo
 	GpuResourceWrite* writes;
 } GpuBindGroupUpdateInfo;
 
-static const u32 GPU_BIND_GROUP_MAX_BINDINGS = 16;
+enum {GPU_BIND_GROUP_MAX_BINDINGS = 16 };
 
 typedef enum GpuPolygonMode
 {

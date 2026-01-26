@@ -17,7 +17,7 @@ typedef struct SphereShape
 	f32 radius;
 } SphereShape;
 
-const i32 NUM_BOX_POINTS = 8;
+enum { NUM_BOX_POINTS = 8 };
 
 typedef struct BoxShape
 {
@@ -835,6 +835,8 @@ void physics_body_apply_impulse(PhysicsBody* in_body, Vec3 in_impulse, Vec3 in_l
 
 void physics_body_update(PhysicsBody* in_body, f32 in_delta_time)
 {	
+	if (in_body->inverse_mass <= 0.f) { return; }
+
 	// Update position based on linear velocity
 	in_body->position = vec3_add(in_body->position, vec3_scale(in_body->linear_velocity, in_delta_time));
 
