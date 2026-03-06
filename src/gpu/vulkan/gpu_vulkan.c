@@ -362,19 +362,25 @@ void gpu_create_device(Window* in_window, GpuDevice* out_device)
     // FCS TODO: Clean up defines. query surface extension string from window system?
     const char *extensions[] = {
         "VK_KHR_surface",
+
 		#if defined(_WIN32)
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 		#elif defined(__APPLE__)
         VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+		#endif
+	
+		#if defined(VK_NEEDS_PORTABILITY_EXTENSIONS)
         VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 		#endif
+
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
     u32 extension_count = ARRAY_COUNT(extensions); 
 
 	VkInstanceCreateFlags instance_create_flags = 0;
-	#if defined(__APPLE__)
+
+	#if defined(VK_NEEDS_PORTABILITY_EXTENSIONS)
 	instance_create_flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 	#endif
 
@@ -450,8 +456,7 @@ void gpu_create_device(Window* in_window, GpuDevice* out_device)
 
     const char *device_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-		#if defined(__APPLE__)
+		#if defined(VK_NEEDS_PORTABILITY_EXTENSIONS)
         "VK_KHR_portability_subset",
 		#endif
     };
@@ -479,13 +484,13 @@ void gpu_create_device(Window* in_window, GpuDevice* out_device)
     };
     vkGetPhysicalDeviceFeatures2(physical_device_data.physical_device, &features_2);
 
-#if defined(ENABLE_VULKAN_SYNC2)
+	#if defined(ENABLE_VULKAN_SYNC2)
     if (!sync_2_features.synchronization2)
     {
         printf("Error: Synchronization2 Is Required\n");
         exit(0);
     }
-#endif
+	#endif
 
     if (!dynamic_rendering_features.dynamicRendering)
     {
@@ -2192,6 +2197,12 @@ void gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_comman
 
 const char* gpu_get_api_name()
 {
+#if defined(MAC_VULKAN_BACKEND_MOLTEN)
+	return "Vulkan: Molten VK";
+#elif defined(MAC_VULKAN_BACKEND_KOSMIC)
+	return "Vulkan: Kosmic Krisp";
+#else
 	return "Vulkan";
+#endif
 }
 
