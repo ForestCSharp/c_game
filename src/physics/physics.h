@@ -5,6 +5,9 @@
 #include "stretchy_buffer.h"
 #include "physics/convex_helpers.h"
 
+#include "math/dynamic/vec_n.h"
+#include "math/dynamic/mat_n.h"
+
 typedef enum ShapeType
 {
 	SHAPE_TYPE_SPHERE,

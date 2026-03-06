@@ -398,7 +398,6 @@ void character_update(CharacterUpdateData* in_update_data)
 				80.0f 
 			);
 		}
-
 	}
 }
 
