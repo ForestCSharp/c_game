@@ -7,12 +7,14 @@
 #include "basic_types.h"
 #include "stdio.h"
 #include "stretchy_buffer.h"
+#include "math/lcp.h"
 
 bool test_mat3_inverse();
 bool test_mat4_inverse();
 bool test_mat4_decompose();
 bool test_quat_mat_conversions();
 bool test_stretchy_buffer();
+bool test_matn_mul_matn();
 
 int main()
 {
@@ -22,6 +24,7 @@ int main()
 	success &= test_mat4_decompose();
 	success &= test_quat_mat_conversions();
 	success &= test_stretchy_buffer();
+	success &= test_matn_mul_matn();
 
 
 	if (!success)
@@ -171,4 +174,29 @@ bool test_stretchy_buffer()
 	sb_free(my_stretchy_buffer);
 
 	return success;
+}
+
+bool test_matn_mul_matn()
+{
+    // A = [[1,2],[3,4]], B = [[5,6],[7,8]]
+    // A*B = [[1*5+2*7, 1*6+2*8],[3*5+4*7, 3*6+4*8]]
+    //      = [[19,22],[43,50]]
+    MatN A = matn_new(2);
+    A.rows[0].data[0] = 1.0f; A.rows[0].data[1] = 2.0f;
+    A.rows[1].data[0] = 3.0f; A.rows[1].data[1] = 4.0f;
+
+    MatN B = matn_new(2);
+    B.rows[0].data[0] = 5.0f; B.rows[0].data[1] = 6.0f;
+    B.rows[1].data[0] = 7.0f; B.rows[1].data[1] = 8.0f;
+
+    MatN C = matn_mul_matn(&A, &B);
+    assert(f32_nearly_equal(C.rows[0].data[0], 19.0f));
+    assert(f32_nearly_equal(C.rows[0].data[1], 22.0f));
+    assert(f32_nearly_equal(C.rows[1].data[0], 43.0f));
+    assert(f32_nearly_equal(C.rows[1].data[1], 50.0f));
+
+    matn_destroy(&A);
+    matn_destroy(&B);
+    matn_destroy(&C);
+    return true;
 }
