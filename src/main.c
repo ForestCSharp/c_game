@@ -537,17 +537,44 @@ int main()
 			.inverse_mass = 1.f,
 			.elasticity = 1.0f,
 			.friction = 0.5f,
-			.debug_color = vec3_new(0,0,1),
+			.debug_color = vec3_new(1,0,1),
 		});
 
-		const Vec3 joint_world_space_anchor = body_a->position;
+		PhysicsBody* body_c = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			.position = vec3_new(40,120,0),
+			.orientation = quat_identity,
+			.linear_velocity = vec3_zero,
+			.shape = {
+				.type = SHAPE_TYPE_BOX,
+				.box = box_shape_create(vec3_new(5,5,5)),
+			},
+			.inverse_mass = 1.f,
+			.elasticity = 1.0f,
+			.friction = 0.5f,
+			.debug_color = vec3_new(0,1,1),
+		});
 
-		PhysicsConstraint distance_constraint = physics_constraint_distance_init();
-		distance_constraint.body_a = body_a;
-		distance_constraint.anchor_a = physics_body_world_to_local_space(body_a, joint_world_space_anchor);
-		distance_constraint.body_b = body_b;
-		distance_constraint.anchor_b = physics_body_world_to_local_space(body_b, joint_world_space_anchor);
-		physics_scene_add_constraint(&physics_scene, &distance_constraint);
+		{
+			const Vec3 joint_world_space_anchor_ab = body_a->position;
+
+			PhysicsConstraint distance_constraint_ab = physics_constraint_distance_init();
+			distance_constraint_ab.body_a = body_a;
+			distance_constraint_ab.anchor_a = physics_body_world_to_local_space(body_a, joint_world_space_anchor_ab);
+			distance_constraint_ab.body_b = body_b;
+			distance_constraint_ab.anchor_b = physics_body_world_to_local_space(body_b, joint_world_space_anchor_ab);
+			physics_scene_add_constraint(&physics_scene, &distance_constraint_ab);
+		}
+
+		{
+			const Vec3 joint_world_space_anchor_bc = body_b->position;
+
+			PhysicsConstraint distance_constraint_bc = physics_constraint_distance_init();
+			distance_constraint_bc.body_a = body_b;
+			distance_constraint_bc.anchor_a = physics_body_world_to_local_space(body_b, joint_world_space_anchor_bc);
+			distance_constraint_bc.body_b = body_c;
+			distance_constraint_bc.anchor_b = physics_body_world_to_local_space(body_c, joint_world_space_anchor_bc);
+			physics_scene_add_constraint(&physics_scene, &distance_constraint_bc);
+		}
 
 		{
 			// side length s

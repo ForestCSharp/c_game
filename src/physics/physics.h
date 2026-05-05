@@ -1435,22 +1435,22 @@ void physics_constraint_solve(PhysicsConstraint* in_constraint)
 
 			LCP_OP_END();
 				
-///*
-// * FCS TODO:	Allocation city. This is terrible
-//				Need either a way to auto gather temporary results 
-// *				or do away with allocations in lcp.h altogether
-// */
-//
-//vecn_destroy(&impulses);
-//vecn_destroy(&lambda_n);
-//matn_destroy(&J_W_Jt_matn);
-//vecn_destroy(&rhs);
-//vecn_destroy(&j_q_dt);
-//matmn_destroy(&J_W_Jt);
-//matmn_destroy(&j_inv_mass_matrix);
-//matmn_destroy(&inv_mass_matrix);
-//vecn_destroy(&q_dt);
-//matmn_destroy(&jacobian_transpose);
+			///*
+			// * FCS TODO:	Allocation city. This is terrible
+			//				Need either a way to auto gather temporary results 
+			// *				or do away with allocations in lcp.h altogether
+			// */
+			//
+			//vecn_destroy(&impulses);
+			//vecn_destroy(&lambda_n);
+			//matn_destroy(&J_W_Jt_matn);
+			//vecn_destroy(&rhs);
+			//vecn_destroy(&j_q_dt);
+			//matmn_destroy(&J_W_Jt);
+			//matmn_destroy(&j_inv_mass_matrix);
+			//matmn_destroy(&inv_mass_matrix);
+			//vecn_destroy(&q_dt);
+			//matmn_destroy(&jacobian_transpose);
 
 			break;
 		}	

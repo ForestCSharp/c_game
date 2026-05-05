@@ -33,7 +33,7 @@ typedef struct LCP_Operation
 	sbuffer(MatMN) mat_mn_array;
 } LCP_Operation;
 
-//FCS TODO: Need lcp_op_stack support
+//FCS TODO: Need lcp_op_stack support so we can nest lcp operation scopes...
 
 _Thread_local LCP_Operation current_lcp_op = {
 	.in_operation = false,
@@ -81,7 +81,6 @@ void vecn_destroy(VecN* in_vec_n);
 void matn_destroy(MatN* in_mat_n);
 void matmn_destroy(MatMN* in_mat_mn);
 
-//FCS TODO: Verify this
 void LCP_OP_END()
 {
 	assert(current_lcp_op.in_operation == true);
@@ -479,6 +478,9 @@ MatN matn_from_matmn(const MatMN* in_mat_mn)
 	{
 		sb_push(out_mat_n.rows, vecn_copy(&in_mat_mn->rows[i]));
 	}
+
+	LCP_OP_MATN(&out_mat_n);
+
 	return out_mat_n;
 }
 
