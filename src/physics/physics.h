@@ -5,8 +5,8 @@
 #include "stretchy_buffer.h"
 #include "physics/convex_helpers.h"
 
-#include "math/dynamic/vec_n.h"
-#include "math/dynamic/mat_n.h"
+// Linear Complementary Problems
+#include "math/lcp.h"
 
 typedef enum ShapeType
 {
@@ -1220,9 +1220,266 @@ i32 physics_contact_compare(const void* in_a, const void* in_b)
 	  		: 						1;
 }
 
+typedef enum PhysicsConstraintType
+{
+	PHYSICS_CONSTRAINT_TYPE_DISTANCE,
+} PhysicsConstraintType;
+
+typedef struct PhysicsConstraintDistance
+{
+	MatMN jacobian;
+} PhysicsConstraintDistance;
+
+typedef struct PhysicsConstraint
+{
+	PhysicsBody* body_a;
+	PhysicsBody* body_b;
+
+	Vec3 anchor_a;
+	Vec3 axis_a;
+
+	Vec3 anchor_b;
+	Vec3 axis_b;
+
+	PhysicsConstraintType type;
+	
+	union 
+	{
+		PhysicsConstraintDistance distance;
+
+	};	
+} PhysicsConstraint;
+
+PhysicsConstraint physics_constraint_distance_init()
+{
+	return (PhysicsConstraint) {
+		.body_a = NULL,
+		.body_b = NULL,
+		.anchor_a = vec3_zero,
+		.axis_a = vec3_zero,
+		.anchor_b = vec3_zero,
+		.axis_b = vec3_zero,
+		.type = PHYSICS_CONSTRAINT_TYPE_DISTANCE,
+		.distance = {
+			.jacobian = matmn_new(1,12),
+		},
+	};
+}
+
+MatMN physics_constraint_get_inverse_mass_matrix(const PhysicsConstraint* in_constraint)
+{
+	MatMN inv_mass_matrix = matmn_new(12,12);
+	matmn_zero_in_place(&inv_mass_matrix);
+
+	PhysicsBody* body_a = in_constraint->body_a;
+	PhysicsBody* body_b = in_constraint->body_b;
+
+	inv_mass_matrix.rows[0].data[0] = body_a->inverse_mass;
+	inv_mass_matrix.rows[1].data[1] = body_a->inverse_mass;
+	inv_mass_matrix.rows[2].data[2] = body_a->inverse_mass;
+
+	Mat3 inv_inertia_a = physics_body_get_inverse_inertia_tensor_world(body_a);
+	for (i32 i = 0; i < 3; ++i)
+	{
+		inv_mass_matrix.rows[3+i].data[3+0] = inv_inertia_a.columns[0].v[i];
+		inv_mass_matrix.rows[3+i].data[3+1] = inv_inertia_a.columns[1].v[i];
+		inv_mass_matrix.rows[3+i].data[3+2] = inv_inertia_a.columns[2].v[i];	
+	}
+
+	inv_mass_matrix.rows[6].data[6] = body_b->inverse_mass;
+	inv_mass_matrix.rows[7].data[7] = body_b->inverse_mass;
+	inv_mass_matrix.rows[8].data[8] = body_b->inverse_mass;
+
+	Mat3 inv_inertia_b = physics_body_get_inverse_inertia_tensor_world(body_b);
+	for (i32 i = 0; i < 3; ++i)
+	{
+		inv_mass_matrix.rows[9+i].data[9+0] = inv_inertia_b.columns[0].v[i];
+		inv_mass_matrix.rows[9+i].data[9+1] = inv_inertia_b.columns[1].v[i];
+		inv_mass_matrix.rows[9+i].data[9+2] = inv_inertia_b.columns[2].v[i];	
+	}
+
+	return inv_mass_matrix;
+}
+
+VecN physics_constraint_get_velocities(const PhysicsConstraint* in_constraint)
+{
+	VecN velocities = vecn_new(12);
+
+	PhysicsBody* body_a = in_constraint->body_a;
+	PhysicsBody* body_b = in_constraint->body_b;
+
+	velocities.data[0]	= body_a->linear_velocity.x;
+	velocities.data[1]	= body_a->linear_velocity.y;
+	velocities.data[2]	= body_a->linear_velocity.z;
+
+	velocities.data[3]	= body_a->angular_velocity.x;
+	velocities.data[4]	= body_a->angular_velocity.y;
+	velocities.data[5]	= body_a->angular_velocity.z;
+
+	velocities.data[6]	= body_b->linear_velocity.x;
+	velocities.data[7]	= body_b->linear_velocity.y;
+	velocities.data[8]	= body_b->linear_velocity.z;
+
+	velocities.data[9]	= body_b->angular_velocity.x;
+	velocities.data[10]	= body_b->angular_velocity.y;
+	velocities.data[11]	= body_b->angular_velocity.z;
+
+	return velocities;
+}
+
+void physics_constraint_apply_impulses(PhysicsConstraint* in_constraint, const VecN* in_impulses)
+{
+	Vec3 force_internal_a	= vec3_zero;
+	Vec3 torque_internal_a	= vec3_zero;
+	Vec3 force_internal_b	= vec3_zero;
+	Vec3 torque_internal_b	= vec3_zero;
+
+	force_internal_a.v[0] = in_impulses->data[0];
+	force_internal_a.v[1] = in_impulses->data[1];	
+	force_internal_a.v[2] = in_impulses->data[2];
+
+	torque_internal_a.v[0] = in_impulses->data[3];
+	torque_internal_a.v[1] = in_impulses->data[4];	
+	torque_internal_a.v[2] = in_impulses->data[5];
+
+	force_internal_b.v[0] = in_impulses->data[6];
+	force_internal_b.v[1] = in_impulses->data[7];	
+	force_internal_b.v[2] = in_impulses->data[8];
+
+	torque_internal_b.v[0] = in_impulses->data[9];
+	torque_internal_b.v[1] = in_impulses->data[10];	
+	torque_internal_b.v[2] = in_impulses->data[11];
+
+	PhysicsBody* body_a = in_constraint->body_a;
+	physics_body_apply_impulse_linear(body_a, force_internal_a);	
+	physics_body_apply_impulse_angular(body_a, torque_internal_a);
+
+	PhysicsBody* body_b = in_constraint->body_b;
+	physics_body_apply_impulse_linear(body_b, force_internal_b);	
+	physics_body_apply_impulse_angular(body_b, torque_internal_b);
+}
+
+void physics_constraint_pre_solve(PhysicsConstraint* in_constraint, const f32 in_delta_time)
+{
+	PhysicsBody* body_a = in_constraint->body_a;
+	PhysicsBody* body_b = in_constraint->body_b;
+
+	switch (in_constraint->type)
+	{
+		case PHYSICS_CONSTRAINT_TYPE_DISTANCE:
+		{
+			MatMN* jacobian = &in_constraint->distance.jacobian;
+
+			const Vec3 world_anchor_a = physics_body_local_to_world_space(body_a, in_constraint->anchor_a);
+			const Vec3 world_anchor_b = physics_body_local_to_world_space(body_b, in_constraint->anchor_b);
+			const Vec3 r = vec3_sub(world_anchor_b, world_anchor_a);
+			const Vec3 ra = vec3_sub(world_anchor_a, physics_body_get_center_of_mass_world(body_a));
+			const Vec3 rb = vec3_sub(world_anchor_b, physics_body_get_center_of_mass_world(body_b));
+			const Vec3 a = world_anchor_a;
+			const Vec3 b = world_anchor_b;
+
+			const Vec3 J1 = vec3_scale(vec3_sub(a,b), 2.0f);
+			jacobian->rows[0].data[0]	= J1.x;
+			jacobian->rows[0].data[1]	= J1.y;
+			jacobian->rows[0].data[2]	= J1.z;
+
+			const Vec3 J2 = vec3_cross(ra, J1);
+			jacobian->rows[0].data[3]	= J2.x;
+			jacobian->rows[0].data[4]	= J2.y;
+			jacobian->rows[0].data[5]	= J2.z;
+
+			const Vec3 J3 = vec3_scale(vec3_sub(b,a), 2.0f);
+			jacobian->rows[0].data[6]	= J3.x;
+			jacobian->rows[0].data[7]	= J3.y;
+			jacobian->rows[0].data[8]	= J3.z;
+
+			const Vec3 J4 = vec3_cross(rb, J3);
+			jacobian->rows[0].data[9]	= J4.x;
+			jacobian->rows[0].data[10]	= J4.y;
+			jacobian->rows[0].data[11]	= J4.z;
+
+			break;
+		}	
+		default:
+			break;
+	}
+}
+
+void physics_constraint_solve(PhysicsConstraint* in_constraint)
+{
+	PhysicsBody* body_a = in_constraint->body_a;
+	PhysicsBody* body_b = in_constraint->body_b;
+
+	switch (in_constraint->type)
+	{
+		case PHYSICS_CONSTRAINT_TYPE_DISTANCE:
+		{
+			MatMN* jacobian = &in_constraint->distance.jacobian;
+			
+			LCP_OP_BEGIN();
+
+			MatMN jacobian_transpose = matmn_transpose(jacobian);
+
+			VecN q_dt = physics_constraint_get_velocities(in_constraint);
+			MatMN inv_mass_matrix = physics_constraint_get_inverse_mass_matrix(in_constraint);
+
+			MatMN j_inv_mass_matrix = matmn_mul_matmn(jacobian, &inv_mass_matrix);
+			MatMN J_W_Jt = matmn_mul_matmn(&j_inv_mass_matrix, &jacobian_transpose);
+			VecN j_q_dt = matmn_mul_vecn(jacobian, &q_dt);
+			VecN rhs = vecn_scale(&j_q_dt, -1.0f);
+
+			MatN J_W_Jt_matn = matn_from_matmn(&J_W_Jt);
+			VecN lambda_n = lcp_gauss_seidel(&J_W_Jt_matn, &rhs);
+			VecN impulses = matmn_mul_vecn(&jacobian_transpose, &lambda_n);
+			physics_constraint_apply_impulses(in_constraint, &impulses);
+
+			LCP_OP_END();
+				
+///*
+// * FCS TODO:	Allocation city. This is terrible
+//				Need either a way to auto gather temporary results 
+// *				or do away with allocations in lcp.h altogether
+// */
+//
+//vecn_destroy(&impulses);
+//vecn_destroy(&lambda_n);
+//matn_destroy(&J_W_Jt_matn);
+//vecn_destroy(&rhs);
+//vecn_destroy(&j_q_dt);
+//matmn_destroy(&J_W_Jt);
+//matmn_destroy(&j_inv_mass_matrix);
+//matmn_destroy(&inv_mass_matrix);
+//vecn_destroy(&q_dt);
+//matmn_destroy(&jacobian_transpose);
+
+			break;
+		}	
+		default:
+			break;
+	}
+}
+
+void physics_constraint_post_solve(PhysicsConstraint* in_constraint)
+{
+	PhysicsBody* body_a = in_constraint->body_a;
+	PhysicsBody* body_b = in_constraint->body_b;
+
+	switch (in_constraint->type)
+	{
+		case PHYSICS_CONSTRAINT_TYPE_DISTANCE:
+		{
+			// Nothing to do	
+			break;
+		}	
+		default:
+			break;
+	}
+}
+
 typedef struct PhysicsScene
 {
-	sbuffer(PhysicsBody) bodies;
+	sbuffer(PhysicsBody*) bodies;
+	sbuffer(PhysicsConstraint) constraints;
 } PhysicsScene;
 
 void physics_scene_init(PhysicsScene* out_physics_scene)
@@ -1232,9 +1489,35 @@ void physics_scene_init(PhysicsScene* out_physics_scene)
 	};
 }
 
-void physics_scene_add_body(PhysicsScene* in_physics_scene, PhysicsBody* in_body)
+void physics_scene_destroy(PhysicsScene* in_physics_scene)
 {
-	sb_push(in_physics_scene->bodies, *in_body);
+	for (i32 body_idx = 0; body_idx < sb_count(in_physics_scene->bodies); ++body_idx)
+	{
+		FCS_MEM_FREE(in_physics_scene->bodies[body_idx]);
+	}
+	sb_free(in_physics_scene->bodies);
+	sb_free(in_physics_scene->constraints);
+}
+
+PhysicsBody* physics_scene_add_body(PhysicsScene* in_physics_scene, const PhysicsBody* in_body)
+{
+	/*
+		Allocate our own body from passed-in data that we'll return. 
+		This is so the physics scene owns the body's allocation so we 
+		can reference them even as additional bodies are added.
+		This new body effectively takes ownership of the passed-in data
+	*/
+	PhysicsBody* new_body = FCS_MEM_ALLOC_ZEROED(sizeof(PhysicsBody));
+
+	*new_body = *in_body;
+	sb_push(in_physics_scene->bodies, new_body);
+
+	return new_body;
+}
+
+void physics_scene_add_constraint(PhysicsScene* in_physics_scene, PhysicsConstraint* in_constraint)
+{
+	sb_push(in_physics_scene->constraints, *in_constraint);
 }
 
 typedef struct PseudoPhysicsBody
@@ -1251,7 +1534,7 @@ i32 pseudo_physics_body_compare(const void* a, const void* b)
 	return (pseudo_body_a->value < pseudo_body_b->value) ? -1 : 1;
 }
 
-sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBody) in_bodies, const f32 in_delta_time)
+sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBody*) in_bodies, const f32 in_delta_time)
 {
 	// Axis we project our min and max onto 
 	const Vec3 projection_axis = vec3_normalize(vec3_new(1,1,1));
@@ -1264,7 +1547,7 @@ sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBo
 
 	for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)
 	{
-		const PhysicsBody* body = &in_bodies[body_idx];	
+		const PhysicsBody* body = in_bodies[body_idx];	
 		Bounds bounds = physics_body_get_bounds(body);
 
 		// Expand bounds by position change this timestep
@@ -1368,7 +1651,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	// Acceleration due to gravity
 	for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)
 	{
-		PhysicsBody* body = &in_physics_scene->bodies[body_idx];
+		PhysicsBody* body = in_physics_scene->bodies[body_idx];
 
 		if (body->inverse_mass > 0.f)
 		{
@@ -1395,8 +1678,8 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	for (i32 pair_idx = 0; pair_idx < sb_count(collision_pairs); ++pair_idx)
 	{
 		CollisionPair* collision_pair = &collision_pairs[pair_idx];
-		PhysicsBody* body_a = &in_physics_scene->bodies[collision_pair->idx_a];
-		PhysicsBody* body_b = &in_physics_scene->bodies[collision_pair->idx_b];
+		PhysicsBody* body_a = in_physics_scene->bodies[collision_pair->idx_a];
+		PhysicsBody* body_b = in_physics_scene->bodies[collision_pair->idx_b];
 
 		// Skip if both bodies have zero mass
 		if (body_a->inverse_mass <= 0.f && body_b->inverse_mass <= 0.f)
@@ -1421,6 +1704,28 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		qsort(contacts, num_contacts, sizeof(PhysicsContact), physics_contact_compare);
 	}
 
+	// Solve Constraints
+	{
+		const i32 num_constraints = sb_count(in_physics_scene->constraints);
+		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
+		{
+			PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
+			physics_constraint_pre_solve(constraint, in_delta_time);					
+		}
+
+		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
+		{		
+			PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
+			physics_constraint_solve(constraint);					
+		}
+
+		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
+		{		
+			PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
+			physics_constraint_post_solve(constraint);					
+		}
+	}
+
 	// peform physics body updates and contact resolution at each contact time of impact
 	f32 accumulated_delta_time = 0.f;
 	for (i32 contact_idx = 0; contact_idx < sb_count(contacts); ++contact_idx)
@@ -1441,7 +1746,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		// Position Update up to time of impact
 		for (i32 body_idx = 0; body_idx < sb_count(in_physics_scene->bodies); ++body_idx)
 		{
-			PhysicsBody* body = &in_physics_scene->bodies[body_idx];
+			PhysicsBody* body = in_physics_scene->bodies[body_idx];
 			physics_body_update(body, contact_delta_time);
 		}
 
@@ -1458,7 +1763,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	{
 		for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)
 		{
-			PhysicsBody* body = &in_physics_scene->bodies[body_idx];
+			PhysicsBody* body = in_physics_scene->bodies[body_idx];
 			physics_body_update(body, remaining_delta_time);
 		}
 	}
