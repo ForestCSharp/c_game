@@ -17,6 +17,7 @@ bool test_stretchy_buffer();
 bool test_matn_mul_matn();
 bool test_matmn_mul_matmn();
 bool test_matn_from_matmn();
+bool test_lcp_op_begin_end();
 
 int main()
 {
@@ -29,6 +30,7 @@ int main()
 	success &= test_matn_mul_matn();
 	success &= test_matmn_mul_matmn();
 	success &= test_matn_from_matmn();
+	success &= test_lcp_op_begin_end();
 
 
 	if (!success)
@@ -250,5 +252,45 @@ bool test_matn_from_matmn()
 
 	matmn_destroy(&src);
 	matn_destroy(&dst);
+	return true;
+}
+
+bool test_lcp_op_begin_end()
+{
+	LCP_OP_BEGIN();
+
+	VecN a = vecn_new(3);
+	a.data[0] = 1.0f; a.data[1] = 2.0f; a.data[2] = 3.0f;
+
+	VecN b = vecn_scale(&a, 2.0f);
+	assert(f32_nearly_equal(b.data[0], 2.0f));
+	assert(f32_nearly_equal(b.data[1], 4.0f));
+	assert(f32_nearly_equal(b.data[2], 6.0f));
+
+	VecN c = vecn_copy(&a);
+	assert(f32_nearly_equal(c.data[0], 1.0f));
+
+	VecN d = vecn_add(&a, &b);
+	assert(f32_nearly_equal(d.data[0], 3.0f));
+	assert(f32_nearly_equal(d.data[1], 6.0f));
+	assert(f32_nearly_equal(d.data[2], 9.0f));
+
+	MatMN M1 = matmn_new(2, 3);
+	M1.rows[0].data[0] = 1.0f; M1.rows[0].data[1] = 0.0f; M1.rows[0].data[2] = 0.0f;
+	M1.rows[1].data[0] = 0.0f; M1.rows[1].data[1] = 1.0f; M1.rows[1].data[2] = 0.0f;
+
+	MatMN M2 = matmn_new(3, 2);
+	M2.rows[0].data[0] = 1.0f; M2.rows[0].data[1] = 2.0f;
+	M2.rows[1].data[0] = 3.0f; M2.rows[1].data[1] = 4.0f;
+	M2.rows[2].data[0] = 5.0f; M2.rows[2].data[1] = 6.0f;
+
+	MatMN M3 = matmn_mul_matmn(&M1, &M2);
+	assert(f32_nearly_equal(M3.rows[0].data[0], 1.0f));
+	assert(f32_nearly_equal(M3.rows[0].data[1], 2.0f));
+	assert(f32_nearly_equal(M3.rows[1].data[0], 3.0f));
+	assert(f32_nearly_equal(M3.rows[1].data[1], 4.0f));
+
+	LCP_OP_END();
+
 	return true;
 }
