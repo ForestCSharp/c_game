@@ -295,7 +295,6 @@ void window_show_mouse_cursor(Window* window, bool in_show_mouse_cursor)
 	}
 }
 
-
 void window_get_position(const Window* const window, int* out_x, int* out_y)
 {
 	*out_x = (int) window->ns_view.frame.origin.x;

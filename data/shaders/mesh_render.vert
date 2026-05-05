@@ -1,6 +1,8 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
+#include "common.glsl.h"
+
 struct StaticVertex
 {
 	vec4 position;
@@ -78,7 +80,14 @@ void main()
 		}
 	}
 
-	gl_Position = global_uniform_buffer.projection * global_uniform_buffer.view * object_ubo.model * skin_matrix * vertex.position;
-    out_position = gl_Position;
+	vec4 view_space_position = global_uniform_buffer.view * object_ubo.model * skin_matrix * vertex.position;
+
+	#ifdef ENABLE_RETRO_GEO
+	view_space_position.xyz = floor(view_space_position.xyz * GEO_RES) / GEO_RES;
+	#endif // ENABLE_RETRO_GEO
+
+	vec4 projected_position = global_uniform_buffer.projection * view_space_position;
+
+	out_position = gl_Position = projected_position;
 	out_color = vec4(vertex.normal.xyz, 1);
 }

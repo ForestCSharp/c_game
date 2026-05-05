@@ -75,6 +75,9 @@ case "${unameOut}" in
 esac
 echo ${machine}
 
+# Set C Standard
+C_GAME_C_STD=c11
+
 if [ $machine = Mac ]; then
 
 	#Build and Run for Mac
@@ -86,6 +89,7 @@ if [ $machine = Mac ]; then
 	if [ "$mac_backend" = "metal" ]; then
 		clang -ObjC -g ./src/main.c \
 			-o bin/game \
+			-std=$C_GAME_C_STD \
 			-I /usr/local/include/vulkan \
 			-I ./src/ \
 			-framework Cocoa \
@@ -98,6 +102,7 @@ if [ $machine = Mac ]; then
 		clang -ObjC -g ./src/main.c \
 			$vulkan_link \
 			-o bin/game \
+			-std=$C_GAME_C_STD \
 			-I /usr/local/include/vulkan \
 			-I ./src/ \
 			-framework Cocoa \
@@ -117,6 +122,7 @@ elif [ $machine = MinGW ]; then
 	#Build and Run for Windows
 	clang -g -gcodeview src/main.c \
 		-o ./bin/game.exe \
+		-std=$C_GAME_C_STD \
 		-l user32.lib ${VULKAN_SDK}/Lib/vulkan-1.lib \
 		-I ${VULKAN_SDK}/Include \
 		-I src \

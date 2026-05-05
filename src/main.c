@@ -84,7 +84,7 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 {
 	assert(out_character != NULL);
 
-	const Vec3 character_root_position = vec3_new(0,0,-15);
+	const Vec3 character_root_position = vec3_new(0,50,-15);
 
 	GameObjectHandle root_object_handle			= ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle body_object_handle			= ADD_OBJECT(game_object_manager_ptr);
@@ -497,6 +497,7 @@ int main()
 			.debug_color = vec3_new(1,0,0),
 		});
 
+		// Floor
 		physics_scene_add_body(&physics_scene, &(PhysicsBody) {
 			.position = vec3_new(0,-50,0),
 			.orientation = quat_identity,
@@ -510,6 +511,43 @@ int main()
 			.friction = 0.5f,
 			.debug_color = vec3_new(0,1,0),
 		});
+
+		PhysicsBody* body_a = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			.position = vec3_new(0,120,0),
+			.orientation = quat_identity,
+			.linear_velocity = vec3_zero,
+			.shape = {
+				.type = SHAPE_TYPE_BOX,
+				.box = box_shape_create(vec3_new(5,5,5)),
+			},
+			.inverse_mass = 0.f,
+			.elasticity = 1.0f,
+			.friction = 0.5f,
+			.debug_color = vec3_new(0,0,1),
+		});
+
+		PhysicsBody* body_b = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			.position = vec3_new(20,120,0),
+			.orientation = quat_identity,
+			.linear_velocity = vec3_zero,
+			.shape = {
+				.type = SHAPE_TYPE_BOX,
+				.box = box_shape_create(vec3_new(5,5,5)),
+			},
+			.inverse_mass = 1.f,
+			.elasticity = 1.0f,
+			.friction = 0.5f,
+			.debug_color = vec3_new(0,0,1),
+		});
+
+		const Vec3 joint_world_space_anchor = body_a->position;
+
+		PhysicsConstraint distance_constraint = physics_constraint_distance_init();
+		distance_constraint.body_a = body_a;
+		distance_constraint.anchor_a = physics_body_world_to_local_space(body_a, joint_world_space_anchor);
+		distance_constraint.body_b = body_b;
+		distance_constraint.anchor_b = physics_body_world_to_local_space(body_b, joint_world_space_anchor);
+		physics_scene_add_constraint(&physics_scene, &distance_constraint);
 
 		{
 			// side length s
@@ -600,7 +638,7 @@ int main()
 		printf("Failed to Load Animated Model\n");
 		return 1;
 	}
-
+	
 	// Generate some random animated + static meshes
 	const i32 OBJECTS_TO_CREATE = 1000;
 	for (i32 i = 0; i < OBJECTS_TO_CREATE; ++i)
@@ -1483,7 +1521,7 @@ int main()
 
 			for (i32 body_idx = 0; body_idx < sb_count(physics_scene.bodies); ++body_idx)
 			{
-				const PhysicsBody* body = &physics_scene.bodies[body_idx];
+				const PhysicsBody* body = physics_scene.bodies[body_idx];
 				switch (body->shape.type)
 				{
 					case SHAPE_TYPE_SPHERE: 
@@ -1626,6 +1664,8 @@ int main()
     gui_shutdown(&gui_context);
 
 	gpu_destroy_device(&gpu_device);
+
+	physics_scene_destroy(&physics_scene);
 
 	task_system_shutdown(&task_system);
 

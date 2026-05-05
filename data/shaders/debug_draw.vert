@@ -1,6 +1,8 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
+#include "common.glsl.h"
+
 struct DebugDrawVertex
 {
 	vec4 position;
@@ -31,10 +33,15 @@ void main()
 	uint vertices_index = index_buffer.data[indices_idx];
 	DebugDrawVertex vertex = vertex_buffer.data[vertices_index];
 
-	gl_Position = global_ubo.projection * global_ubo.view * vertex.position;
+	vec4 view_space_position = global_ubo.view * vertex.position;
+
+	#ifdef ENABLE_RETRO_GEO
+	view_space_position.xyz = floor(view_space_position.xyz * GEO_RES) / GEO_RES;
+	#endif // ENABLE_RETRO_GEO
+
+	gl_Position = global_ubo.projection * view_space_position;
     out_position = gl_Position.xyz;
 	const vec4 transformed_normal = global_ubo.view * vertex.normal;
 	out_normal = transformed_normal.xyz;
 	out_color = vertex.color;
-
 }
