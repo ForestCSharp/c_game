@@ -15,6 +15,7 @@ bool test_mat4_decompose();
 bool test_quat_mat_conversions();
 bool test_stretchy_buffer();
 bool test_matn_mul_matn();
+bool test_matmn_mul_matmn();
 
 int main()
 {
@@ -25,6 +26,7 @@ int main()
 	success &= test_quat_mat_conversions();
 	success &= test_stretchy_buffer();
 	success &= test_matn_mul_matn();
+	success &= test_matmn_mul_matmn();
 
 
 	if (!success)
@@ -199,4 +201,33 @@ bool test_matn_mul_matn()
     matn_destroy(&B);
     matn_destroy(&C);
     return true;
+}
+
+bool test_matmn_mul_matmn()
+{
+	// A is 2x3, B is 3x2
+	// A = [[1,2,3],[4,5,6]]
+	// B = [[7,8],[9,10],[11,12]]
+	// A*B = [[1*7+2*9+3*11, 1*8+2*10+3*12],[4*7+5*9+6*11, 4*8+5*10+6*12]]
+	//      = [[58,64],[139,154]]
+	MatMN A = matmn_new(2, 3);
+	A.rows[0].data[0] = 1.0f; A.rows[0].data[1] = 2.0f; A.rows[0].data[2] = 3.0f;
+	A.rows[1].data[0] = 4.0f; A.rows[1].data[1] = 5.0f; A.rows[1].data[2] = 6.0f;
+
+	MatMN B = matmn_new(3, 2);
+	B.rows[0].data[0] = 7.0f;  B.rows[0].data[1] = 8.0f;
+	B.rows[1].data[0] = 9.0f;  B.rows[1].data[1] = 10.0f;
+	B.rows[2].data[0] = 11.0f; B.rows[2].data[1] = 12.0f;
+
+	MatMN C = matmn_mul_matmn(&A, &B);
+	assert(C.m == 2 && C.n == 2);
+	assert(f32_nearly_equal(C.rows[0].data[0], 58.0f));
+	assert(f32_nearly_equal(C.rows[0].data[1], 64.0f));
+	assert(f32_nearly_equal(C.rows[1].data[0], 139.0f));
+	assert(f32_nearly_equal(C.rows[1].data[1], 154.0f));
+
+	matmn_destroy(&A);
+	matmn_destroy(&B);
+	matmn_destroy(&C);
+	return true;
 }

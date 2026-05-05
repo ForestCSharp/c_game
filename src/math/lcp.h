@@ -435,17 +435,16 @@ MatMN matmn_transpose(const MatMN* in_mat_mn)
 
 MatMN matmn_mul_matmn(const MatMN* in_lhs, const MatMN* in_rhs)
 {
-	//assert(in_lhs->m == in_rhs->m);
-	//assert(in_lhs->n == in_rhs->n);
+	assert(in_lhs->n == in_rhs->m);
 
 	MatMN out_mat_mn = matmn_new(in_lhs->m, in_rhs->n);
 
-	MatMN transposed_rhs = matmn_transpose(in_lhs);
+	MatMN transposed_rhs = matmn_transpose(in_rhs);
 	for (i32 m = 0; m < in_lhs->m; ++m)
 	{
 		for (i32 n = 0; n < in_rhs->n; ++n)
 		{
-			out_mat_mn.rows[m].data[n] = vecn_dot(&in_lhs->rows[m], &transposed_rhs.rows[n]);	
+			out_mat_mn.rows[m].data[n] = vecn_dot(&in_lhs->rows[m], &transposed_rhs.rows[n]);
 		}
 	}
 	matmn_destroy(&transposed_rhs);
