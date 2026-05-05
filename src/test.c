@@ -16,6 +16,7 @@ bool test_quat_mat_conversions();
 bool test_stretchy_buffer();
 bool test_matn_mul_matn();
 bool test_matmn_mul_matmn();
+bool test_matn_from_matmn();
 
 int main()
 {
@@ -27,6 +28,7 @@ int main()
 	success &= test_stretchy_buffer();
 	success &= test_matn_mul_matn();
 	success &= test_matmn_mul_matmn();
+	success &= test_matn_from_matmn();
 
 
 	if (!success)
@@ -229,5 +231,24 @@ bool test_matmn_mul_matmn()
 	matmn_destroy(&A);
 	matmn_destroy(&B);
 	matmn_destroy(&C);
+	return true;
+}
+
+bool test_matn_from_matmn()
+{
+	// Build a 2x2 MatMN with known values and verify MatN copy is correct
+	MatMN src = matmn_new(2, 2);
+	src.rows[0].data[0] = 3.0f; src.rows[0].data[1] = 7.0f;
+	src.rows[1].data[0] = 1.0f; src.rows[1].data[1] = 5.0f;
+
+	MatN dst = matn_from_matmn(&src);
+	assert(matn_num_dims(&dst) == 2);
+	assert(f32_nearly_equal(dst.rows[0].data[0], 3.0f));
+	assert(f32_nearly_equal(dst.rows[0].data[1], 7.0f));
+	assert(f32_nearly_equal(dst.rows[1].data[0], 1.0f));
+	assert(f32_nearly_equal(dst.rows[1].data[1], 5.0f));
+
+	matmn_destroy(&src);
+	matn_destroy(&dst);
 	return true;
 }

@@ -454,11 +454,12 @@ MatMN matmn_mul_matmn(const MatMN* in_lhs, const MatMN* in_rhs)
 
 MatN matn_from_matmn(const MatMN* in_mat_mn)
 {
-	const i32 out_dimensions = in_mat_mn->n;
+	assert(in_mat_mn->m == in_mat_mn->n); // must be square
+	const i32 out_dimensions = in_mat_mn->m;
 	MatN out_mat_n = {};
-	for (i32 n = 0; n < out_dimensions; ++n)
+	for (i32 i = 0; i < out_dimensions; ++i)
 	{
-		sb_push(out_mat_n.rows, vecn_copy(&in_mat_mn->rows[n]));
+		sb_push(out_mat_n.rows, vecn_copy(&in_mat_mn->rows[i]));
 	}
 	return out_mat_n;
 }
