@@ -127,8 +127,6 @@ VecN vecn_copy(const VecN* in_vec_n)
 	VecN out_vec_n = vecn_new(num_elements);
 	memcpy(out_vec_n.data, in_vec_n->data, num_elements * sizeof(f32));
 
-	LCP_OP_VECN(&out_vec_n);
-
 	return out_vec_n;
 }
 
@@ -151,8 +149,6 @@ VecN vecn_scale(const VecN* in_vec_n, const f32 in_scale_factor)
 	VecN out_vec_n = vecn_copy(in_vec_n);
 	vecn_scale_in_place(&out_vec_n, in_scale_factor);
 
-	LCP_OP_VECN(&out_vec_n);
-
 	return out_vec_n;
 }
 
@@ -168,8 +164,6 @@ VecN vecn_add(const VecN* in_vec_lhs, const VecN* in_vec_rhs)
 {	
 	VecN out_vec_n = vecn_copy(in_vec_lhs);
 	vecn_add_in_place(&out_vec_n, in_vec_rhs);
-
-	LCP_OP_VECN(&out_vec_n);
 
 	return out_vec_n;
 }
@@ -187,8 +181,6 @@ VecN vecn_sub(const VecN* in_vec_lhs, const VecN* in_vec_rhs)
 	VecN out_vec_n = vecn_copy(in_vec_lhs);
 	vecn_sub_in_place(&out_vec_n, in_vec_rhs);
 
-	LCP_OP_VECN(&out_vec_n);
-	
 	return out_vec_n;
 }
 
