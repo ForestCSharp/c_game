@@ -55,6 +55,22 @@ void LCP_OP_VECN(const VecN* in_vec_n)
 	}
 }
 
+void LCP_OP_MATN(const MatN* in_mat_n)
+{
+	if (LCP_IN_OP())
+	{
+		sb_push(current_lcp_op.mat_n_array, *in_mat_n);
+	}
+}
+
+void LCP_OP_MATMN(const MatMN* in_mat_mn)
+{
+	if (LCP_IN_OP())
+	{
+		sb_push(current_lcp_op.mat_mn_array, *in_mat_mn);
+	}
+}
+
 void LCP_OP_BEGIN()
 {
 	assert(current_lcp_op.in_operation == false);
@@ -211,6 +227,8 @@ MatN matn_new(i32 in_num_elements)
 		sb_push(out_mat_n.rows, vecn_new(in_num_elements));
 	}
 
+	LCP_OP_MATN(&out_mat_n);
+
 	return out_mat_n;
 }
 
@@ -346,6 +364,8 @@ MatMN matmn_new(i32 in_m, i32 in_n)
 	{
 		sb_push(out_mat_mn.rows, vecn_new(in_n));
 	}
+
+	LCP_OP_MATMN(&out_mat_mn);
 
 	return out_mat_mn;
 }
