@@ -281,7 +281,10 @@ void matn_transpose(MatN* in_mat_n)
 		}
 	}
 
-	matn_destroy(&tmp);
+	if (!LCP_IN_OP())
+	{
+		matn_destroy(&tmp);
+	}
 }
 
 void matn_scale_in_place(MatN* in_mat_n, const f32 in_scale)
@@ -439,7 +442,10 @@ MatMN matmn_mul_matmn(const MatMN* in_lhs, const MatMN* in_rhs)
 			out_mat_mn.rows[m].data[n] = vecn_dot(&in_lhs->rows[m], &transposed_rhs.rows[n]);
 		}
 	}
-	matmn_destroy(&transposed_rhs);
+	if (!LCP_IN_OP())
+	{
+		matmn_destroy(&transposed_rhs);
+	}
 
 	return out_mat_mn;
 }
