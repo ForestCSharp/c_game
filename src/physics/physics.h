@@ -1230,6 +1230,8 @@ typedef struct PhysicsConstraintDistance
 	MatMN jacobian;
 } PhysicsConstraintDistance;
 
+typedef struct PhysicsScene PhysicsScene;
+
 typedef struct PhysicsConstraint
 {
 	PhysicsBody* body_a;
@@ -1250,25 +1252,9 @@ typedef struct PhysicsConstraint
 	};	
 } PhysicsConstraint;
 
-PhysicsConstraint physics_constraint_distance_init()
+MatMN physics_constraint_get_inverse_mass_matrix(Arena* arena, const PhysicsConstraint* in_constraint)
 {
-	return (PhysicsConstraint) {
-		.body_a = NULL,
-		.body_b = NULL,
-		.anchor_a = vec3_zero,
-		.axis_a = vec3_zero,
-		.anchor_b = vec3_zero,
-		.axis_b = vec3_zero,
-		.type = PHYSICS_CONSTRAINT_TYPE_DISTANCE,
-		.distance = {
-			.jacobian = matmn_new(1,12),
-		},
-	};
-}
-
-MatMN physics_constraint_get_inverse_mass_matrix(const PhysicsConstraint* in_constraint)
-{
-	MatMN inv_mass_matrix = matmn_new(12,12);
+	MatMN inv_mass_matrix = matmn_new(arena, 12, 12);
 	matmn_zero_in_place(&inv_mass_matrix);
 
 	PhysicsBody* body_a = in_constraint->body_a;
@@ -1301,9 +1287,9 @@ MatMN physics_constraint_get_inverse_mass_matrix(const PhysicsConstraint* in_con
 	return inv_mass_matrix;
 }
 
-VecN physics_constraint_get_velocities(const PhysicsConstraint* in_constraint)
+VecN physics_constraint_get_velocities(Arena* arena, const PhysicsConstraint* in_constraint)
 {
-	VecN velocities = vecn_new(12);
+	VecN velocities = vecn_new(arena, 12);
 
 	PhysicsBody* body_a = in_constraint->body_a;
 	PhysicsBody* body_b = in_constraint->body_b;
@@ -1359,7 +1345,7 @@ void physics_constraint_apply_impulses(PhysicsConstraint* in_constraint, const V
 	physics_body_apply_impulse_angular(body_b, torque_internal_b);
 }
 
-void physics_constraint_pre_solve(PhysicsConstraint* in_constraint, const f32 in_delta_time)
+void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_constraint, const f32 in_delta_time)
 {
 	PhysicsBody* body_a = in_constraint->body_a;
 	PhysicsBody* body_b = in_constraint->body_b;
@@ -1405,7 +1391,7 @@ void physics_constraint_pre_solve(PhysicsConstraint* in_constraint, const f32 in
 	}
 }
 
-void physics_constraint_solve(PhysicsConstraint* in_constraint)
+void physics_constraint_solve(PhysicsScene* scene, PhysicsConstraint* in_constraint)
 {
 	PhysicsBody* body_a = in_constraint->body_a;
 	PhysicsBody* body_b = in_constraint->body_b;
@@ -1416,41 +1402,27 @@ void physics_constraint_solve(PhysicsConstraint* in_constraint)
 		{
 			MatMN* jacobian = &in_constraint->distance.jacobian;
 			
-			LCP_OP_BEGIN();
+			Arena* arena = arena_create(&(ArenaDesc) {
+				.size = 4 KiB,
+				.allow_growth = true,
+			});
 
-			MatMN jacobian_transpose = matmn_transpose(jacobian);
+			MatMN jacobian_transpose = matmn_transpose(arena, jacobian);
 
-			VecN q_dt = physics_constraint_get_velocities(in_constraint);
-			MatMN inv_mass_matrix = physics_constraint_get_inverse_mass_matrix(in_constraint);
+			VecN q_dt = physics_constraint_get_velocities(arena, in_constraint);
+			MatMN inv_mass_matrix = physics_constraint_get_inverse_mass_matrix(arena, in_constraint);
 
-			MatMN j_inv_mass_matrix = matmn_mul_matmn(jacobian, &inv_mass_matrix);
-			MatMN J_W_Jt = matmn_mul_matmn(&j_inv_mass_matrix, &jacobian_transpose);
-			VecN j_q_dt = matmn_mul_vecn(jacobian, &q_dt);
-			VecN rhs = vecn_scale(&j_q_dt, -1.0f);
+			MatMN j_inv_mass_matrix = matmn_mul_matmn(arena, jacobian, &inv_mass_matrix);
+			MatMN J_W_Jt = matmn_mul_matmn(arena, &j_inv_mass_matrix, &jacobian_transpose);
+			VecN j_q_dt = matmn_mul_vecn(arena, jacobian, &q_dt);
+			VecN rhs = vecn_scale(arena, &j_q_dt, -1.0f);
 
-			MatN J_W_Jt_matn = matn_from_matmn(&J_W_Jt);
-			VecN lambda_n = lcp_gauss_seidel(&J_W_Jt_matn, &rhs);
-			VecN impulses = matmn_mul_vecn(&jacobian_transpose, &lambda_n);
+			MatN J_W_Jt_matn = matn_from_matmn(arena, &J_W_Jt);
+			VecN lambda_n = lcp_gauss_seidel(arena, &J_W_Jt_matn, &rhs);
+			VecN impulses = matmn_mul_vecn(arena, &jacobian_transpose, &lambda_n);
 			physics_constraint_apply_impulses(in_constraint, &impulses);
 
-			LCP_OP_END();
-				
-			///*
-			// * FCS TODO:	Allocation city. This is terrible
-			//				Need either a way to auto gather temporary results 
-			// *				or do away with allocations in lcp.h altogether
-			// */
-			//
-			//vecn_destroy(&impulses);
-			//vecn_destroy(&lambda_n);
-			//matn_destroy(&J_W_Jt_matn);
-			//vecn_destroy(&rhs);
-			//vecn_destroy(&j_q_dt);
-			//matmn_destroy(&J_W_Jt);
-			//matmn_destroy(&j_inv_mass_matrix);
-			//matmn_destroy(&inv_mass_matrix);
-			//vecn_destroy(&q_dt);
-			//matmn_destroy(&jacobian_transpose);
+			arena_destroy(arena);
 
 			break;
 		}	
@@ -1459,7 +1431,7 @@ void physics_constraint_solve(PhysicsConstraint* in_constraint)
 	}
 }
 
-void physics_constraint_post_solve(PhysicsConstraint* in_constraint)
+void physics_constraint_post_solve(PhysicsScene* scene, PhysicsConstraint* in_constraint)
 {
 	PhysicsBody* body_a = in_constraint->body_a;
 	PhysicsBody* body_b = in_constraint->body_b;
@@ -1480,12 +1452,17 @@ typedef struct PhysicsScene
 {
 	sbuffer(PhysicsBody*) bodies;
 	sbuffer(PhysicsConstraint) constraints;
+	Arena* arena;
 } PhysicsScene;
 
 void physics_scene_init(PhysicsScene* out_physics_scene)
 {
 	*out_physics_scene = (PhysicsScene) {
 		.bodies = NULL,
+		.arena = arena_create(&(ArenaDesc) {
+			.size = 64 KiB,
+			.allow_growth = true,
+		}),
 	};
 }
 
@@ -1497,6 +1474,7 @@ void physics_scene_destroy(PhysicsScene* in_physics_scene)
 	}
 	sb_free(in_physics_scene->bodies);
 	sb_free(in_physics_scene->constraints);
+	arena_destroy(in_physics_scene->arena);
 }
 
 PhysicsBody* physics_scene_add_body(PhysicsScene* in_physics_scene, const PhysicsBody* in_body)
@@ -1518,6 +1496,22 @@ PhysicsBody* physics_scene_add_body(PhysicsScene* in_physics_scene, const Physic
 void physics_scene_add_constraint(PhysicsScene* in_physics_scene, PhysicsConstraint* in_constraint)
 {
 	sb_push(in_physics_scene->constraints, *in_constraint);
+}
+
+PhysicsConstraint physics_constraint_distance_init(PhysicsScene* scene)
+{
+	return (PhysicsConstraint) {
+		.body_a = NULL,
+		.body_b = NULL,
+		.anchor_a = vec3_zero,
+		.axis_a = vec3_zero,
+		.anchor_b = vec3_zero,
+		.axis_b = vec3_zero,
+		.type = PHYSICS_CONSTRAINT_TYPE_DISTANCE,
+		.distance = {
+			.jacobian = matmn_new(scene->arena, 1, 12),
+		},
+	};
 }
 
 typedef struct PseudoPhysicsBody
@@ -1710,19 +1704,19 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
 		{
 			PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
-			physics_constraint_pre_solve(constraint, in_delta_time);					
+			physics_constraint_pre_solve(in_physics_scene, constraint, in_delta_time);					
 		}
 
 		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
 		{		
 			PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
-			physics_constraint_solve(constraint);					
+			physics_constraint_solve(in_physics_scene, constraint);					
 		}
 
 		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
 		{		
 			PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
-			physics_constraint_post_solve(constraint);					
+			physics_constraint_post_solve(in_physics_scene, constraint);					
 		}
 	}
 

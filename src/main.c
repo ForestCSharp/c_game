@@ -557,7 +557,7 @@ int main()
 		{
 			const Vec3 joint_world_space_anchor_ab = body_a->position;
 
-			PhysicsConstraint distance_constraint_ab = physics_constraint_distance_init();
+			PhysicsConstraint distance_constraint_ab = physics_constraint_distance_init(&physics_scene);
 			distance_constraint_ab.body_a = body_a;
 			distance_constraint_ab.anchor_a = physics_body_world_to_local_space(body_a, joint_world_space_anchor_ab);
 			distance_constraint_ab.body_b = body_b;
@@ -568,7 +568,7 @@ int main()
 		{
 			const Vec3 joint_world_space_anchor_bc = body_b->position;
 
-			PhysicsConstraint distance_constraint_bc = physics_constraint_distance_init();
+			PhysicsConstraint distance_constraint_bc = physics_constraint_distance_init(&physics_scene);
 			distance_constraint_bc.body_a = body_b;
 			distance_constraint_bc.anchor_a = physics_body_world_to_local_space(body_b, joint_world_space_anchor_bc);
 			distance_constraint_bc.body_b = body_c;
