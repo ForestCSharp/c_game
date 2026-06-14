@@ -1248,7 +1248,6 @@ typedef struct PhysicsConstraint
 	union 
 	{
 		PhysicsConstraintDistance distance;
-
 	};	
 } PhysicsConstraint;
 
@@ -1707,11 +1706,15 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 			physics_constraint_pre_solve(in_physics_scene, constraint, in_delta_time);					
 		}
 
-		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
-		{		
-			PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
-			physics_constraint_solve(in_physics_scene, constraint);					
-		}
+        const i32 max_iterations = 10;
+        for (i32 iteration = 0; iteration < max_iterations; ++iteration)
+        {
+            for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
+            {		
+                PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
+                physics_constraint_solve(in_physics_scene, constraint);					
+            }
+        }
 
 		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
 		{		

@@ -25,6 +25,8 @@
 
 #include "physics/physics.h"
 
+#include "truetype.h"
+
 typedef struct AnimationUpdateTaskData
 {
 	AnimatedModel* animated_model;
@@ -406,6 +408,9 @@ void character_update(CharacterUpdateData* in_update_data)
 
 int main()
 {
+    TTFFont font;
+    ttf_init(&font, "data/fonts/Menlo-Regular.ttf");
+
 	// Init multithreaded task system
 	TaskSystem task_system;
 	task_system_init(&task_system);
@@ -554,6 +559,20 @@ int main()
 			.debug_color = vec3_new(0,1,1),
 		});
 
+		PhysicsBody* body_d = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			.position = vec3_new(60,120,0),
+			.orientation = quat_identity,
+			.linear_velocity = vec3_zero,
+			.shape = {
+				.type = SHAPE_TYPE_BOX,
+				.box = box_shape_create(vec3_new(5,5,5)),
+			},
+			.inverse_mass = 1.f,
+			.elasticity = 1.0f,
+			.friction = 0.5f,
+			.debug_color = vec3_new(1,1,0),
+		});
+
 		{
 			const Vec3 joint_world_space_anchor_ab = body_a->position;
 
@@ -574,6 +593,17 @@ int main()
 			distance_constraint_bc.body_b = body_c;
 			distance_constraint_bc.anchor_b = physics_body_world_to_local_space(body_c, joint_world_space_anchor_bc);
 			physics_scene_add_constraint(&physics_scene, &distance_constraint_bc);
+		}
+
+		{
+			const Vec3 joint_world_space_anchor_cd = body_c->position;
+
+			PhysicsConstraint distance_constraint_cd = physics_constraint_distance_init(&physics_scene);
+			distance_constraint_cd.body_a = body_c;
+			distance_constraint_cd.anchor_a = physics_body_world_to_local_space(body_c, joint_world_space_anchor_cd);
+			distance_constraint_cd.body_b = body_d;
+			distance_constraint_cd.anchor_b = physics_body_world_to_local_space(body_d, joint_world_space_anchor_cd);
+			physics_scene_add_constraint(&physics_scene, &distance_constraint_cd);
 		}
 
 		{
