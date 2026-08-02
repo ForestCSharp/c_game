@@ -1228,6 +1228,7 @@ typedef enum PhysicsConstraintType
 typedef struct PhysicsConstraintDistance
 {
 	MatMN jacobian;
+    VecN cached_lambda;
 } PhysicsConstraintDistance;
 
 typedef struct PhysicsScene PhysicsScene;
@@ -1383,6 +1384,19 @@ void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_con
 			jacobian->rows[0].data[10]	= J4.y;
 			jacobian->rows[0].data[11]	= J4.z;
 
+			// Reapply last frame's accumulated constraint impulse.
+			Arena* arena = arena_create(&(ArenaDesc) {
+				.size = 4 KiB,
+				.allow_growth = true,
+			});
+			MatMN jacobian_transpose = matmn_transpose(arena, jacobian);
+			VecN impulses = matmn_mul_vecn(
+				arena,
+				&jacobian_transpose,
+				&in_constraint->distance.cached_lambda);
+			physics_constraint_apply_impulses(in_constraint, &impulses);
+			arena_destroy(arena);
+
 			break;
 		}	
 		default:
@@ -1420,6 +1434,7 @@ void physics_constraint_solve(PhysicsScene* scene, PhysicsConstraint* in_constra
 			VecN lambda_n = lcp_gauss_seidel(arena, &J_W_Jt_matn, &rhs);
 			VecN impulses = matmn_mul_vecn(arena, &jacobian_transpose, &lambda_n);
 			physics_constraint_apply_impulses(in_constraint, &impulses);
+            vecn_add_in_place(&in_constraint->distance.cached_lambda, &lambda_n);
 
 			arena_destroy(arena);
 
@@ -1439,7 +1454,15 @@ void physics_constraint_post_solve(PhysicsScene* scene, PhysicsConstraint* in_co
 	{
 		case PHYSICS_CONSTRAINT_TYPE_DISTANCE:
 		{
-			// Nothing to do	
+			f32* cached_lambda = &in_constraint->distance.cached_lambda.data[0];
+			if (!isfinite(*cached_lambda))
+			{
+				*cached_lambda = 0.0f;
+			}
+
+			const f32 warm_start_limit = 1e5f;
+			*cached_lambda = CLAMP(*cached_lambda, -warm_start_limit, warm_start_limit);
+
 			break;
 		}	
 		default:
@@ -1509,6 +1532,7 @@ PhysicsConstraint physics_constraint_distance_init(PhysicsScene* scene)
 		.type = PHYSICS_CONSTRAINT_TYPE_DISTANCE,
 		.distance = {
 			.jacobian = matmn_new(scene->arena, 1, 12),
+            .cached_lambda = vecn_new(scene->arena, 1),
 		},
 	};
 }
@@ -1706,7 +1730,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 			physics_constraint_pre_solve(in_physics_scene, constraint, in_delta_time);					
 		}
 
-        const i32 max_iterations = 10;
+        const i32 max_iterations = 5;
         for (i32 iteration = 0; iteration < max_iterations; ++iteration)
         {
             for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
