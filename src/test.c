@@ -225,19 +225,19 @@ bool test_matn_mul_matn()
     // A = [[1,2],[3,4]], B = [[5,6],[7,8]]
     // A*B = [[1*5+2*7, 1*6+2*8],[3*5+4*7, 3*6+4*8]]
     //      = [[19,22],[43,50]]
-    MatN A = matn_new(arena, 2);
-    A.rows[0].data[0] = 1.0f; A.rows[0].data[1] = 2.0f;
-    A.rows[1].data[0] = 3.0f; A.rows[1].data[1] = 4.0f;
+    MatN a = matn_new(arena, 2);
+    a.rows[0].data[0] = 1.0f; a.rows[0].data[1] = 2.0f;
+    a.rows[1].data[0] = 3.0f; a.rows[1].data[1] = 4.0f;
 
-    MatN B = matn_new(arena, 2);
-    B.rows[0].data[0] = 5.0f; B.rows[0].data[1] = 6.0f;
-    B.rows[1].data[0] = 7.0f; B.rows[1].data[1] = 8.0f;
+    MatN b = matn_new(arena, 2);
+    b.rows[0].data[0] = 5.0f; b.rows[0].data[1] = 6.0f;
+    b.rows[1].data[0] = 7.0f; b.rows[1].data[1] = 8.0f;
 
-    MatN C = matn_mul_matn(arena, &A, &B);
-    assert(f32_nearly_equal(C.rows[0].data[0], 19.0f));
-    assert(f32_nearly_equal(C.rows[0].data[1], 22.0f));
-    assert(f32_nearly_equal(C.rows[1].data[0], 43.0f));
-    assert(f32_nearly_equal(C.rows[1].data[1], 50.0f));
+    MatN c = matn_mul_matn(arena, &a, &b);
+    assert(f32_nearly_equal(c.rows[0].data[0], 19.0f));
+    assert(f32_nearly_equal(c.rows[0].data[1], 22.0f));
+    assert(f32_nearly_equal(c.rows[1].data[0], 43.0f));
+    assert(f32_nearly_equal(c.rows[1].data[1], 50.0f));
 
 	arena_destroy(arena);
 
@@ -438,21 +438,21 @@ bool test_matmn_mul_matmn()
 	// B = [[7,8],[9,10],[11,12]]
 	// A*B = [[1*7+2*9+3*11, 1*8+2*10+3*12],[4*7+5*9+6*11, 4*8+5*10+6*12]]
 	//      = [[58,64],[139,154]]
-	MatMN A = matmn_new(arena, 2, 3);
-	A.rows[0].data[0] = 1.0f; A.rows[0].data[1] = 2.0f; A.rows[0].data[2] = 3.0f;
-	A.rows[1].data[0] = 4.0f; A.rows[1].data[1] = 5.0f; A.rows[1].data[2] = 6.0f;
+	MatMN a = matmn_new(arena, 2, 3);
+	a.rows[0].data[0] = 1.0f; a.rows[0].data[1] = 2.0f; a.rows[0].data[2] = 3.0f;
+	a.rows[1].data[0] = 4.0f; a.rows[1].data[1] = 5.0f; a.rows[1].data[2] = 6.0f;
 
-	MatMN B = matmn_new(arena, 3, 2);
-	B.rows[0].data[0] = 7.0f;  B.rows[0].data[1] = 8.0f;
-	B.rows[1].data[0] = 9.0f;  B.rows[1].data[1] = 10.0f;
-	B.rows[2].data[0] = 11.0f; B.rows[2].data[1] = 12.0f;
+	MatMN b = matmn_new(arena, 3, 2);
+	b.rows[0].data[0] = 7.0f;  b.rows[0].data[1] = 8.0f;
+	b.rows[1].data[0] = 9.0f;  b.rows[1].data[1] = 10.0f;
+	b.rows[2].data[0] = 11.0f; b.rows[2].data[1] = 12.0f;
 
-	MatMN C = matmn_mul_matmn(arena, &A, &B);
-	assert(C.m == 2 && C.n == 2);
-	assert(f32_nearly_equal(C.rows[0].data[0], 58.0f));
-	assert(f32_nearly_equal(C.rows[0].data[1], 64.0f));
-	assert(f32_nearly_equal(C.rows[1].data[0], 139.0f));
-	assert(f32_nearly_equal(C.rows[1].data[1], 154.0f));
+	MatMN c = matmn_mul_matmn(arena, &a, &b);
+	assert(c.m == 2 && c.n == 2);
+	assert(f32_nearly_equal(c.rows[0].data[0], 58.0f));
+	assert(f32_nearly_equal(c.rows[0].data[1], 64.0f));
+	assert(f32_nearly_equal(c.rows[1].data[0], 139.0f));
+	assert(f32_nearly_equal(c.rows[1].data[1], 154.0f));
 
 	arena_destroy(arena);
 
@@ -506,20 +506,20 @@ bool test_lcp_op_begin_end()
 	assert(f32_nearly_equal(d.data[1], 6.0f));
 	assert(f32_nearly_equal(d.data[2], 9.0f));
 
-	MatMN M1 = matmn_new(arena, 2, 3);
-	M1.rows[0].data[0] = 1.0f; M1.rows[0].data[1] = 0.0f; M1.rows[0].data[2] = 0.0f;
-	M1.rows[1].data[0] = 0.0f; M1.rows[1].data[1] = 1.0f; M1.rows[1].data[2] = 0.0f;
+	MatMN m1 = matmn_new(arena, 2, 3);
+	m1.rows[0].data[0] = 1.0f; m1.rows[0].data[1] = 0.0f; m1.rows[0].data[2] = 0.0f;
+	m1.rows[1].data[0] = 0.0f; m1.rows[1].data[1] = 1.0f; m1.rows[1].data[2] = 0.0f;
 
-	MatMN M2 = matmn_new(arena, 3, 2);
-	M2.rows[0].data[0] = 1.0f; M2.rows[0].data[1] = 2.0f;
-	M2.rows[1].data[0] = 3.0f; M2.rows[1].data[1] = 4.0f;
-	M2.rows[2].data[0] = 5.0f; M2.rows[2].data[1] = 6.0f;
+	MatMN m2 = matmn_new(arena, 3, 2);
+	m2.rows[0].data[0] = 1.0f; m2.rows[0].data[1] = 2.0f;
+	m2.rows[1].data[0] = 3.0f; m2.rows[1].data[1] = 4.0f;
+	m2.rows[2].data[0] = 5.0f; m2.rows[2].data[1] = 6.0f;
 
-	MatMN M3 = matmn_mul_matmn(arena, &M1, &M2);
-	assert(f32_nearly_equal(M3.rows[0].data[0], 1.0f));
-	assert(f32_nearly_equal(M3.rows[0].data[1], 2.0f));
-	assert(f32_nearly_equal(M3.rows[1].data[0], 3.0f));
-	assert(f32_nearly_equal(M3.rows[1].data[1], 4.0f));
+	MatMN m3 = matmn_mul_matmn(arena, &m1, &m2);
+	assert(f32_nearly_equal(m3.rows[0].data[0], 1.0f));
+	assert(f32_nearly_equal(m3.rows[0].data[1], 2.0f));
+	assert(f32_nearly_equal(m3.rows[1].data[0], 3.0f));
+	assert(f32_nearly_equal(m3.rows[1].data[1], 4.0f));
 
 	arena_destroy(arena);
 

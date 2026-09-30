@@ -1,0 +1,90 @@
+# C11 engine code, with Objective-C in the macOS platform and Metal layers.
+# Most implementations live in headers or included .c files: analyze the entry
+# points (src/main.c, src/test.c, src/gpu/gpu_test.c) with their build flags.
+# Run ./clang_tidy.sh to apply fixes.
+# Example on macOS, without a compilation database:
+# clang-tidy src/test.c -- -x objective-c -std=c11 -Isrc \
+#   -isysroot "$(xcrun --show-sdk-path)"
+# For main.c, also pass the selected GPU_IMPLEMENTATION_* and backend defines
+# and the Vulkan SDK include path from build.sh, when using Vulkan.
+# Reference: https://clang.llvm.org/extra/clang-tidy/checks/readability/identifier-naming.html
+---
+InheritParentConfig: false
+
+# Select C/Objective-C analyzer families and explicit bugprone checks.
+# Check allocation, bounds, lifetime, arithmetic, and control flow.
+Checks: >-
+  -*,
+  clang-analyzer-core.*,
+  clang-analyzer-deadcode.*,
+  clang-analyzer-unix.*,
+  clang-analyzer-valist.*,
+  clang-analyzer-osx.*,
+  clang-analyzer-security.*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-security.insecureAPI.rand,
+  bugprone-assert-side-effect,
+  bugprone-implicit-widening-of-multiplication-result,
+  bugprone-integer-division,
+  bugprone-misplaced-widening-cast,
+  bugprone-not-null-terminated-result,
+  bugprone-sizeof-expression,
+  bugprone-suspicious-enum-usage,
+  bugprone-suspicious-memory-comparison,
+  bugprone-suspicious-memset-usage,
+  bugprone-suspicious-missing-comma,
+  bugprone-suspicious-realloc-usage,
+  bugprone-suspicious-semicolon,
+  bugprone-suspicious-string-compare,
+  bugprone-too-small-loop-variable,
+  readability-identifier-naming
+
+# memcpy/strcat and rand are intentional in the buffer and simulation helpers;
+# retain the analyzer's checks for actual bad sizes, nulls, and lifetimes.
+# Do not enable suspicious-include or definitions-in-headers for this unity
+# build, or macro-multiple-evaluation for the stretchy-buffer/optional DSL.
+# Short math names, numeric literals, and C casts are established conventions.
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '(^|[/\\])src[/\\]'
+SystemHeaders: false
+FormatStyle: none
+
+CheckOptions:
+  # Most structs, unions, enums, and their typedefs use names such as Vec3,
+  # GpuDevice, PhysicsBody, TRS, and TTFFont.
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.UnionCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.TypedefCase: CamelCase
+  # Generated optional tags and typedefs, primitive aliases, and callbacks.
+  readability-identifier-naming.StructIgnoredRegexp: '^optional_[A-Za-z0-9_]+$'
+  readability-identifier-naming.TypedefIgnoredRegexp: '^(u(8|16|32|64)|i(8|16|32|64)|f(32|64)|optional_[A-Za-z0-9_]+|[a-z][a-z0-9_]*_function_ptr)$'
+
+  readability-identifier-naming.FunctionCase: lower_case
+  # Component interface macros splice CamelCase type names into function names.
+  readability-identifier-naming.FunctionIgnoredRegexp: '^game_object_manager_(get|create|destroy|set)_[A-Z][A-Za-z0-9_]*$'
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.MemberCase: lower_case
+  readability-identifier-naming.LocalConstantCase: lower_case
+  readability-identifier-naming.EnumConstantCase: UPPER_CASE
+
+  # Allow both PI/INVALID_INDEX and vec3_zero/quat_identity for global constants.
+  readability-identifier-naming.GlobalConstantCase: lower_case
+  readability-identifier-naming.GlobalConstantIgnoredRegexp: '^[A-Z][A-Z0-9_]*$'
+  # The pointer itself must be const, e.g. const char* const STRING_TRUE.
+  # A pointer to const data with a mutable binding follows VariableCase instead.
+  readability-identifier-naming.GlobalConstantPointerCase: lower_case
+  readability-identifier-naming.GlobalConstantPointerIgnoredRegexp: '^[A-Z][A-Z0-9_]*$'
+  readability-identifier-naming.StaticConstantCase: lower_case
+  readability-identifier-naming.StaticConstantIgnoredRegexp: '^[A-Z][A-Z0-9_]*$'
+
+  # Macro casing and in_/out_ parameter prefixes are intentionally unrestricted
+  # pending a choice of convention; both styles are used throughout src/.
+  # Catch calls with side effects inside assert: release builds skip them.
+  bugprone-assert-side-effect.CheckFunctionCalls: true
+  # These inspected math helpers only read their arguments. Resource loading
+  # and pthread/Win32 calls must still be reported when placed inside assert.
+  bugprone-assert-side-effect.IgnoredFunctions: '^f32_nearly_equal$;^vecn_count$;^matn_num_dims$'
+...

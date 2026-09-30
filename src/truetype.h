@@ -38,11 +38,11 @@ typedef struct TTFFont
     const u8 *data;
     size_t size;
     const u8 *head, *hhea, *maxp, *hmtx, *cmap, *loca, *glyf;
-    u16 numGlyphs;
-    u16 unitsPerEm;
-    i16  indexToLocFormat;
-    i16  ascender, descender, lineGap;
-    u16 numHMetrics;
+    u16 num_glyphs;
+    u16 units_per_em;
+    i16  index_to_loc_format;
+    i16  ascender, descender, line_gap;
+    u16 num_h_metrics;
 } TTFFont;
 
 // Per-glyph render metadata
@@ -102,13 +102,13 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
     FIND("glyf", glyf)
     #undef FIND
 
-    out_font->unitsPerEm       = be_u16(out_font->head + 18);
-    out_font->indexToLocFormat = be_i16(out_font->head + 50);
-    out_font->numGlyphs        = be_u16(out_font->maxp + 4);
+    out_font->units_per_em       = be_u16(out_font->head + 18);
+    out_font->index_to_loc_format = be_i16(out_font->head + 50);
+    out_font->num_glyphs        = be_u16(out_font->maxp + 4);
     out_font->ascender         = be_i16(out_font->hhea + 4);
     out_font->descender        = be_i16(out_font->hhea + 6);
-    out_font->lineGap          = be_i16(out_font->hhea + 8);
-    out_font->numHMetrics      = be_u16(out_font->hhea + 34);
+    out_font->line_gap          = be_i16(out_font->hhea + 8);
+    out_font->num_h_metrics      = be_u16(out_font->hhea + 34);
 
     //FCS TODO: REMOVE
     //exit(0);

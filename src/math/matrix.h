@@ -373,8 +373,8 @@ Mat4 mat4_look_at(const Vec3 from, const Vec3 to, const Vec3 in_up)
 
 Mat4 mat4_perspective(const float fov, const float aspect_ratio, const float frustum_near, const float frustum_far)
 {
-    float D2R = M_PI / 180.0f;
-    float y_scale = 1.0 / tan(D2R * fov / 2);
+    float d2_r = M_PI / 180.0f;
+    float y_scale = 1.0 / tan(d2_r * fov / 2);
     float x_scale = y_scale / aspect_ratio;
     float near_minus_far = frustum_near - frustum_far;
 

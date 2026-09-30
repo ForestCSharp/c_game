@@ -697,8 +697,8 @@ int main()
 	}
 	
 	// Generate some random animated + static meshes
-	const i32 OBJECTS_TO_CREATE = 1000;
-	for (i32 i = 0; i < OBJECTS_TO_CREATE; ++i)
+	const i32 objects_to_create = 1000;
+	for (i32 i = 0; i < objects_to_create; ++i)
 	{
 		GameObjectHandle new_object_handle = ADD_OBJECT(game_object_manager_ptr);
 
@@ -730,10 +730,10 @@ int main()
 			OBJECT_CREATE_COMPONENT(StaticModelComponent, game_object_manager_ptr, new_object_handle, static_model_component_data);
 		}
 
-		const f32 spawn_scale = create_animated_model ? OBJECTS_TO_CREATE / 25.0f : OBJECTS_TO_CREATE / 100.0f;
+		const f32 spawn_scale = create_animated_model ? objects_to_create / 25.0f : objects_to_create / 100.0f;
 		const Vec3 scale = vec3_new(spawn_scale, spawn_scale, spawn_scale);
 		
-		const f32 spawn_span = OBJECTS_TO_CREATE / 2.0f;
+		const f32 spawn_span = objects_to_create / 2.0f;
 		Vec3 translation = vec3_new(
 			rand_f32(-spawn_span, spawn_span),
 			rand_f32(-spawn_span, spawn_span) + 500,

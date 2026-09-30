@@ -45,42 +45,42 @@ Quat mat4_to_quat(const Mat4 in_mat)
 	const float tr = in_mat.d[0][0] + in_mat.d[1][1] + in_mat.d[2][2];
 	if (tr > 0)
 	{ 
-		const float S = sqrt(tr+1.0) * 2; // S=4*qw 
+		const float s = sqrt(tr+1.0) * 2; // S=4*qw 
 		return (Quat) {
-			.x = (in_mat.d[1][2] - in_mat.d[2][1]) / S,
-			.y = (in_mat.d[2][0] - in_mat.d[0][2]) / S,
-			.z = (in_mat.d[0][1] - in_mat.d[1][0]) / S,
-			.w = 0.25 * S,
+			.x = (in_mat.d[1][2] - in_mat.d[2][1]) / s,
+			.y = (in_mat.d[2][0] - in_mat.d[0][2]) / s,
+			.z = (in_mat.d[0][1] - in_mat.d[1][0]) / s,
+			.w = 0.25 * s,
 		};
 	}
 	else if ((in_mat.d[0][0] > in_mat.d[1][1]) && (in_mat.d[0][0] > in_mat.d[2][2]))
 	{ 
-		float S = sqrt(1.0 + in_mat.d[0][0] - in_mat.d[1][1] - in_mat.d[2][2]) * 2; // S=4*qx 
+		float s = sqrt(1.0 + in_mat.d[0][0] - in_mat.d[1][1] - in_mat.d[2][2]) * 2; // S=4*qx 
 		return (Quat) {
-			.x = 0.25 * S,
-			.y = (in_mat.d[1][0] + in_mat.d[0][1]) / S,
-			.z = (in_mat.d[2][0] + in_mat.d[0][2]) / S,
-			.w = (in_mat.d[1][2] - in_mat.d[2][1]) / S,
+			.x = 0.25 * s,
+			.y = (in_mat.d[1][0] + in_mat.d[0][1]) / s,
+			.z = (in_mat.d[2][0] + in_mat.d[0][2]) / s,
+			.w = (in_mat.d[1][2] - in_mat.d[2][1]) / s,
 		};
 	}
 	else if (in_mat.d[1][1] > in_mat.d[2][2])
 	{ 
-		float S = sqrt(1.0 + in_mat.d[1][1] - in_mat.d[0][0] - in_mat.d[2][2]) * 2; // S=4*qy
+		float s = sqrt(1.0 + in_mat.d[1][1] - in_mat.d[0][0] - in_mat.d[2][2]) * 2; // S=4*qy
 		return (Quat) {
-			.x = (in_mat.d[1][0] + in_mat.d[0][1]) / S,
-			.y = 0.25 * S,
-			.z = (in_mat.d[2][1] + in_mat.d[1][2]) / S,
-			.w = (in_mat.d[2][0] - in_mat.d[0][2]) / S,
+			.x = (in_mat.d[1][0] + in_mat.d[0][1]) / s,
+			.y = 0.25 * s,
+			.z = (in_mat.d[2][1] + in_mat.d[1][2]) / s,
+			.w = (in_mat.d[2][0] - in_mat.d[0][2]) / s,
 		};
 	}
 	else
 	{ 
-		float S = sqrt(1.0 + in_mat.d[2][2] - in_mat.d[0][0] - in_mat.d[1][1]) * 2; // S=4*qz
+		float s = sqrt(1.0 + in_mat.d[2][2] - in_mat.d[0][0] - in_mat.d[1][1]) * 2; // S=4*qz
 		return (Quat) {
-			.x = (in_mat.d[2][0] + in_mat.d[0][2]) / S,
-			.y = (in_mat.d[2][1] + in_mat.d[1][2]) / S,
-			.z = 0.25 * S,
-			.w = (in_mat.d[0][1] - in_mat.d[1][0]) / S,
+			.x = (in_mat.d[2][0] + in_mat.d[0][2]) / s,
+			.y = (in_mat.d[2][1] + in_mat.d[1][2]) / s,
+			.z = 0.25 * s,
+			.w = (in_mat.d[0][1] - in_mat.d[1][0]) / s,
 		};
 	}
 }

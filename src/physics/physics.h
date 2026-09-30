@@ -1364,25 +1364,25 @@ void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_con
 			const Vec3 a = world_anchor_a;
 			const Vec3 b = world_anchor_b;
 
-			const Vec3 J1 = vec3_scale(vec3_sub(a,b), 2.0f);
-			jacobian->rows[0].data[0]	= J1.x;
-			jacobian->rows[0].data[1]	= J1.y;
-			jacobian->rows[0].data[2]	= J1.z;
+			const Vec3 j1 = vec3_scale(vec3_sub(a,b), 2.0f);
+			jacobian->rows[0].data[0]	= j1.x;
+			jacobian->rows[0].data[1]	= j1.y;
+			jacobian->rows[0].data[2]	= j1.z;
 
-			const Vec3 J2 = vec3_cross(ra, J1);
-			jacobian->rows[0].data[3]	= J2.x;
-			jacobian->rows[0].data[4]	= J2.y;
-			jacobian->rows[0].data[5]	= J2.z;
+			const Vec3 j2 = vec3_cross(ra, j1);
+			jacobian->rows[0].data[3]	= j2.x;
+			jacobian->rows[0].data[4]	= j2.y;
+			jacobian->rows[0].data[5]	= j2.z;
 
-			const Vec3 J3 = vec3_scale(vec3_sub(b,a), 2.0f);
-			jacobian->rows[0].data[6]	= J3.x;
-			jacobian->rows[0].data[7]	= J3.y;
-			jacobian->rows[0].data[8]	= J3.z;
+			const Vec3 j3 = vec3_scale(vec3_sub(b,a), 2.0f);
+			jacobian->rows[0].data[6]	= j3.x;
+			jacobian->rows[0].data[7]	= j3.y;
+			jacobian->rows[0].data[8]	= j3.z;
 
-			const Vec3 J4 = vec3_cross(rb, J3);
-			jacobian->rows[0].data[9]	= J4.x;
-			jacobian->rows[0].data[10]	= J4.y;
-			jacobian->rows[0].data[11]	= J4.z;
+			const Vec3 j4 = vec3_cross(rb, j3);
+			jacobian->rows[0].data[9]	= j4.x;
+			jacobian->rows[0].data[10]	= j4.y;
+			jacobian->rows[0].data[11]	= j4.z;
 
 			// Reapply last frame's accumulated constraint impulse.
 			Arena* arena = arena_create(&(ArenaDesc) {
@@ -1426,12 +1426,12 @@ void physics_constraint_solve(PhysicsScene* scene, PhysicsConstraint* in_constra
 			MatMN inv_mass_matrix = physics_constraint_get_inverse_mass_matrix(arena, in_constraint);
 
 			MatMN j_inv_mass_matrix = matmn_mul_matmn(arena, jacobian, &inv_mass_matrix);
-			MatMN J_W_Jt = matmn_mul_matmn(arena, &j_inv_mass_matrix, &jacobian_transpose);
+			MatMN j_w_jt = matmn_mul_matmn(arena, &j_inv_mass_matrix, &jacobian_transpose);
 			VecN j_q_dt = matmn_mul_vecn(arena, jacobian, &q_dt);
 			VecN rhs = vecn_scale(arena, &j_q_dt, -1.0f);
 
-			MatN J_W_Jt_matn = matn_from_matmn(arena, &J_W_Jt);
-			VecN lambda_n = lcp_gauss_seidel(arena, &J_W_Jt_matn, &rhs);
+			MatN j_w_jt_matn = matn_from_matmn(arena, &j_w_jt);
+			VecN lambda_n = lcp_gauss_seidel(arena, &j_w_jt_matn, &rhs);
 			VecN impulses = matmn_mul_vecn(arena, &jacobian_transpose, &lambda_n);
 			physics_constraint_apply_impulses(in_constraint, &impulses);
             vecn_add_in_place(&in_constraint->distance.cached_lambda, &lambda_n);

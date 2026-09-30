@@ -362,14 +362,14 @@ void debug_draw_sphere(DebugDrawContext* debug_draw_context, const DebugDrawSphe
 	const i32 latitudes = MAX(2, debug_draw_sphere->latitudes);
 	const i32 longitudes = MAX(3, debug_draw_sphere->longitudes);
 
-	f32 deltaLatitude = PI / (f32) latitudes;
-	f32 deltaLongitude = 2.0f * PI / (f32) longitudes;
+	f32 delta_latitude = PI / (f32) latitudes;
+	f32 delta_longitude = 2.0f * PI / (f32) longitudes;
 	
 	for (i32 i = 0; i <= latitudes; ++i)
 	{
-		f32 latitudeAngle = PI / 2.0f - i * deltaLatitude;	/* Starting -pi/2 to pi/2 */
-		f32 xz = radius * cosf(latitudeAngle);				/* r * cos(phi) */
-		f32 y = radius * sinf(latitudeAngle);				/* r * sin(phi )*/
+		f32 latitude_angle = PI / 2.0f - i * delta_latitude;	/* Starting -pi/2 to pi/2 */
+		f32 xz = radius * cosf(latitude_angle);				/* r * cos(phi) */
+		f32 y = radius * sinf(latitude_angle);				/* r * sin(phi )*/
 
 		/*
 			* We add (latitudes + 1) vertices per longitude because of equator,
@@ -379,14 +379,14 @@ void debug_draw_sphere(DebugDrawContext* debug_draw_context, const DebugDrawSphe
 		*/
 		for (i32 j = 0; j <= longitudes; ++j)
 		{
-			f32 longitudeAngle = j * deltaLongitude;
+			f32 longitude_angle = j * delta_longitude;
 
 			DebugDrawVertex vertex = {};
 
 			Vec3 local_position = vec3_zero;		
-			local_position.x += xz * cosf(longitudeAngle);	
+			local_position.x += xz * cosf(longitude_angle);	
 			local_position.y += y;
-			local_position.z += xz * sinf(longitudeAngle);		/* z = r * sin(phi) */
+			local_position.z += xz * sinf(longitude_angle);		/* z = r * sin(phi) */
 			local_position = mat3_mul_vec3(orientation_matrix, local_position);
 
 			Vec3 world_position = vec3_add(sphere_center, local_position);

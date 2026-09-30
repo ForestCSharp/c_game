@@ -90,7 +90,7 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 
 @interface WindowView : NSView
 {
-    NSTrackingArea* trackingArea;
+    NSTrackingArea* tracking_area;
 	@public
     i32 cached_mouse_x;
 	@public
@@ -107,9 +107,9 @@ KeyCode translate_macos_key_code(unsigned short key_code)
         const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged | NSEventMaskOtherMouseDragged
                                             | NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag | NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside;
 
-        trackingArea = [[NSTrackingArea alloc] initWithRect:[self bounds] options:options owner:self userInfo:nil];
+        tracking_area = [[NSTrackingArea alloc] initWithRect:[self bounds] options:options owner:self userInfo:nil];
 
-        [self addTrackingArea:trackingArea];
+        [self addTrackingArea:tracking_area];
         [super updateTrackingAreas];
     }
     return self;
@@ -117,7 +117,7 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 
 - (void)dealloc
 {
-    [trackingArea release];
+    [tracking_area release];
     [super dealloc];
 }
 

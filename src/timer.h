@@ -47,7 +47,7 @@ u64 time_now()
     return mach_absolute_time();
 }
 
-double _mac_time_nanoseconds(u64 in_time)
+double mac_time_nanoseconds(u64 in_time)
 {
     mach_timebase_info_data_t info;
     mach_timebase_info(&info);
@@ -57,7 +57,7 @@ double _mac_time_nanoseconds(u64 in_time)
 
 double time_seconds(u64 in_time)
 {
-	return _mac_time_nanoseconds(in_time) / 1e9;
+	return mac_time_nanoseconds(in_time) / 1e9;
 }
 
 #endif
