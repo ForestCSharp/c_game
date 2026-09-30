@@ -104,8 +104,16 @@ KeyCode translate_macos_key_code(unsigned short key_code)
 {
     if ((self = [super init])) // 'super' used to access methods from parent class
     {
-        const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged | NSEventMaskOtherMouseDragged
-                                            | NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag | NSTrackingCursorUpdate | NSTrackingInVisibleRect | NSTrackingAssumeInside;
+        const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited
+                                            | NSTrackingMouseMoved
+                                            | NSEventMaskLeftMouseDragged
+                                            | NSEventMaskRightMouseDragged
+                                            | NSEventMaskOtherMouseDragged
+                                            | NSTrackingActiveInKeyWindow
+                                            | NSTrackingEnabledDuringMouseDrag
+                                            | NSTrackingCursorUpdate
+                                            | NSTrackingInVisibleRect
+                                            | NSTrackingAssumeInside;
 
         tracking_area = [[NSTrackingArea alloc] initWithRect:[self bounds] options:options owner:self userInfo:nil];
 
