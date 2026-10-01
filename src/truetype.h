@@ -102,13 +102,13 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
     FIND("glyf", glyf)
     #undef FIND
 
-    out_font->units_per_em       = be_u16(out_font->head + 18);
-    out_font->index_to_loc_format = be_i16(out_font->head + 50);
-    out_font->num_glyphs        = be_u16(out_font->maxp + 4);
-    out_font->ascender         = be_i16(out_font->hhea + 4);
-    out_font->descender        = be_i16(out_font->hhea + 6);
-    out_font->line_gap          = be_i16(out_font->hhea + 8);
-    out_font->num_h_metrics      = be_u16(out_font->hhea + 34);
+    out_font->units_per_em          = be_u16(out_font->head + 18);
+    out_font->index_to_loc_format   = be_i16(out_font->head + 50);
+    out_font->num_glyphs            = be_u16(out_font->maxp + 4);
+    out_font->ascender              = be_i16(out_font->hhea + 4);
+    out_font->descender             = be_i16(out_font->hhea + 6);
+    out_font->line_gap              = be_i16(out_font->hhea + 8);
+    out_font->num_h_metrics         = be_u16(out_font->hhea + 34);
 
     //FCS TODO: REMOVE
     //exit(0);
