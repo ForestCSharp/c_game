@@ -411,6 +411,9 @@ int main()
     TTFFont font;
     ttf_init(&font, "data/fonts/Menlo-Regular.ttf");
 
+    ttf_free(&font);
+    exit(0);
+
 	// Init multithreaded task system
 	TaskSystem task_system;
 	task_system_init(&task_system);
