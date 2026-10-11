@@ -11,23 +11,28 @@
 #include "memory/allocator.h"
 
 // Byte-Order Helpers
-static u16 be_u16(const u8 *p)
+static u8 be_u8(const u8* p)
+{
+    return p[0];
+}
+
+static u16 be_u16(const u8* p)
 {
     return (u16)((u32)p[0]<<8 | p[1]);
 }
-static u32 be_u32(const u8 *p)
+static u32 be_u32(const u8* p)
 {
     return  (u32)p[0]<<24
         |   (u32)p[1]<<16
         |   (u32)p[2]<<8
         |   p[3];
 }
-static i16 be_i16(const u8 *p)
+static i16 be_i16(const u8* p)
 { 
     return (i16)be_u16(p);
 }
 
-static i32 be_i32(const u8 *p)
+static i32 be_i32(const u8* p)
 {
     return (i32)be_u32(p);
 }
@@ -47,6 +52,26 @@ typedef struct CMapSubtable {
 
 #define MAX_CMAP_SUBTABLES 16
 #define CMAP_RECORD_SIZE 8   
+
+typedef struct TTFGlyph {
+   i16          num_contours;
+   i16          x_min;
+   i16          y_min;
+   i16          x_max;
+   i16          y_max;
+   const u8*    contours;
+} TTFGlyph;
+
+typedef enum TTFSimpleGlyphFlagBits {
+    TTF_SIMPLE_GLYPH_FLAG_NONE                                  = 0,
+    TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT                        = 1 << 0,
+    TTF_SIMPLE_GLYPH_FLAG_X_SHORT_VECTOR                        = 1 << 1,
+    TTF_SIMPLE_GLYPH_FLAG_Y_SHORT_VECTOR                        = 1 << 2,
+    TTF_SIMPLE_GLYPH_FLAG_REPEAT_FLAG                           = 1 << 3,
+    TTF_SIMPLE_GLYPH_FLAG_X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR  = 1 << 4,
+    TTF_SIMPLE_GLYPH_FLAG_Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR  = 1 << 5,
+    TTF_SIMPLE_GLYPH_FLAG_OVERLAP_SIMPLE                        = 1 << 6,
+} TTFSimpleGlyphFlagBits; 
 
 typedef struct TTFFont
 {
@@ -85,6 +110,7 @@ static TableLoc find_table(const u8 *data, u16 ntables,
 
 u16 ttf_find_glyph_index(const TTFFont* font, u32 codepoint);
 u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index);
+TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint);
 
 i32 cmap_subtable_score(const CMapSubtable* subtable);
 
@@ -172,13 +198,92 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
     );
 
     //FCS TODO: TESTING
-    u16 glyph_index = ttf_find_glyph_index(out_font, 'a');
-    assert(glyph_index != 0);
-    printf("Found Glyph Index: %u\n", glyph_index);
-    u32 glyph_offset = ttf_find_glyph_offset(out_font, glyph_index);
-    printf("Found Glyph Offset: %u\n", glyph_offset);
+    TTFGlyph glyph = ttf_find_glyph(out_font, 'a');
 
     return true;
+}
+
+TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
+{
+    u16 glyph_index = ttf_find_glyph_index(font, codepoint);
+    assert(glyph_index != 0);
+    printf("Found Glyph Index: %u\n", glyph_index);
+    u32 glyph_offset = ttf_find_glyph_offset(font, glyph_index);
+    printf("Found Glyph Offset: %u\n", glyph_offset);
+
+    TTFGlyph glyph = {
+        .num_contours   = be_i16(font->glyf + glyph_offset + 0),
+        .x_min          = be_i16(font->glyf + glyph_offset + 2),
+        .y_min          = be_i16(font->glyf + glyph_offset + 4),
+        .x_max          = be_i16(font->glyf + glyph_offset + 6), 
+        .y_max          = be_i16(font->glyf + glyph_offset + 8),
+    };
+
+    printf("glyph header: num_contours: %i x_min: %i y_min: %i x_max: %i y_max: %i\n",
+            glyph.num_contours, glyph.x_min, glyph.y_min, glyph.x_max, glyph.y_max);
+
+    if (glyph.num_contours >= 0)
+    {
+        // Simple Glyph
+        printf("Simple Glyph\n");
+
+        u16 end_points_of_contours[glyph.num_contours];
+        const u32 GLYPH_HEADER_SIZE = 10;
+        u32 current_offset = glyph_offset + GLYPH_HEADER_SIZE;
+        for (i32 i = 0; i < glyph.num_contours; ++i)
+        {
+            end_points_of_contours[i] = be_u16(font->glyf + current_offset);
+            current_offset += 2;
+        }
+        u16 instruction_length = be_u16(font->glyf + current_offset);
+        current_offset += 2;
+
+        u8 instructions[instruction_length];
+        for (i32 i = 0; i < instruction_length; ++i)
+        {
+            instructions[i] = be_u8(font->glyf + current_offset);
+            current_offset += 1;
+        }
+
+        const u32 num_points = end_points_of_contours[glyph.num_contours - 1] + 1;
+        printf("Num Points: %u\n", num_points);
+
+        u8 flags[num_points];
+        u32 points_filled = 0;
+        while (points_filled < num_points)
+        {
+            u8 f = be_u8(font->glyf + current_offset);
+            current_offset += 1;
+
+            if (f & TTF_SIMPLE_GLYPH_FLAG_REPEAT_FLAG)
+            {
+                u8 count = be_u8(font->glyf + current_offset);
+                current_offset += 1;
+
+                for (u32 r = 0; r <= count && points_filled < num_points; ++r)
+                {
+                    flags[points_filled++] = f; 
+                }
+            }
+            else
+            {
+                flags[points_filled++] = f;
+            }
+        }
+
+        // TODO: xCoordinates[variable] u8 or i16
+
+        // TODO: yCoordinates[variable] u8 or i16
+    }
+    else
+    {
+        // Composite Glyph
+        printf("Composite Glyph\n");
+        //TODO:
+    }
+
+
+    return glyph;
 }
 
 i32 cmap_subtable_score(const CMapSubtable* subtable)
