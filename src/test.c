@@ -239,7 +239,7 @@ bool test_matn_mul_matn()
     assert(f32_nearly_equal(c.rows[1].data[0], 43.0f));
     assert(f32_nearly_equal(c.rows[1].data[1], 50.0f));
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -256,7 +256,7 @@ bool test_arena_create_destroy()
 	assert(arena->remaining_size == 128);
 	assert(arena->start == arena->current);
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -288,7 +288,7 @@ bool test_arena_alloc()
 	assert(b_ptr[0] == 1);
 	assert(b_ptr[31] == 32);
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -313,7 +313,7 @@ bool test_arena_multiple_allocs()
 
 	assert(arena->remaining_size == 1024 - (16*10 + 8 * 45));
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -334,7 +334,7 @@ bool test_arena_exact_fill()
 	assert(b);
 	assert(arena->remaining_size == 0);
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -358,7 +358,7 @@ bool test_arena_oom_detection()
 	assert(b);
 	assert(arena->remaining_size == 0);
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -388,7 +388,7 @@ bool test_arena_oom_null_return()
 	assert(arena->current == prev_current);
 	assert(arena->remaining_size == prev_remaining);
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -421,7 +421,7 @@ bool test_arena_growth()
 	assert(b_ptr[0] == 100);
 	assert(b_ptr[31] == 131);
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -454,7 +454,7 @@ bool test_matmn_mul_matmn()
 	assert(f32_nearly_equal(c.rows[1].data[0], 139.0f));
 	assert(f32_nearly_equal(c.rows[1].data[1], 154.0f));
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -478,7 +478,7 @@ bool test_matn_from_matmn()
 	assert(f32_nearly_equal(dst.rows[1].data[0], 1.0f));
 	assert(f32_nearly_equal(dst.rows[1].data[1], 5.0f));
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;
@@ -521,7 +521,7 @@ bool test_lcp_op_begin_end()
 	assert(f32_nearly_equal(m3.rows[1].data[0], 3.0f));
 	assert(f32_nearly_equal(m3.rows[1].data[1], 4.0f));
 
-	arena_destroy(arena);
+	arena_destroy(&arena);
 
 	printf("PASSED\n");
 	return true;

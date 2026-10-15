@@ -1,8 +1,9 @@
 #pragma once
 
 #include "memory/allocator.h"
+#include "memory/arena.h"
 
-static bool read_binary_file(const char* filename, size_t *out_file_size, void **out_data)
+static bool read_binary_file(const char* filename, Arena* optional_arena, size_t *out_file_size, void **out_data)
 {
     FILE* file = fopen(filename, "rb");
     if (!file)
@@ -14,7 +15,15 @@ static bool read_binary_file(const char* filename, size_t *out_file_size, void *
     const size_t file_size = *out_file_size = ftell(file);
     rewind(file);
 
-    *out_data = FCS_MEM_ALLOC_ZEROED(file_size + 1);
+    if (optional_arena != NULL)
+    {
+        *out_data = arena_alloc(optional_arena, file_size);
+    }
+    else
+    {
+        *out_data = FCS_MEM_ALLOC_ZEROED(file_size);
+    }
+
     if (!*out_data)
     {
         fclose(file);

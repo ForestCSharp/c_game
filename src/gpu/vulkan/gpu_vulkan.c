@@ -699,7 +699,7 @@ void gpu_create_shader(GpuDevice* in_device, GpuShaderCreateInfo* in_create_info
 	
 	size_t file_size;	
 	char* shader_source;
-	read_binary_file(filename_string.data, &file_size, (void**)&shader_source);
+	read_binary_file(filename_string.data, /*optional_arena = */ NULL, &file_size, (void**)&shader_source);
 	string_free(&filename_string);
 
     VkShaderModuleCreateInfo create_info = {

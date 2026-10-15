@@ -79,18 +79,16 @@ void* arena_alloc(Arena* in_arena, const u64 in_size)
 	return result;
 }
 
-void arena_destroy(Arena* in_arena)
+void arena_destroy(Arena** in_arena)
 {
-	assert(in_arena);
+	assert(in_arena != NULL);
 
-	if (in_arena->next != NULL)
-	{
-		arena_destroy(in_arena->next);
-	}
-
-	FCS_MEM_FREE(in_arena);	
-	in_arena = NULL;
+    Arena* arena = *in_arena;
+    while (arena != NULL)
+    {
+        Arena* next = arena->next;
+        FCS_MEM_FREE(arena);
+        arena = next;
+    }
 }
 
-//FCS TODO: first user: lcp.h (all vecn,matn,matmn functions that create a new value should pass in arena)
-//FCS TODO: For that add an ArenaArray 

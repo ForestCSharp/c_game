@@ -9,6 +9,8 @@
 
 #include "basic_types.h"
 #include "memory/allocator.h"
+#include "memory/arena.h"
+#include "stretchy_buffer.h"
 
 // Byte-Order Helpers
 static u8 be_u8(const u8* p)
@@ -62,6 +64,23 @@ typedef struct TTFGlyph {
    const u8*    contours;
 } TTFGlyph;
 
+typedef struct TTFPoint {
+   i16 x;
+   i16 y;
+   bool on_curve;
+} TTFPoint;
+
+typedef struct TTFPointFloat {
+    f32 x;
+    f32 y;
+    bool on_curve;
+} TTFPointFloat;
+
+typedef struct TTFEdgeFloat {
+    TTFPointFloat start; 
+    TTFPointFloat end;
+} TTFEdgeFloat;
+
 typedef enum TTFSimpleGlyphFlagBits {
     TTF_SIMPLE_GLYPH_FLAG_NONE                                  = 0,
     TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT                        = 1 << 0,
@@ -75,6 +94,8 @@ typedef enum TTFSimpleGlyphFlagBits {
 
 typedef struct TTFFont
 {
+    Arena* arena;
+
     const u8* data;
     size_t size;
     const u8* head;
@@ -108,22 +129,32 @@ static TableLoc find_table(const u8 *data, u16 ntables,
     return (TableLoc){0, 0};
 }
 
+bool ttf_init(TTFFont* out_font, const char* in_filename);
+void ttf_free(TTFFont* font);
+
 u16 ttf_find_glyph_index(const TTFFont* font, u32 codepoint);
 u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index);
 TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint);
 
-i32 cmap_subtable_score(const CMapSubtable* subtable);
+f32 ttf_scale_for_pixel_height(const TTFFont* font, f32 height);
+i32 ttf_cmap_subtable_score(const CMapSubtable* subtable);
 
 bool ttf_init(TTFFont* out_font, const char* in_filename)
 {
+    *out_font = (TTFFont) {0};
+
+    out_font->arena = arena_create(&(ArenaDesc) {
+        .size = 4 KiB,
+        .allow_growth = true,
+    });
+
     size_t file_size = 0;
     u8* file_data = NULL;
-    if (!read_binary_file(in_filename, &file_size, (void**) &file_data))
+    if (!read_binary_file(in_filename, out_font->arena, &file_size, (void**) &file_data))
     {
+        ttf_free(out_font);
         return false;
     }
-
-    *out_font = (TTFFont) {0};
 
     out_font->data = file_data;
     out_font->size = file_size;
@@ -181,7 +212,7 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
 
             out_font->cmap_subtables[i] = subtable;
 
-            const i32 new_score = cmap_subtable_score(&out_font->cmap_subtables[i]);
+            const i32 new_score = ttf_cmap_subtable_score(&out_font->cmap_subtables[i]);
             if (new_score > current_chosen_score)
             {
                 out_font->chosen_cmap_subtable = &out_font->cmap_subtables[i];
@@ -198,111 +229,17 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
     );
 
     //FCS TODO: TESTING
-    TTFGlyph glyph = ttf_find_glyph(out_font, 'a');
+    TTFGlyph glyph_a = ttf_find_glyph(out_font, 'a');
+    TTFGlyph glyph_A = ttf_find_glyph(out_font, '4');
+    TTFGlyph glyph_Q = ttf_find_glyph(out_font, 'Q');
 
     return true;
 }
 
-TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
+void ttf_free(TTFFont* font)
 {
-    u16 glyph_index = ttf_find_glyph_index(font, codepoint);
-    assert(glyph_index != 0);
-    printf("Found Glyph Index: %u\n", glyph_index);
-    u32 glyph_offset = ttf_find_glyph_offset(font, glyph_index);
-    printf("Found Glyph Offset: %u\n", glyph_offset);
-
-    TTFGlyph glyph = {
-        .num_contours   = be_i16(font->glyf + glyph_offset + 0),
-        .x_min          = be_i16(font->glyf + glyph_offset + 2),
-        .y_min          = be_i16(font->glyf + glyph_offset + 4),
-        .x_max          = be_i16(font->glyf + glyph_offset + 6), 
-        .y_max          = be_i16(font->glyf + glyph_offset + 8),
-    };
-
-    printf("glyph header: num_contours: %i x_min: %i y_min: %i x_max: %i y_max: %i\n",
-            glyph.num_contours, glyph.x_min, glyph.y_min, glyph.x_max, glyph.y_max);
-
-    if (glyph.num_contours >= 0)
-    {
-        // Simple Glyph
-        printf("Simple Glyph\n");
-
-        u16 end_points_of_contours[glyph.num_contours];
-        const u32 GLYPH_HEADER_SIZE = 10;
-        u32 current_offset = glyph_offset + GLYPH_HEADER_SIZE;
-        for (i32 i = 0; i < glyph.num_contours; ++i)
-        {
-            end_points_of_contours[i] = be_u16(font->glyf + current_offset);
-            current_offset += 2;
-        }
-        u16 instruction_length = be_u16(font->glyf + current_offset);
-        current_offset += 2;
-
-        u8 instructions[instruction_length];
-        for (i32 i = 0; i < instruction_length; ++i)
-        {
-            instructions[i] = be_u8(font->glyf + current_offset);
-            current_offset += 1;
-        }
-
-        const u32 num_points = end_points_of_contours[glyph.num_contours - 1] + 1;
-        printf("Num Points: %u\n", num_points);
-
-        u8 flags[num_points];
-        u32 points_filled = 0;
-        while (points_filled < num_points)
-        {
-            u8 f = be_u8(font->glyf + current_offset);
-            current_offset += 1;
-
-            if (f & TTF_SIMPLE_GLYPH_FLAG_REPEAT_FLAG)
-            {
-                u8 count = be_u8(font->glyf + current_offset);
-                current_offset += 1;
-
-                for (u32 r = 0; r <= count && points_filled < num_points; ++r)
-                {
-                    flags[points_filled++] = f; 
-                }
-            }
-            else
-            {
-                flags[points_filled++] = f;
-            }
-        }
-
-        // TODO: xCoordinates[variable] u8 or i16
-
-        // TODO: yCoordinates[variable] u8 or i16
-    }
-    else
-    {
-        // Composite Glyph
-        printf("Composite Glyph\n");
-        //TODO:
-    }
-
-
-    return glyph;
-}
-
-i32 cmap_subtable_score(const CMapSubtable* subtable)
-{
-    // format 12, full Unicode — best
-    if ((subtable->platform_id == 3 && subtable->encoding_id == 10) ||
-        (subtable->platform_id == 0 && subtable->encoding_id ==  4) ||
-        (subtable->platform_id == 0 && subtable->encoding_id ==  6))
-    {
-        return 100;
-    }
-    // format 4, BMP Unicode — good fallback
-    if ((subtable->platform_id == 3 && subtable->encoding_id == 1) || 
-        (subtable->platform_id == 0 && subtable->encoding_id == 3))
-    {
-        return 50;
-    }
-
-    return -1;   // unsupported (format 0/2/6/etc.)
+    arena_destroy(&font->arena);
+    *font = (TTFFont) {0};
 }
 
 u16 ttf_find_glyph_index_format4(const u8* subtable_data, u32 codepoint)
@@ -382,13 +319,444 @@ u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index)
     } 
 }
 
-void ttf_free(TTFFont* font)
+typedef struct EdgeGenState {
+    sbuffer(TTFEdgeFloat) edges;  
+
+    bool bezier_in_progress;   
+    TTFPointFloat bezier_p0;
+    TTFPointFloat bezier_p1;
+} EdgeGenState;
+
+void ttf_push_edge(EdgeGenState* state, TTFPointFloat start, TTFPointFloat end)
 {
-    FCS_MEM_FREE((u8*)font->data);
+    TTFEdgeFloat new_edge = {
+        .start = start,
+        .end = end,
+    };
+    sb_push(state->edges, new_edge);
 }
 
-float ttf_scale_for_pixel_height(const TTFFont* font, float height)
+TTFPointFloat ttf_midpoint(TTFPointFloat p0, TTFPointFloat p1)
 {
-   return (float) height / (font->ascender - font->descender);
+   return (TTFPointFloat) {
+        .x = (p0.x + p1.x) / 2.0f,
+        .y = (p0.y + p1.y) / 2.0f,
+   };
+}
+
+void ttf_emit_bezier(EdgeGenState* state, TTFPointFloat p0, TTFPointFloat p1, TTFPointFloat p2)
+{
+    const u32 segments = 8; 
+    TTFPointFloat prev = p0;
+    for (u32 i = 1; i <= segments; ++i)
+    {
+        const f32 t = (f32) i / (f32) segments;
+        const f32 u = 1.0f - t;
+        const f32 u_sq= u * u;
+        const f32 t_sq = t * t;
+        const f32 ut2 = u * t * 2;
+        const TTFPointFloat pt = {
+            .x = u_sq * p0.x + ut2 * p1.x + t_sq * p2.x,
+            .y = u_sq * p0.y + ut2 * p1.y + t_sq * p2.y,
+        };
+        ttf_push_edge(state, prev, pt);
+        prev = pt;
+    }
+}
+
+TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
+{
+    u16 glyph_index = ttf_find_glyph_index(font, codepoint);
+    assert(glyph_index != 0);
+    printf("Found Glyph Index: %u\n", glyph_index);
+    u32 glyph_offset = ttf_find_glyph_offset(font, glyph_index);
+    printf("Found Glyph Offset: %u\n", glyph_offset);
+
+    TTFGlyph glyph = {
+        .num_contours   = be_i16(font->glyf + glyph_offset + 0),
+        .x_min          = be_i16(font->glyf + glyph_offset + 2),
+        .y_min          = be_i16(font->glyf + glyph_offset + 4),
+        .x_max          = be_i16(font->glyf + glyph_offset + 6), 
+        .y_max          = be_i16(font->glyf + glyph_offset + 8),
+    };
+
+    printf("glyph header: num_contours: %i x_min: %i y_min: %i x_max: %i y_max: %i\n",
+            glyph.num_contours, glyph.x_min, glyph.y_min, glyph.x_max, glyph.y_max);
+
+    if (glyph.num_contours >= 0)
+    {
+        // Simple Glyph
+        printf("Simple Glyph\n");
+
+        u16 end_points_of_contours[glyph.num_contours];
+        const u32 GLYPH_HEADER_SIZE = 10;
+        u32 current_offset = glyph_offset + GLYPH_HEADER_SIZE;
+        for (i32 i = 0; i < glyph.num_contours; ++i)
+        {
+            end_points_of_contours[i] = be_u16(font->glyf + current_offset);
+            current_offset += 2;
+        }
+        u16 instruction_length = be_u16(font->glyf + current_offset);
+        current_offset += 2;
+
+        u8 instructions[instruction_length];
+        for (i32 i = 0; i < instruction_length; ++i)
+        {
+            instructions[i] = be_u8(font->glyf + current_offset);
+            current_offset += 1;
+        }
+
+        const u32 num_points = end_points_of_contours[glyph.num_contours - 1] + 1;
+        printf("Num Points: %u\n", num_points);
+
+        u8 flags[num_points];
+        TTFPoint points[num_points];
+
+        u32 points_filled = 0;
+        while (points_filled < num_points)
+        {
+            u8 f = be_u8(font->glyf + current_offset);
+            current_offset += 1;
+
+            if (f & TTF_SIMPLE_GLYPH_FLAG_REPEAT_FLAG)
+            {
+                u8 count = be_u8(font->glyf + current_offset);
+                current_offset += 1;
+
+                for (u32 r = 0; r <= count && points_filled < num_points; ++r)
+                {
+                    points[points_filled].on_curve = (f & TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT) != 0;
+                    flags[points_filled] = f; 
+                    points_filled++;
+                }
+            }
+            else
+            {
+                points[points_filled].on_curve = (f & TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT) != 0;
+                flags[points_filled] = f; 
+                points_filled++;
+            }
+        }
+
+        // Get point x-values, built up via an accumulator and deltas
+        i32 x_accumulator = 0;
+        for (u32 i = 0; i < num_points; ++i)
+        {
+            const u8 f = flags[i];
+            i16 dx = 0;
+
+            if (f & TTF_SIMPLE_GLYPH_FLAG_X_SHORT_VECTOR)
+            {
+                // We always read the unsigned short value
+                const u8 value = be_u8(font->glyf + current_offset);
+                current_offset += 1;
+
+                // for short values, this flag determines if delta is positive or negative
+                if (f & TTF_SIMPLE_GLYPH_FLAG_X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR)
+                {
+                   dx = (i16) value; 
+                }
+                else
+                {
+                    dx = - (i16) value;
+                }
+            }
+            else
+            {
+                // for long values, this flag determines if delta is same (0) or to read the new long
+                if (f & TTF_SIMPLE_GLYPH_FLAG_X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR)
+                {
+                   dx = 0;
+                }
+                else
+                {
+                    // read the signed long value
+                    dx = be_i16(font->glyf + current_offset);
+                    current_offset += 2;
+                }
+
+            }
+
+            x_accumulator += dx;
+            points[i].x = (i16)x_accumulator;
+                        
+        }
+
+        // Get point y-values, built up via an accumulator and deltas
+        i32 y_accumulator = 0;
+        for (u32 i = 0; i < num_points; ++i)
+        {
+            const u8 f = flags[i];
+            i16 dy = 0;
+
+            if (f & TTF_SIMPLE_GLYPH_FLAG_Y_SHORT_VECTOR)
+            {
+                // We always read the unsigned short value
+                const u8 value = be_u8(font->glyf + current_offset);
+                current_offset += 1;
+
+                // for short values, this flag determines if delta is positive or negative
+                if (f & TTF_SIMPLE_GLYPH_FLAG_Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR)
+                {
+                   dy = (i16) value; 
+                }
+                else
+                {
+                    dy = - (i16) value;
+                }
+            }
+            else
+            {
+                // for long values, this flag determines if delta is same (0) or to read the new long
+                if (f & TTF_SIMPLE_GLYPH_FLAG_Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR)
+                {
+                   dy = 0;
+                }
+                else
+                {
+                    // Read the signed long value
+                    dy = be_i16(font->glyf + current_offset);
+                    current_offset += 2;
+                }
+
+            }
+
+            y_accumulator += dy;
+            points[i].y = (i16)y_accumulator;     
+        }
+
+        // Scale points based on pixel height (px)
+        const f32 scale = ttf_scale_for_pixel_height(font, 50.0f);
+        TTFPointFloat points_float[num_points];
+        for (u32 i = 0; i < num_points; ++i)
+        {
+            points_float[i].x = points[i].x * scale;
+            points_float[i].y = points[i].y * scale;
+            points_float[i].on_curve = points[i].on_curve;
+        }
+
+        EdgeGenState edge_gen_state = {
+            .edges = NULL,
+            .bezier_in_progress = false,
+            .bezier_p0 = {},
+            .bezier_p1 = {}
+        };
+
+        for (i16 c = 0; c < glyph.num_contours; ++c)
+        {
+            u16 start = c == 0 ? 0 : end_points_of_contours[c-1] + 1;
+            u16 end = end_points_of_contours[c];
+            const u16 n = (end - start) + 1;
+
+            printf("Contour %i Start: %u End: %u\n", c, start, end);
+
+            u16 rot = start;
+            while (rot <= end && !points_float[rot].on_curve)
+            {
+                ++rot; 
+            }
+            assert(rot <= end);
+  
+            for (u16 step = 0; step < n; ++step)
+            {
+               const u16 current = start + ((rot - start) + step) % n;  
+               const u16 next = start + ((rot - start) + step + 1) % n;  
+
+                printf("\tCurrent: %u Next: %u ", current, next);
+
+                TTFPointFloat current_point = points_float[current];
+                TTFPointFloat next_point = points_float[next];
+
+                if (current_point.on_curve && next_point.on_curve)
+                {
+                    printf("\temit line\n");
+
+                    ttf_push_edge(&edge_gen_state, current_point, next_point);
+                }
+                else if (current_point.on_curve && !next_point.on_curve)
+                {
+                    printf("\tstart bezier\n");
+
+                    edge_gen_state.bezier_in_progress = true;
+                    edge_gen_state.bezier_p0 = current_point;
+                    edge_gen_state.bezier_p1 = next_point;
+                }
+                else if (!current_point.on_curve && !next_point.on_curve)
+                {
+                    printf("\timplied on-curve at midpoint\n");
+
+                    TTFPointFloat implied = ttf_midpoint(current_point, next_point);
+                    ttf_emit_bezier(&edge_gen_state, edge_gen_state.bezier_p0, edge_gen_state.bezier_p1, implied);
+                    edge_gen_state.bezier_p0 = implied;
+                    edge_gen_state.bezier_p1 = next_point; 
+                    // bezier still in progress 
+                }
+                else if (!current_point.on_curve && next_point.on_curve)
+                {
+                    printf("\tfinish bezier\n");
+
+                    ttf_emit_bezier(&edge_gen_state, edge_gen_state.bezier_p0, edge_gen_state.bezier_p1, next_point);
+                    edge_gen_state.bezier_in_progress = false;
+                }
+            } 
+        }
+        printf("Total Edges: %i\n", sb_count(edge_gen_state.edges));
+
+        const f32 scaled_x_min = (f32) glyph.x_min * scale;
+        const f32 scaled_y_min = (f32) glyph.y_min * scale;
+        const f32 scaled_x_max = (f32) glyph.x_max * scale;
+        const f32 scaled_y_max = (f32) glyph.y_max * scale;
+
+        const u32 image_w = (u32)(scaled_x_max - scaled_x_min + 0.5f);
+        const u32 image_h = (u32)(scaled_y_max - scaled_y_min + 0.5f);
+
+        printf("Image Bounds: {%u,%u}\n", image_w, image_h);
+        //FCS TODO: getting wrong bounds
+
+        #define DIMS 50
+        static u8 coverage[DIMS][DIMS];
+        memset(coverage, 0, sizeof(u8) * DIMS * DIMS);
+
+        const u32 edge_count = sb_count(edge_gen_state.edges);
+        for (u32 i = 0; i < edge_count; ++i)
+        {
+            TTFEdgeFloat* edge = &edge_gen_state.edges[i];
+            edge->start.x = edge->start.x - scaled_x_min;
+            edge->start.y = scaled_y_max - edge->start.y; 
+            edge->end.x = edge->end.x - scaled_x_min;
+            edge->end.y = scaled_y_max - edge->end.y;
+        }
+
+        // Scanline Raster
+        for (u32 y = 0; y < DIMS; ++y)
+        {
+            // Sample pixel y-center
+            const f32 scan_y = (f32)y + 0.5f;
+
+            // Crossings for this row
+            f32 crossings[64];
+            u32 crossings_count = 0;
+
+            // Find Edge crossings for this row
+            for (u32 e = 0; e < edge_count; ++e)
+            { 
+                // Get current edge and early-out if edge isn't on current row
+                TTFEdgeFloat* edge = &edge_gen_state.edges[e];
+                const f32 y0 = edge->start.y;
+                const f32 y1 = edge->end.y;
+                const f32 y_lo = (y0 < y1) ? y0 : y1;
+                const f32 y_hi = (y0 < y1) ? y1 : y0;
+                if (scan_y < y_lo || scan_y >= y_hi) { continue; }
+                // Determine how far (t) we are on the line using our y coords
+                const f32 t = (scan_y - y0) / (y1 - y0); 
+                // Use that t-value to determine where x sits on this row
+                const f32 x0 = edge->start.x; 
+                const f32 x1 = edge->end.x;
+                const f32 x = x0 + t * (x1 - x0);
+                // That x value is our crossing
+                crossings[crossings_count++] = x;
+            }
+
+            // insertion-sort crossings in ascending x-value
+            for (u32 i = 1; i < crossings_count; ++i)
+            {
+                f32 v = crossings[i]; 
+                u32 j = i; 
+                while (j > 0 && crossings[j-1] > v)
+                {
+                    crossings[j] = crossings[j-1];
+                    --j;
+                }
+                crossings[j] = v;
+            }
+
+            // Fill coverage image data via even-odd rule by counting by 2
+            for (u32 i = 0; i < crossings_count; i += 2)
+            {
+                // 0.5f so we sit at center of f32 pixel
+                const u32 px_start = (u32)(crossings[i] + 0.5f);
+                const u32 px_end = (u32)(crossings[i+1] + 0.5f);
+                for (u32 x = px_start; x < px_end; ++x)
+                {
+                    if (x < DIMS)
+                    {
+                        coverage[y][x] = 255;
+                    }
+                }
+            }
+        }
+
+        // Debug Output
+        printf("\n");
+        for (u32 y = 0; y < DIMS; y += 2)
+        {
+            for (u32 x = 0; x < DIMS; ++x)
+            {
+                const u8 top = coverage[y][x]; 
+                const u8 bot = (y + 1 < DIMS) ? coverage[y+1][x] : 0;
+
+                if (top && bot)
+                {
+                    // Both pixels filled: full block via background color.
+                    printf("\x1b[48;2;255;255;255m \x1b[0m");
+                }
+                else if (top)
+                {
+                    // Only top pixel: upper half block.
+                    printf("\x1b[38;2;255;255;255m▀\x1b[0m");
+                }
+                else if (bot)
+                {
+                    // Only bottom pixel: lower half block.
+                    printf("\x1b[38;2;255;255;255m▄\x1b[0m");
+                }
+                else
+                {
+                    // Both empty.
+                    printf(" ");
+                }
+            }
+            printf("\n");
+        }
+
+        //FCS TODO: clean up edge gen state after debug vis/raster
+
+                  
+
+    }
+    else
+    {
+        // Composite Glyph
+        printf("Composite Glyph\n");
+        printf("UNIMPLEMENTED!\n");
+        exit(0);
+        //TODO:
+    }
+
+    return glyph;
+}
+
+f32 ttf_scale_for_pixel_height(const TTFFont* font, f32 height)
+{
+   return (f32) height / (font->ascender - font->descender);
+}
+
+i32 ttf_cmap_subtable_score(const CMapSubtable* subtable)
+{
+    // format 12, full Unicode — best
+    if ((subtable->platform_id == 3 && subtable->encoding_id == 10) ||
+        (subtable->platform_id == 0 && subtable->encoding_id ==  4) ||
+        (subtable->platform_id == 0 && subtable->encoding_id ==  6))
+    {
+        return 100;
+    }
+    // format 4, BMP Unicode — good fallback
+    if ((subtable->platform_id == 3 && subtable->encoding_id == 1) || 
+        (subtable->platform_id == 0 && subtable->encoding_id == 3))
+    {
+        return 50;
+    }
+
+    return -1;   // unsupported (format 0/2/6/etc.)
 }
 

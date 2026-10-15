@@ -1395,7 +1395,7 @@ void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_con
 				&jacobian_transpose,
 				&in_constraint->distance.cached_lambda);
 			physics_constraint_apply_impulses(in_constraint, &impulses);
-			arena_destroy(arena);
+			arena_destroy(&arena);
 
 			break;
 		}	
@@ -1436,7 +1436,7 @@ void physics_constraint_solve(PhysicsScene* scene, PhysicsConstraint* in_constra
 			physics_constraint_apply_impulses(in_constraint, &impulses);
             vecn_add_in_place(&in_constraint->distance.cached_lambda, &lambda_n);
 
-			arena_destroy(arena);
+			arena_destroy(&arena);
 
 			break;
 		}	
@@ -1496,7 +1496,7 @@ void physics_scene_destroy(PhysicsScene* in_physics_scene)
 	}
 	sb_free(in_physics_scene->bodies);
 	sb_free(in_physics_scene->constraints);
-	arena_destroy(in_physics_scene->arena);
+	arena_destroy(&(in_physics_scene->arena));
 }
 
 PhysicsBody* physics_scene_add_body(PhysicsScene* in_physics_scene, const PhysicsBody* in_body)
