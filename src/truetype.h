@@ -231,8 +231,11 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
     );
 
     //FCS TODO: TESTING
+    //FCS TODO: should probably just call this ttf_raster_glyph and give it a section in some larger memory to render to
+    //FCS TODO: and we can keep track of which glyphs are currently rendered
     TTFGlyph glyph_a = ttf_find_glyph(out_font, 'a');
-    TTFGlyph glyph_A = ttf_find_glyph(out_font, '4');
+    TTFGlyph glyph_A = ttf_find_glyph(out_font, 'A');
+    TTFGlyph glyph_4 = ttf_find_glyph(out_font, '4');
     TTFGlyph glyph_Q = ttf_find_glyph(out_font, 'Q');
 
     return true;
@@ -253,8 +256,6 @@ u16 ttf_find_glyph_index_format4(const u8* subtable_data, u32 codepoint)
 
 u16 ttf_find_glyph_index_format12(const u8* subtable_data, u32 codepoint)
 {
-    printf("\nFormat 12\n");
-
     static const u32 SEQUENTIAL_MAP_GROUP_START = 16;
     static const u32 SEQUENTIAL_MAP_GROUP_SIZE = sizeof(u32) * 3;
 
@@ -262,8 +263,6 @@ u16 ttf_find_glyph_index_format12(const u8* subtable_data, u32 codepoint)
     u32 language = be_u32(subtable_data + 8);
     u32 num_groups = be_u32(subtable_data + 12);
     const u8 * groups = subtable_data + SEQUENTIAL_MAP_GROUP_START;
-
-    printf("Length: %u Language: %u Num Groups: %u\n", length, language, num_groups);
 
     // Binary Search over groups to find correct one
     u32 low = 0;
@@ -370,9 +369,7 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
 {
     u16 glyph_index = ttf_find_glyph_index(font, codepoint);
     assert(glyph_index != 0);
-    printf("Found Glyph Index: %u\n", glyph_index);
     u32 glyph_offset = ttf_find_glyph_offset(font, glyph_index);
-    printf("Found Glyph Offset: %u\n", glyph_offset);
 
     TTFGlyph glyph = {
         .num_contours   = be_i16(font->glyf + glyph_offset + 0),
@@ -382,14 +379,9 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
         .y_max          = be_i16(font->glyf + glyph_offset + 8),
     };
 
-    printf("glyph header: num_contours: %i x_min: %i y_min: %i x_max: %i y_max: %i\n",
-            glyph.num_contours, glyph.x_min, glyph.y_min, glyph.x_max, glyph.y_max);
-
     if (glyph.num_contours >= 0)
     {
         // Simple Glyph
-        printf("Simple Glyph\n");
-
         u16 end_points_of_contours[glyph.num_contours];
         const u32 GLYPH_HEADER_SIZE = 10;
         u32 current_offset = glyph_offset + GLYPH_HEADER_SIZE;
@@ -409,7 +401,6 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
         }
 
         const u32 num_points = end_points_of_contours[glyph.num_contours - 1] + 1;
-        printf("Num Points: %u\n", num_points);
 
         u8 flags[num_points];
         TTFPoint points[num_points];
@@ -552,8 +543,6 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
             u16 end = end_points_of_contours[c];
             const u16 n = (end - start) + 1;
 
-            printf("Contour %i Start: %u End: %u\n", c, start, end);
-
             u16 rot = start;
             while (rot <= end && !points_float[rot].on_curve)
             {
@@ -563,32 +552,24 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
   
             for (u16 step = 0; step < n; ++step)
             {
-               const u16 current = start + ((rot - start) + step) % n;  
-               const u16 next = start + ((rot - start) + step + 1) % n;  
-
-                printf("\tCurrent: %u Next: %u ", current, next);
+                const u16 current = start + ((rot - start) + step) % n;  
+                const u16 next = start + ((rot - start) + step + 1) % n;  
 
                 TTFPointFloat current_point = points_float[current];
                 TTFPointFloat next_point = points_float[next];
 
                 if (current_point.on_curve && next_point.on_curve)
                 {
-                    printf("\temit line\n");
-
                     ttf_push_edge(&edge_gen_state, current_point, next_point);
                 }
                 else if (current_point.on_curve && !next_point.on_curve)
                 {
-                    printf("\tstart bezier\n");
-
                     edge_gen_state.bezier_in_progress = true;
                     edge_gen_state.bezier_p0 = current_point;
                     edge_gen_state.bezier_p1 = next_point;
                 }
                 else if (!current_point.on_curve && !next_point.on_curve)
                 {
-                    printf("\timplied on-curve at midpoint\n");
-
                     TTFPointFloat implied = ttf_midpoint(current_point, next_point);
                     ttf_emit_bezier(&edge_gen_state, edge_gen_state.bezier_p0, edge_gen_state.bezier_p1, implied);
                     edge_gen_state.bezier_p0 = implied;
@@ -597,14 +578,11 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
                 }
                 else if (!current_point.on_curve && next_point.on_curve)
                 {
-                    printf("\tfinish bezier\n");
-
                     ttf_emit_bezier(&edge_gen_state, edge_gen_state.bezier_p0, edge_gen_state.bezier_p1, next_point);
                     edge_gen_state.bezier_in_progress = false;
                 }
             } 
         }
-        printf("Total Edges: %i\n", sb_count(edge_gen_state.edges));
 
         const f32 scaled_x_min = (f32) glyph.x_min * scale;
         const f32 scaled_y_min = (f32) glyph.y_min * scale;
@@ -613,9 +591,6 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
 
         const u32 image_w = (u32)(scaled_x_max - scaled_x_min + 0.5f);
         const u32 image_h = (u32)(scaled_y_max - scaled_y_min + 0.5f);
-
-        printf("Image Bounds: {%u,%u}\n", image_w, image_h);
-        //FCS TODO: getting wrong bounds
 
         static u8 coverage[DIMS][DIMS];
         memset(coverage, 0, sizeof(u8) * DIMS * DIMS);
@@ -727,10 +702,8 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
             printf("\n");
         }
 
-        //FCS TODO: clean up edge gen state after debug vis/raster
-
-                  
-
+        // Clean up edges
+        sb_free(edge_gen_state.edges);
     }
     else
     {
