@@ -22,6 +22,7 @@ static u16 be_u16(const u8* p)
 {
     return (u16)((u32)p[0]<<8 | p[1]);
 }
+
 static u32 be_u32(const u8* p)
 {
     return  (u32)p[0]<<24
@@ -29,6 +30,7 @@ static u32 be_u32(const u8* p)
         |   (u32)p[2]<<8
         |   p[3];
 }
+
 static i16 be_i16(const u8* p)
 { 
     return (i16)be_u16(p);
@@ -525,8 +527,10 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
             points[i].y = (i16)y_accumulator;     
         }
 
+        #define DIMS 50
+
         // Scale points based on pixel height (px)
-        const f32 scale = ttf_scale_for_pixel_height(font, 50.0f);
+        const f32 scale = ttf_scale_for_pixel_height(font, (f32) DIMS);
         TTFPointFloat points_float[num_points];
         for (u32 i = 0; i < num_points; ++i)
         {
@@ -613,7 +617,6 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
         printf("Image Bounds: {%u,%u}\n", image_w, image_h);
         //FCS TODO: getting wrong bounds
 
-        #define DIMS 50
         static u8 coverage[DIMS][DIMS];
         memset(coverage, 0, sizeof(u8) * DIMS * DIMS);
 
@@ -673,15 +676,26 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
             // Fill coverage image data via even-odd rule by counting by 2
             for (u32 i = 0; i < crossings_count; i += 2)
             {
+                const f32 x_start = crossings[i];
+                const f32 x_end  = crossings[i+1];
+
                 // 0.5f so we sit at center of f32 pixel
-                const u32 px_start = (u32)(crossings[i] + 0.5f);
-                const u32 px_end = (u32)(crossings[i+1] + 0.5f);
-                for (u32 x = px_start; x < px_end; ++x)
+                const u32 px_lo = (u32)(crossings[i] + 0.5f);
+                const u32 px_hi = (u32)(crossings[i+1] + 0.5f);
+                for (u32 x = px_lo; x < px_hi; ++x)
                 {
-                    if (x < DIMS)
+                    if (x < 0 || x >= DIMS)
                     {
-                        coverage[y][x] = 255;
+                        continue;
                     }
+
+                    const f32 left = (f32)x; 
+                    const f32 right = (f32) x + 1.0f;
+                    const f32 cov_left = (x_start > left) ? x_start : left;
+                    const f32 cov_right = (x_end < right) ? x_end : right;
+                    f32 frac = cov_right - cov_left;
+                    if (frac < 0.f) { frac = 0.f; }
+                    coverage[y][x] = (u8) (frac * 255.f);
                 }
             }
         }
@@ -695,25 +709,19 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
                 const u8 top = coverage[y][x]; 
                 const u8 bot = (y + 1 < DIMS) ? coverage[y+1][x] : 0;
 
-                if (top && bot)
+                if (top == 0 && bot == 0)
                 {
-                    // Both pixels filled: full block via background color.
-                    printf("\x1b[48;2;255;255;255m \x1b[0m");
-                }
-                else if (top)
-                {
-                    // Only top pixel: upper half block.
-                    printf("\x1b[38;2;255;255;255m▀\x1b[0m");
-                }
-                else if (bot)
-                {
-                    // Only bottom pixel: lower half block.
-                    printf("\x1b[38;2;255;255;255m▄\x1b[0m");
+                    printf(" ");
                 }
                 else
                 {
-                    // Both empty.
-                    printf(" ");
+                    // ▀ renders top half in foreground, bottom half in background.                                                                                                                    
+                   // Set foreground to top pixel's gray, background to bottom pixel's gray.                                                                                                          
+                    printf(
+                        "\x1b[38;2;%u;%u;%u;48;2;%u;%u;%um▀\x1b[0m",                                                                                                                                
+                        top, top, top,  // foreground = top pixel gray                                                                                                                          
+                        bot, bot, bot   // background = bottom pixel gray  
+                    );    
                 }
             }
             printf("\n");
