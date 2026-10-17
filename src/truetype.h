@@ -66,6 +66,17 @@ typedef struct TTFGlyph {
    const u8*    contours;
 } TTFGlyph;
 
+const i32 TTF_GLYPH_SIZE = 64;
+const i32 TTF_ATLAS_SPAN = 1024;
+const i32 TTF_ATLAS_GLYPHS_PER_ROW = TTF_ATLAS_SPAN / TTF_GLYPH_SIZE;
+const i32 TTF_ATLAS_SIZE = TTF_ATLAS_SPAN * TTF_ATLAS_SPAN;
+
+typedef struct TTFGlyphAtlasEntry {
+    i32 x_idx;
+    i32 y_idx;
+    bool is_rasterized;
+} TTFGlyphAtlasEntry;
+
 typedef struct TTFPoint {
    i16 x;
    i16 y;
@@ -119,6 +130,11 @@ typedef struct TTFFont
     u16 cmap_num_tables;
     CMapSubtable cmap_subtables[MAX_CMAP_SUBTABLES];
     CMapSubtable* chosen_cmap_subtable;
+
+    u8* atlas_data;
+    i32 next_glyph_atlas_idx;
+
+    TTFGlyphAtlasEntry glyph_atlas_entries[128];
 } TTFFont;
 
 static TableLoc find_table(const u8 *data, u16 ntables,
@@ -136,7 +152,8 @@ void ttf_free(TTFFont* font);
 
 u16 ttf_find_glyph_index(const TTFFont* font, u32 codepoint);
 u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index);
-TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint);
+void ttf_raster_glyph(TTFFont* font, u32 codepoint);
+void ttf_print_atlas(const TTFFont* font);
 
 f32 ttf_scale_for_pixel_height(const TTFFont* font, f32 height);
 i32 ttf_cmap_subtable_score(const CMapSubtable* subtable);
@@ -146,7 +163,7 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
     *out_font = (TTFFont) {0};
 
     out_font->arena = arena_create(&(ArenaDesc) {
-        .size = 4 KiB,
+        .size = 2 MiB,
         .allow_growth = true,
     });
 
@@ -193,7 +210,6 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
         printf("CMAP\n");
         printf("version: %u\n", cmap_version);
         printf("ntables: %u\n", out_font->cmap_num_tables);
-
         
         out_font->chosen_cmap_subtable = NULL;
         i32 current_chosen_score = -1;
@@ -223,6 +239,9 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
         }
     }
 
+    out_font->atlas_data = arena_alloc(out_font->arena, TTF_ATLAS_SIZE);
+    assert(out_font->atlas_data);
+
     printf(
         "Chosen Subtable: platform_id: %u encoding_id: %u offset: %u\n", 
         out_font->chosen_cmap_subtable->platform_id, 
@@ -230,13 +249,12 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
         out_font->chosen_cmap_subtable->offset
     );
 
-    //FCS TODO: TESTING
-    //FCS TODO: should probably just call this ttf_raster_glyph and give it a section in some larger memory to render to
-    //FCS TODO: and we can keep track of which glyphs are currently rendered
-    TTFGlyph glyph_a = ttf_find_glyph(out_font, 'a');
-    TTFGlyph glyph_A = ttf_find_glyph(out_font, 'A');
-    TTFGlyph glyph_4 = ttf_find_glyph(out_font, '4');
-    TTFGlyph glyph_Q = ttf_find_glyph(out_font, 'Q');
+    for (u32 char_code = 0; char_code < 128; ++char_code)
+    {
+        printf("char_code: %u\n", char_code);
+        ttf_raster_glyph(out_font, char_code);
+    }
+    ttf_print_atlas(out_font);
 
     return true;
 }
@@ -290,7 +308,7 @@ u16 ttf_find_glyph_index_format12(const u8* subtable_data, u32 codepoint)
         }
     }
 
-    return -1;
+    return 0;
 }
 
 u16 ttf_find_glyph_index(const TTFFont* font, u32 codepoint)
@@ -365,10 +383,22 @@ void ttf_emit_bezier(EdgeGenState* state, TTFPointFloat p0, TTFPointFloat p1, TT
     }
 }
 
-TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
+//FCS TODO: change name to ttf_raster_glyph, don't return TTFGlyph
+//          - store large glyph atlas memory in TTFFont
+//          - find next slot in atlas
+//          - render to atlas
+//          - store info in TTFFont for all ASCII characters. 
+//              - info will tell us how to look up the glyph in the atlas
+//          - Eventually, support non-ascii characters
+
+void ttf_raster_glyph(TTFFont* font, u32 codepoint)
 {
     u16 glyph_index = ttf_find_glyph_index(font, codepoint);
-    assert(glyph_index != 0);
+    if (glyph_index == 0)
+    {
+        return;
+    }
+
     u32 glyph_offset = ttf_find_glyph_offset(font, glyph_index);
 
     TTFGlyph glyph = {
@@ -518,10 +548,19 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
             points[i].y = (i16)y_accumulator;     
         }
 
-        #define DIMS 50
+        const i32 glyph_atlas_idx = font->next_glyph_atlas_idx++;
+        const i32 glyph_atlas_x_idx = glyph_atlas_idx % TTF_ATLAS_GLYPHS_PER_ROW;
+        const i32 glyph_atlas_y_idx = glyph_atlas_idx / TTF_ATLAS_GLYPHS_PER_ROW;
+        printf("glyph atlas idx: %i x: %i y: %i\n", glyph_atlas_idx, glyph_atlas_x_idx, glyph_atlas_y_idx);
+
+        font->glyph_atlas_entries[codepoint] = (TTFGlyphAtlasEntry) {
+            .x_idx = glyph_atlas_x_idx,
+            .y_idx = glyph_atlas_y_idx,
+            .is_rasterized = true,
+        }; 
 
         // Scale points based on pixel height (px)
-        const f32 scale = ttf_scale_for_pixel_height(font, (f32) DIMS);
+        const f32 scale = ttf_scale_for_pixel_height(font, (f32) TTF_GLYPH_SIZE);
         TTFPointFloat points_float[num_points];
         for (u32 i = 0; i < num_points; ++i)
         {
@@ -592,8 +631,15 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
         const u32 image_w = (u32)(scaled_x_max - scaled_x_min + 0.5f);
         const u32 image_h = (u32)(scaled_y_max - scaled_y_min + 0.5f);
 
-        static u8 coverage[DIMS][DIMS];
-        memset(coverage, 0, sizeof(u8) * DIMS * DIMS);
+        const TTFGlyphAtlasEntry* entry = &font->glyph_atlas_entries[codepoint];
+        u8* offset_atlas_data = font->atlas_data
+            + (entry->y_idx * TTF_GLYPH_SIZE) * TTF_ATLAS_SPAN
+            + (entry->x_idx * TTF_GLYPH_SIZE);
+
+        for (u32 y = 0; y < TTF_GLYPH_SIZE; ++y)
+        {
+            memset(offset_atlas_data + y * TTF_ATLAS_SPAN, 0, TTF_GLYPH_SIZE);
+        }
 
         const u32 edge_count = sb_count(edge_gen_state.edges);
         for (u32 i = 0; i < edge_count; ++i)
@@ -606,7 +652,7 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
         }
 
         // Scanline Raster
-        for (u32 y = 0; y < DIMS; ++y)
+        for (u32 y = 0; y < TTF_GLYPH_SIZE; ++y)
         {
             // Sample pixel y-center
             const f32 scan_y = (f32)y + 0.5f;
@@ -659,7 +705,7 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
                 const u32 px_hi = (u32)(crossings[i+1] + 0.5f);
                 for (u32 x = px_lo; x < px_hi; ++x)
                 {
-                    if (x < 0 || x >= DIMS)
+                    if (x < 0 || x >= TTF_GLYPH_SIZE)
                     {
                         continue;
                     }
@@ -670,19 +716,19 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
                     const f32 cov_right = (x_end < right) ? x_end : right;
                     f32 frac = cov_right - cov_left;
                     if (frac < 0.f) { frac = 0.f; }
-                    coverage[y][x] = (u8) (frac * 255.f);
+                    offset_atlas_data[y * TTF_ATLAS_SPAN + x] = (u8) (frac * 255.f);
                 }
             }
         }
 
         // Debug Output
         printf("\n");
-        for (u32 y = 0; y < DIMS; y += 2)
+        for (u32 y = 0; y < TTF_GLYPH_SIZE; y += 2)
         {
-            for (u32 x = 0; x < DIMS; ++x)
+            for (u32 x = 0; x < TTF_GLYPH_SIZE; ++x)
             {
-                const u8 top = coverage[y][x]; 
-                const u8 bot = (y + 1 < DIMS) ? coverage[y+1][x] : 0;
+                const u8 top = offset_atlas_data[y * TTF_ATLAS_SPAN + x]; 
+                const u8 bot = (y + 1 < TTF_GLYPH_SIZE) ? offset_atlas_data[((y + 1) * TTF_ATLAS_SPAN) + x] : 0;
 
                 if (top == 0 && bot == 0)
                 {
@@ -714,7 +760,31 @@ TTFGlyph ttf_find_glyph(const TTFFont* font, u32 codepoint)
         //TODO:
     }
 
-    return glyph;
+}
+
+void ttf_print_atlas(const TTFFont* font)
+{
+    FILE* f = fopen("atlas.ppm", "wb");
+    if (!f) { return; }
+
+    printf("BWOAH\n");
+
+    fprintf(f, "P6\n%u %u\n255\n", TTF_ATLAS_SPAN, TTF_ATLAS_SPAN);
+
+    const u32 pixel_count = (u32) TTF_ATLAS_SIZE;
+    u8* rgb = FCS_MEM_ALLOC(pixel_count * 3);
+
+    for (u32 i = 0; i < pixel_count; ++i)
+    {
+        const u8 grey = font->atlas_data[i]; 
+        rgb[i * 3 + 0] = grey;
+        rgb[i * 3 + 1] = grey;
+        rgb[i * 3 + 2] = grey;
+    }
+
+    fwrite(rgb, 1, pixel_count * 3, f);
+    FCS_MEM_FREE(rgb);
+    fclose(f);
 }
 
 f32 ttf_scale_for_pixel_height(const TTFFont* font, f32 height)

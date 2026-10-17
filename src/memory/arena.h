@@ -3,8 +3,10 @@
 #include "memory/allocator.h"
 
 #define KiB * (1024ULL)
-#define MiB * (1024ULL * KiB)
-#define GiB * (1024ULL * MiB)
+#define MiB * (1024ULL KiB)
+#define GiB * (1024ULL MiB)
+
+//FCS TODO: scratch arena support (can be freed back to owning arena, see Magicalbat on youtube...)
 
 typedef struct Arena
 {
