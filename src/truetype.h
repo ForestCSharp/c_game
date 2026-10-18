@@ -152,8 +152,10 @@ void ttf_free(TTFFont* font);
 
 u16 ttf_find_glyph_index(const TTFFont* font, u32 codepoint);
 u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index);
+u8* ttf_get_glyph_atlas_data(const TTFFont* font, u32 codepoint);
 void ttf_raster_glyph(TTFFont* font, u32 codepoint);
-void ttf_print_atlas(const TTFFont* font);
+void ttf_print_glyph(TTFFont* font, u32 codepoint);
+void ttf_write_ppm_atlas(const TTFFont* font);
 
 f32 ttf_scale_for_pixel_height(const TTFFont* font, f32 height);
 i32 ttf_cmap_subtable_score(const CMapSubtable* subtable);
@@ -253,8 +255,9 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
     {
         printf("char_code: %u\n", char_code);
         ttf_raster_glyph(out_font, char_code);
+        ttf_print_glyph(out_font, char_code);
     }
-    ttf_print_atlas(out_font);
+    ttf_write_ppm_atlas(out_font);
 
     return true;
 }
@@ -383,13 +386,16 @@ void ttf_emit_bezier(EdgeGenState* state, TTFPointFloat p0, TTFPointFloat p1, TT
     }
 }
 
-//FCS TODO: change name to ttf_raster_glyph, don't return TTFGlyph
-//          - store large glyph atlas memory in TTFFont
-//          - find next slot in atlas
-//          - render to atlas
-//          - store info in TTFFont for all ASCII characters. 
-//              - info will tell us how to look up the glyph in the atlas
-//          - Eventually, support non-ascii characters
+u8* ttf_get_glyph_atlas_data(const TTFFont* font, u32 codepoint)
+{
+    const TTFGlyphAtlasEntry* entry = &font->glyph_atlas_entries[codepoint];
+    if (!entry->is_rasterized) { return NULL; }
+
+    u8* offset_atlas_data = font->atlas_data
+        + (entry->y_idx * TTF_GLYPH_SIZE) * TTF_ATLAS_SPAN
+        + (entry->x_idx * TTF_GLYPH_SIZE);
+    return offset_atlas_data;
+}
 
 void ttf_raster_glyph(TTFFont* font, u32 codepoint)
 {
@@ -631,10 +637,8 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
         const u32 image_w = (u32)(scaled_x_max - scaled_x_min + 0.5f);
         const u32 image_h = (u32)(scaled_y_max - scaled_y_min + 0.5f);
 
-        const TTFGlyphAtlasEntry* entry = &font->glyph_atlas_entries[codepoint];
-        u8* offset_atlas_data = font->atlas_data
-            + (entry->y_idx * TTF_GLYPH_SIZE) * TTF_ATLAS_SPAN
-            + (entry->x_idx * TTF_GLYPH_SIZE);
+        u8* offset_atlas_data = ttf_get_glyph_atlas_data(font, codepoint);
+        assert(offset_atlas_data != NULL);
 
         for (u32 y = 0; y < TTF_GLYPH_SIZE; ++y)
         {
@@ -721,33 +725,6 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
             }
         }
 
-        // Debug Output
-        printf("\n");
-        for (u32 y = 0; y < TTF_GLYPH_SIZE; y += 2)
-        {
-            for (u32 x = 0; x < TTF_GLYPH_SIZE; ++x)
-            {
-                const u8 top = offset_atlas_data[y * TTF_ATLAS_SPAN + x]; 
-                const u8 bot = (y + 1 < TTF_GLYPH_SIZE) ? offset_atlas_data[((y + 1) * TTF_ATLAS_SPAN) + x] : 0;
-
-                if (top == 0 && bot == 0)
-                {
-                    printf(" ");
-                }
-                else
-                {
-                    // ▀ renders top half in foreground, bottom half in background.                                                                                                                    
-                   // Set foreground to top pixel's gray, background to bottom pixel's gray.                                                                                                          
-                    printf(
-                        "\x1b[38;2;%u;%u;%u;48;2;%u;%u;%um▀\x1b[0m",                                                                                                                                
-                        top, top, top,  // foreground = top pixel gray                                                                                                                          
-                        bot, bot, bot   // background = bottom pixel gray  
-                    );    
-                }
-            }
-            printf("\n");
-        }
-
         // Clean up edges
         sb_free(edge_gen_state.edges);
     }
@@ -762,12 +739,43 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
 
 }
 
-void ttf_print_atlas(const TTFFont* font)
+void ttf_print_glyph(TTFFont* font, u32 codepoint)
 {
-    FILE* f = fopen("atlas.ppm", "wb");
-    if (!f) { return; }
+    u8* offset_atlas_data = ttf_get_glyph_atlas_data(font, codepoint);
+    if (offset_atlas_data == NULL) { return; }
 
-    printf("BWOAH\n");
+    printf("\n");
+    for (u32 y = 0; y < TTF_GLYPH_SIZE; y += 2)
+    {
+        for (u32 x = 0; x < TTF_GLYPH_SIZE; ++x)
+        {
+            const u8 top = offset_atlas_data[y * TTF_ATLAS_SPAN + x]; 
+            const u8 bot = (y + 1 < TTF_GLYPH_SIZE) ? offset_atlas_data[((y + 1) * TTF_ATLAS_SPAN) + x] : 0;
+
+            if (top == 0 && bot == 0)
+            {
+                printf(" ");
+            }
+            else
+            {
+                // ▀ renders top half in foreground, bottom half in background.                                                                                                                    
+               // Set foreground to top pixel's gray, background to bottom pixel's gray.                                                                                                          
+                printf(
+                    "\x1b[38;2;%u;%u;%u;48;2;%u;%u;%um▀\x1b[0m",                                                                                                                                
+                    top, top, top,  // foreground = top pixel gray                                                                                                                          
+                    bot, bot, bot   // background = bottom pixel gray  
+                );    
+            }
+        }
+        printf("\n");
+    }
+
+}
+
+void ttf_write_ppm_atlas(const TTFFont* font)
+{
+    FILE* f = fopen("bin/atlas.ppm", "wb");
+    if (!f) { return; }
 
     fprintf(f, "P6\n%u %u\n255\n", TTF_ATLAS_SPAN, TTF_ATLAS_SPAN);
 
