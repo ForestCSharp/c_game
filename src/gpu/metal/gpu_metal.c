@@ -791,8 +791,20 @@ void gpu_present_backbuffer(GpuDevice* in_device, GpuCommandBuffer* in_command_b
 	@autoreleasepool
 	{
 		[in_command_buffer->metal_command_buffer presentDrawable:in_backbuffer->metal_backbuffer];
+
+		// With retainedReferences disabled, the command buffer no longer keeps
+		// the drawable alive across presentDrawable:. Release the frame-local
+		// reference that gpu_get_next_backbuffer retained, but first retain for
+		// a completion handler that releases once the GPU has finished presenting.
+		id<CAMetalDrawable> drawable = in_backbuffer->metal_backbuffer;
+		[drawable retain];
+		[in_command_buffer->metal_command_buffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+			(void)cb;
+			[drawable release];
+		}];
+		[drawable release]; // drop the frame-local reference from gpu_get_next_backbuffer
+		in_backbuffer->metal_backbuffer = nil;
 	}
-	_OBJC_RELEASE(in_backbuffer->metal_backbuffer);
 }
 
 void gpu_commit_command_buffer(GpuDevice* in_device, GpuCommandBuffer* in_command_buffer)
