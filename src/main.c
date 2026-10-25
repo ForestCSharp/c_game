@@ -412,7 +412,7 @@ int main()
     ttf_init(&font, "data/fonts/Menlo-Regular.ttf");
 
     ttf_free(&font);
-    exit(0);
+    //exit(0);
 
 	// Init multithreaded task system
 	TaskSystem task_system;
@@ -917,7 +917,7 @@ int main()
     GuiContext gui_context;
     gui_init(&gui_context);
 
-    assert(gui_context.default_font.font_type == FONT_TYPE_RGBA);
+    assert(gui_context.default_font_OLD.font_type == FONT_TYPE_RGBA);
 
 	// Gui Vertex Buffer
     size_t max_gui_vertices_size = sizeof(GuiVert) * 10000;
@@ -945,8 +945,8 @@ int main()
 	GpuTextureCreateInfo font_texture_create_info = {
 		.format = GPU_FORMAT_RGBA8_UNORM,	
 		.extent = {
-			.width = gui_context.default_font.image_width,
-			.height = gui_context.default_font.image_height,
+			.width = gui_context.default_font_OLD.image_width,
+			.height = gui_context.default_font_OLD.image_height,
 			.depth = 1,
 		},
 		.usage = GPU_TEXTURE_USAGE_SAMPLED,
@@ -957,9 +957,9 @@ int main()
 
 	GpuTextureWriteInfo font_texture_write_info = {
 		.texture = &font_texture,
-		.width = gui_context.default_font.image_width,
-		.height = gui_context.default_font.image_height,
-		.data = gui_context.default_font.image_data,
+		.width = gui_context.default_font_OLD.image_width,
+		.height = gui_context.default_font_OLD.image_height,
+		.data = gui_context.default_font_OLD.image_data,
 	};
     gpu_write_texture(&gpu_device, &font_texture_write_info);
 

@@ -3,6 +3,7 @@
 #include "stretchy_buffer.h"
 #include "basic_types.h"
 #include "math/math_lib.h"
+#include "truetype.h"
 
 /*
     Naming Conventions
@@ -82,8 +83,22 @@ typedef enum GuiFontType
     FONT_TYPE_RGBA = 32,
 } GuiFontType;
 
-typedef struct GuiFont
+typedef struct GuiFont_OLD
 {
+    u32 image_width;
+    u32 image_height;
+    u32 cell_width;
+    u32 cell_height;
+    GuiFontType font_type;
+    char first_char;
+    u8 char_widths[256];
+    sbuffer(u8) image_data;
+    u64 image_data_size;
+} GuiFont_OLD;
+
+typedef struct GuiFont {
+    TTFFont ttf_font;
+
     u32 image_width;
     u32 image_height;
     u32 cell_width;
@@ -100,6 +115,9 @@ typedef struct GuiContext
     GuiFrameState frame_state;
     GuiFrameState prev_frame_state;
     GuiDrawData draw_data; //FCS TODO: we need one of these per frame-in-flight...
+
+    GuiFont_OLD default_font_OLD; //FCS TODO: REMOVE WHEN TTF IS DONE
+
     GuiFont default_font;
 } GuiContext;
 
@@ -150,13 +168,14 @@ Vec4 gui_style_get_button_color(const GuiButtonStyleArgs* const in_style_args, c
     }
 }
 
-bool gui_load_font(const char* filename, GuiFont* out_font)
+//FCS TODO: REMOVE
+bool gui_load_font_OLD(const char* filename, GuiFont_OLD* out_font)
 {
     FILE* file = fopen(filename, "rb");
 
     if (file && out_font)
     {
-        *out_font = (GuiFont){};
+        *out_font = (GuiFont_OLD){};
 
         u16 bff_id;
         if (fread(&bff_id, 2, 1, file) != 1 || bff_id != BFF_ID)
@@ -215,7 +234,21 @@ bool gui_load_font(const char* filename, GuiFont* out_font)
     return false;
 }
 
-bool gui_font_get_uvs(const GuiFont* const in_font, char in_char, GuiRect* out_uv_rect)
+bool gui_load_font(const char* filename, GuiFont* out_font)
+{
+    assert(out_font != NULL);
+
+    *out_font = (GuiFont) {};
+
+    ttf_init(&out_font->ttf_font, "data/fonts/Menlo-Regular.ttf");
+
+    //FCS TODO: Write atlas to GuiFont struct member
+    //FCS TODO: Store width/height/advance information for each glyph
+
+    return true;
+}
+
+bool gui_font_get_uvs(const GuiFont_OLD* const in_font, char in_char, GuiRect* out_uv_rect)
 {
     i32 chars_per_row = in_font->image_width / in_font->cell_width;
     i32 chars_per_col = in_font->image_height / in_font->cell_height;
@@ -248,12 +281,6 @@ bool gui_font_get_uvs(const GuiFont* const in_font, char in_char, GuiRect* out_u
         return true;
     }
     return false;
-}
-
-void gui_free_font(GuiFont* in_font)
-{
-    sb_free(in_font->image_data);
-    *in_font = (GuiFont){};
 }
 
 bool gui_rect_intersects_point(const GuiRect in_rect, const Vec2 in_point)
@@ -293,7 +320,14 @@ void gui_init(GuiContext* out_context)
             .indices = NULL,
         }};
 
-    if (!gui_load_font("data/fonts/JetBrainsMonoRegular.bff", &out_context->default_font))
+    //FCS TODO: remove
+    if (!gui_load_font_OLD("data/fonts/JetBrainsMonoRegular.bff", &out_context->default_font_OLD))
+    {
+        printf("OLD: failed to load default font\n");
+        exit(1);
+    }
+
+    if (!gui_load_font("data/fonts/Menlo-Regular.ttf", &out_context->default_font))
     {
         printf("failed to load default font\n");
         exit(1);
@@ -307,7 +341,12 @@ void gui_shutdown(GuiContext* in_context)
     sb_free(in_context->frame_state.open_windows);
     sb_free(in_context->prev_frame_state.open_windows);
 
-    gui_free_font(&in_context->default_font);
+    //FCS TODO: REMOVE
+    sb_free(in_context->default_font_OLD.image_data);
+    in_context->default_font_OLD = (GuiFont_OLD){};
+
+    //FCS TODO: CLEAN UP TTF FONT
+    ttf_free(&in_context->default_font.ttf_font);
 }
 
 void gui_begin_frame(GuiContext* const in_context, GuiFrameState frame_state)
@@ -574,7 +613,7 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
             char current_char = in_text[i];
 
             GuiRect uv_rect;
-            gui_font_get_uvs(&in_context->default_font, current_char, &uv_rect);
+            gui_font_get_uvs(&in_context->default_font_OLD, current_char, &uv_rect);
 
             GuiRect box_rect = gui_rect_scale(
                 (GuiRect){

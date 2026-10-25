@@ -16,6 +16,7 @@ struct GpuDevice
 	id<MTLDevice> metal_device;
 	CAMetalLayer* metal_layer;
 	id<MTLCommandQueue> metal_queue;
+	MTLCommandBufferDescriptor* metal_command_buffer_descriptor;
 };
 
 struct GpuShader
@@ -100,6 +101,15 @@ void gpu_create_device(Window* in_window, GpuDevice* out_device)
 
 	out_device->metal_queue = [out_device->metal_device newCommandQueue];
 	assert(out_device->metal_queue);
+
+	// Create a shared command-buffer descriptor with retainedReferences disabled.
+	// NOTE: With this disabled, Metal no longer retains the resources/encoders
+	// referenced during encoding, nor the drawable passed to presentDrawable:.
+	// Every such object MUST be kept alive by the app until the command buffer
+	// has finished executing on the GPU.
+	out_device->metal_command_buffer_descriptor = [[MTLCommandBufferDescriptor alloc] init];
+	out_device->metal_command_buffer_descriptor.retainedReferences = NO;
+	assert(out_device->metal_command_buffer_descriptor);
 }
 
 void gpu_destroy_device(GpuDevice* in_device)
@@ -107,6 +117,7 @@ void gpu_destroy_device(GpuDevice* in_device)
 	_OBJC_RELEASE(in_device->metal_device);
 	_OBJC_RELEASE(in_device->metal_layer);
 	_OBJC_RELEASE(in_device->metal_queue);
+	_OBJC_RELEASE(in_device->metal_command_buffer_descriptor);
 }
 
 void gpu_device_wait_idle(GpuDevice* in_device)
@@ -563,7 +574,7 @@ void gpu_create_command_buffer(GpuDevice* in_device, GpuCommandBuffer* out_comma
 	{
 		*out_command_buffer = (GpuCommandBuffer){};
 
-		id<MTLCommandBuffer> metal_command_buffer = [in_device->metal_queue commandBuffer];
+		id<MTLCommandBuffer> metal_command_buffer = [in_device->metal_queue commandBufferWithDescriptor:in_device->metal_command_buffer_descriptor];
 		out_command_buffer->metal_command_buffer = metal_command_buffer;
 		_OBJC_RETAIN(out_command_buffer->metal_command_buffer);
 	}
