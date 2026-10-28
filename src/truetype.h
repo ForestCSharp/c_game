@@ -63,7 +63,6 @@ typedef struct TTFGlyph {
    i16          y_min;
    i16          x_max;
    i16          y_max;
-   const u8*    contours;
 } TTFGlyph;
 
 const i32 TTF_GLYPH_SIZE = 64;
@@ -75,6 +74,10 @@ typedef struct TTFGlyphAtlasEntry {
     i32 x_idx;
     i32 y_idx;
     bool is_rasterized;
+    //u16 glyph_idx;
+    u16 advance;
+    i16 x_bearing;
+    i16 y_bearing;
 } TTFGlyphAtlasEntry;
 
 typedef struct TTFPoint {
@@ -153,6 +156,7 @@ void ttf_free(TTFFont* font);
 u16 ttf_find_glyph_index(const TTFFont* font, u32 codepoint);
 u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index);
 u8* ttf_get_glyph_atlas_data(const TTFFont* font, u32 codepoint);
+void ttf_get_glyph_hmetric(const TTFFont* font, u32 codepoint, u16* out_advance, i16* out_lsb);
 void ttf_raster_glyph(TTFFont* font, u32 codepoint);
 void ttf_print_glyph(TTFFont* font, u32 codepoint);
 void ttf_write_ppm_atlas(const TTFFont* font);
@@ -397,6 +401,27 @@ u8* ttf_get_glyph_atlas_data(const TTFFont* font, u32 codepoint)
     return offset_atlas_data;
 }
 
+void ttf_get_glyph_hmetric(const TTFFont* font, u32 codepoint, u16* out_advance, i16* out_lsb)
+{
+    u16 glyph_index = ttf_find_glyph_index(font, codepoint);
+   if (glyph_index == 0) { return; }  // not mapped
+
+   if (glyph_index < font->num_h_metrics)
+   {
+       // Long metric: {u16 advanceWidth, i16 lsb} at hmtx + glyph_index * 4
+       const u8* m = font->hmtx + glyph_index * 4;
+       *out_advance = be_u16(m + 0);
+       *out_lsb = be_i16(m + 2);
+   }
+   else
+   {
+       // Short metric: share last advance, read lsb from the lsb array
+       const u8* last = font->hmtx + (font->num_h_metrics - 1) * 4;
+       *out_advance = be_u16(last + 0);
+       *out_lsb = be_i16(font->hmtx + font->num_h_metrics * 4 + (glyph_index - font->num_h_metrics) * 2);
+   }    
+}
+
 void ttf_raster_glyph(TTFFont* font, u32 codepoint)
 {
     u16 glyph_index = ttf_find_glyph_index(font, codepoint);
@@ -406,6 +431,36 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
     }
 
     u32 glyph_offset = ttf_find_glyph_offset(font, glyph_index);
+    u32 glyph_length = ttf_find_glyph_offset(font, glyph_index + 1) - glyph_offset;
+
+    const f32 scale = ttf_scale_for_pixel_height(font, (f32) TTF_GLYPH_SIZE);
+
+    if (glyph_length == 0)
+    {
+        // Empty glyph (e.g. space): no outline to raster, but layout still
+        // needs its advance width. Reserve a (zeroed/transparent) tile slot
+        // and record the metric so the pen advances correctly.
+        u16 empty_advance; i16 empty_lsb;
+        ttf_get_glyph_hmetric(font, codepoint, &empty_advance, &empty_lsb);
+
+        const i32 empty_idx = font->next_glyph_atlas_idx++;
+        font->glyph_atlas_entries[codepoint] = (TTFGlyphAtlasEntry) {
+            .x_idx = empty_idx % TTF_ATLAS_GLYPHS_PER_ROW,
+            .y_idx = empty_idx / TTF_ATLAS_GLYPHS_PER_ROW,
+            .is_rasterized = true,
+            .advance = (u16) (empty_advance * scale + 0.5f),
+            .x_bearing = 0,
+            .y_bearing = 0,
+        };
+
+        // Zero the tile so it's transparent (alpha 0 after RGBA conversion).
+        u8* empty_tile = ttf_get_glyph_atlas_data(font, codepoint);
+        for (u32 y = 0; y < TTF_GLYPH_SIZE; ++y)
+        {
+            memset(empty_tile + y * TTF_ATLAS_SPAN, 0, TTF_GLYPH_SIZE);
+        }
+        return;
+    }
 
     TTFGlyph glyph = {
         .num_contours   = be_i16(font->glyf + glyph_offset + 0),
@@ -414,6 +469,14 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
         .x_max          = be_i16(font->glyf + glyph_offset + 6), 
         .y_max          = be_i16(font->glyf + glyph_offset + 8),
     };
+
+    const f32 scaled_x_min = (f32) glyph.x_min * scale;
+    const f32 scaled_y_min = (f32) glyph.y_min * scale;
+    const f32 scaled_x_max = (f32) glyph.x_max * scale;
+    const f32 scaled_y_max = (f32) glyph.y_max * scale;
+
+    const u32 image_w = (u32)(scaled_x_max - scaled_x_min + 0.5f);
+    const u32 image_h = (u32)(scaled_y_max - scaled_y_min + 0.5f);
 
     if (glyph.num_contours >= 0)
     {
@@ -559,14 +622,20 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
         const i32 glyph_atlas_y_idx = glyph_atlas_idx / TTF_ATLAS_GLYPHS_PER_ROW;
         printf("glyph atlas idx: %i x: %i y: %i\n", glyph_atlas_idx, glyph_atlas_x_idx, glyph_atlas_y_idx);
 
+
+        u16 glyph_advance; i16 glyph_lsb;
+        ttf_get_glyph_hmetric(font, codepoint, &glyph_advance, &glyph_lsb);
+
         font->glyph_atlas_entries[codepoint] = (TTFGlyphAtlasEntry) {
             .x_idx = glyph_atlas_x_idx,
             .y_idx = glyph_atlas_y_idx,
             .is_rasterized = true,
+            .advance = (u16) (glyph_advance * scale + 0.5f),
+            .x_bearing = scaled_x_min, 
+            .y_bearing = scaled_y_max,
         }; 
 
         // Scale points based on pixel height (px)
-        const f32 scale = ttf_scale_for_pixel_height(font, (f32) TTF_GLYPH_SIZE);
         TTFPointFloat points_float[num_points];
         for (u32 i = 0; i < num_points; ++i)
         {
@@ -628,14 +697,6 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
                 }
             } 
         }
-
-        const f32 scaled_x_min = (f32) glyph.x_min * scale;
-        const f32 scaled_y_min = (f32) glyph.y_min * scale;
-        const f32 scaled_x_max = (f32) glyph.x_max * scale;
-        const f32 scaled_y_max = (f32) glyph.y_max * scale;
-
-        const u32 image_w = (u32)(scaled_x_max - scaled_x_min + 0.5f);
-        const u32 image_h = (u32)(scaled_y_max - scaled_y_min + 0.5f);
 
         u8* offset_atlas_data = ttf_get_glyph_atlas_data(font, codepoint);
         assert(offset_atlas_data != NULL);

@@ -28,7 +28,7 @@ layout(location = 3) flat in int in_has_texture;
 
 layout(location = 0) out vec4 out_color;
 
-#define TEXTURE_MULTISAMPLE 1
+#define TEXTURE_MULTISAMPLE 0
 
 void main() {
     if (in_has_texture != 0)

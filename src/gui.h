@@ -101,11 +101,7 @@ typedef struct GuiFont {
 
     u32 image_width;
     u32 image_height;
-    u32 cell_width;
-    u32 cell_height;
     GuiFontType font_type;
-    char first_char;
-    u8 char_widths[256];
     sbuffer(u8) image_data;
     u64 image_data_size;
 } GuiFont;
@@ -242,13 +238,41 @@ bool gui_load_font(const char* filename, GuiFont* out_font)
 
     ttf_init(&out_font->ttf_font, "data/fonts/Menlo-Regular.ttf");
 
-    //FCS TODO: Write atlas to GuiFont struct member
-    //FCS TODO: Store width/height/advance information for each glyph
+    out_font->image_width = TTF_ATLAS_SPAN;
+    out_font->image_height = TTF_ATLAS_SPAN;
+    out_font->font_type = FONT_TYPE_RGBA;
+    out_font->image_data_size = TTF_ATLAS_SIZE * 4;
+
+    // Convert the 8bpp grayscale atlas to RGBA8 (white RGB, coverage as alpha).
+    out_font->image_data = FCS_MEM_ALLOC(out_font->image_data_size);
+    const u32 pixel_count = (u32)TTF_ATLAS_SIZE;   // TTF_ATLAS_SPAN * TTF_ATLAS_SPAN
+    for (u32 i = 0; i < pixel_count; ++i)
+    {
+        const u8 coverage = out_font->ttf_font.atlas_data[i];
+        out_font->image_data[i * 4 + 0] = 255;      // R
+        out_font->image_data[i * 4 + 1] = 255;      // G
+        out_font->image_data[i * 4 + 2] = 255;      // B
+        out_font->image_data[i * 4 + 3] = coverage;  // A
+    }
 
     return true;
 }
 
-bool gui_font_get_uvs(const GuiFont_OLD* const in_font, char in_char, GuiRect* out_uv_rect)
+bool ttf_get_glyph_uv_rect(const TTFFont* font, u32 codepoint, GuiRect* out_uv)
+{
+    const f32 tile = (f32) TTF_GLYPH_SIZE / (f32) TTF_ATLAS_SPAN;
+    const f32 half_texel = 0.5f / (f32) TTF_ATLAS_SPAN;  // inset to avoid linear-filter bleed across tile edges
+    const TTFGlyphAtlasEntry* e = &font->glyph_atlas_entries[codepoint];
+    if (!e->is_rasterized) { return false; }
+    *out_uv = (GuiRect){
+        .position = { e->x_idx * tile + half_texel, e->y_idx * tile + half_texel },
+        .size = { tile - 2 * half_texel, tile - 2 * half_texel },
+    };
+    return true;
+}
+
+//FCS TODO: Replace with above
+bool gui_font_get_uvs_OLD(const GuiFont_OLD* const in_font, char in_char, GuiRect* out_uv_rect)
 {
     i32 chars_per_row = in_font->image_width / in_font->cell_width;
     i32 chars_per_col = in_font->image_height / in_font->cell_height;
@@ -345,7 +369,8 @@ void gui_shutdown(GuiContext* in_context)
     sb_free(in_context->default_font_OLD.image_data);
     in_context->default_font_OLD = (GuiFont_OLD){};
 
-    //FCS TODO: CLEAN UP TTF FONT
+    // Clean up TTF Font
+    FCS_MEM_FREE(in_context->default_font.image_data);
     ttf_free(&in_context->default_font.ttf_font);
 }
 
@@ -566,67 +591,79 @@ void gui_bezier(GuiContext* const in_context, const u32 num_points, Vec2* points
 // TODO: Add GuiTextStyleArgs (replace GuiAlignment arg (GuiAlignment should live in style args))
 void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiRect* const in_bounding_rect, GuiAlignment in_alignment)
 {
-
-    if (in_bounding_rect->size.x > 0.0f)
+    if (in_bounding_rect->size.x <= 0.0f)
     {
-        size_t num_chars = strlen(in_text);
+        return;
+    }
 
-        const f32 char_size = 22.5f; // TODO: style setting
-        const f32 spacing = -12.0f; // TODO: style setting
+    const TTFFont* ttf = &in_context->default_font.ttf_font;
+    // Atlas is baked at TTF_GLYPH_SIZE (64px); render at a smaller size by scaling down.
+    const f32 render_size = 24.0f;                        // TODO: style setting
+    const f32 render_scale = render_size / (f32)TTF_GLYPH_SIZE;
+    const f32 tile_size = (f32)TTF_GLYPH_SIZE * render_scale;
+    const size_t num_chars = strlen(in_text);
 
-        // TODO: Ensure we have enough height for char_size
+    // Measure: total text width from per-glyph advances (scaled to render size).
+    f32 text_width = 0.0f;
+    for (size_t i = 0; i < num_chars; ++i)
+    {
+        const TTFGlyphAtlasEntry* e = &ttf->glyph_atlas_entries[(u8)in_text[i]];
+        text_width += e->is_rasterized ? (f32)e->advance * render_scale : 0.0f;
+    }
 
-        // Compute max possible chars
-        f32 bounding_rect_width = in_bounding_rect->size.x;
-
-        // Compute baed on bounding rect width, but never greater than num_chars
-        size_t max_possible_chars = MIN(bounding_rect_width > 0.f ? (bounding_rect_width / (char_size + spacing)) - 1 : num_chars, num_chars);
-        f32 text_width = max_possible_chars * (char_size + spacing);
-
-        Vec2 current_offset;
-        switch (in_alignment)
-        {
-        case GUI_ALIGN_LEFT:
-            {
-                current_offset = in_bounding_rect->position;
-                break;
-            }
+    // Pen start (horizontal alignment).
+    f32 pen_x;
+    switch (in_alignment)
+    {
         case GUI_ALIGN_CENTER:
-            {
-                f32 text_start_x = (in_bounding_rect->position.x + in_bounding_rect->size.x / 2.f) - text_width / 2.f;
-                current_offset = vec2_new(text_start_x, in_bounding_rect->position.y);
-                break;
-            }
-        }
-
-        // Center of rect on y-axis
-        current_offset.y += (in_bounding_rect->size.y - char_size) / 2.0f;
-
-        GuiRect text_rect = {
-            .position = current_offset,
-            .size = vec2_new(0.f, 0.f),
-        };
-
-        for (size_t i = 0; i < max_possible_chars; ++i)
         {
-
-            char current_char = in_text[i];
-
-            GuiRect uv_rect;
-            gui_font_get_uvs(&in_context->default_font_OLD, current_char, &uv_rect);
-
-            GuiRect box_rect = gui_rect_scale(
-                (GuiRect){
-                    .position = current_offset,
-                    .size = vec2_new(char_size, char_size),
-                },
-                f32_div_vec2(1.0, in_context->frame_state.screen_size));
-
-            Vec4 text_color = vec4_new(1, 1, 1, 1); // TODO: arg
-            gui_draw_box(&in_context->draw_data, &box_rect, &text_color, &uv_rect);
-
-            current_offset = vec2_add(current_offset, vec2_new(char_size + spacing, 0));
+            pen_x = (in_bounding_rect->position.x + in_bounding_rect->size.x * 0.5f) - text_width * 0.5f;
+            break;
         }
+        case GUI_ALIGN_LEFT:
+        default:
+        {
+            pen_x = in_bounding_rect->position.x;
+            break;
+        }
+    }
+
+    // Baseline (vertical placement). Line height = ascender - descender, at render size.
+    const f32 scale  = ttf_scale_for_pixel_height(ttf, render_size);
+    const f32 asc_px = (f32)ttf->ascender * scale;
+    const f32 desc_px = (f32)ttf->descender * scale;
+    const f32 line_h = asc_px - desc_px;
+    const f32 baseline_y = in_bounding_rect->position.y
+                         + (in_bounding_rect->size.y - line_h) * 0.5f
+                         + asc_px;
+
+    // Draw each glyph with the pen model.
+    for (size_t i = 0; i < num_chars; ++i)
+    {
+        const u8 current_char = (u8)in_text[i];
+        const TTFGlyphAtlasEntry* e = &ttf->glyph_atlas_entries[current_char];
+        if (!e->is_rasterized)
+        {
+            continue;
+        }
+
+        GuiRect uv_rect;
+        ttf_get_glyph_uv_rect(ttf, current_char, &uv_rect);
+
+        const f32 glyph_x = pen_x + (f32)e->x_bearing * render_scale;
+        const f32 glyph_y = baseline_y - (f32)e->y_bearing * render_scale;
+
+        GuiRect box_rect = gui_rect_scale(
+            (GuiRect){
+                .position = { glyph_x, glyph_y },
+                .size = { tile_size, tile_size },
+            },
+            f32_div_vec2(1.0f, in_context->frame_state.screen_size));
+
+        const Vec4 text_color = vec4_new(1, 1, 1, 1); // TODO: arg
+        gui_draw_box(&in_context->draw_data, &box_rect, &text_color, &uv_rect);
+
+        pen_x += (f32)e->advance * render_scale;
     }
 }
 
