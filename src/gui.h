@@ -74,27 +74,12 @@ typedef struct GuiDrawData
     sbuffer(u32) indices;
 } GuiDrawData;
 
-#define BFF_ID 0xF2BF
-
 typedef enum GuiFontType
 {
     FONT_TYPE_ALPHA = 8,
     FONT_TYPE_RGB = 24,
     FONT_TYPE_RGBA = 32,
 } GuiFontType;
-
-typedef struct GuiFont_OLD
-{
-    u32 image_width;
-    u32 image_height;
-    u32 cell_width;
-    u32 cell_height;
-    GuiFontType font_type;
-    char first_char;
-    u8 char_widths[256];
-    sbuffer(u8) image_data;
-    u64 image_data_size;
-} GuiFont_OLD;
 
 typedef struct GuiFont {
     TTFFont ttf_font;
@@ -111,8 +96,6 @@ typedef struct GuiContext
     GuiFrameState frame_state;
     GuiFrameState prev_frame_state;
     GuiDrawData draw_data; //FCS TODO: we need one of these per frame-in-flight...
-
-    GuiFont_OLD default_font_OLD; //FCS TODO: REMOVE WHEN TTF IS DONE
 
     GuiFont default_font;
 } GuiContext;
@@ -165,71 +148,6 @@ Vec4 gui_style_get_button_color(const GuiButtonStyleArgs* const in_style_args, c
 }
 
 //FCS TODO: REMOVE
-bool gui_load_font_OLD(const char* filename, GuiFont_OLD* out_font)
-{
-    FILE* file = fopen(filename, "rb");
-
-    if (file && out_font)
-    {
-        *out_font = (GuiFont_OLD){};
-
-        u16 bff_id;
-        if (fread(&bff_id, 2, 1, file) != 1 || bff_id != BFF_ID)
-        {
-            return false;
-        }
-        if (fread(&out_font->image_width, 4, 1, file) != 1)
-        {
-            return false;
-        }
-        if (fread(&out_font->image_height, 4, 1, file) != 1)
-        {
-            return false;
-        }
-        if (fread(&out_font->cell_width, 4, 1, file) != 1)
-        {
-            return false;
-        }
-        if (fread(&out_font->cell_height, 4, 1, file) != 1)
-        {
-            return false;
-        }
-
-        u8 font_type;
-        if (fread(&font_type, 1, 1, file) == 1)
-        {
-            out_font->font_type = font_type;
-        }
-        else
-        {
-            return false;
-        }
-        if (fread(&out_font->first_char, 1, 1, file) != 1)
-        {
-            return false;
-        }
-        if (fread(out_font->char_widths, 1, 256, file) != 256)
-        {
-            return false;
-        }
-
-        // Finally, load actual image data
-        out_font->image_data_size = out_font->image_width * out_font->image_height * (font_type / 8);
-
-        sb_add(out_font->image_data, out_font->image_data_size);
-        if (fread(out_font->image_data, 1, out_font->image_data_size, file) != out_font->image_data_size)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    printf("Failed to load font\n");
-
-    return false;
-}
-
 bool gui_load_font(const char* filename, GuiFont* out_font)
 {
     assert(out_font != NULL);
@@ -271,42 +189,6 @@ bool ttf_get_glyph_uv_rect(const TTFFont* font, u32 codepoint, GuiRect* out_uv)
     return true;
 }
 
-//FCS TODO: Replace with above
-bool gui_font_get_uvs_OLD(const GuiFont_OLD* const in_font, char in_char, GuiRect* out_uv_rect)
-{
-    i32 chars_per_row = in_font->image_width / in_font->cell_width;
-    i32 chars_per_col = in_font->image_height / in_font->cell_height;
-    i32 total_chars = chars_per_row * chars_per_col;
-
-    if (in_char >= in_font->first_char && in_char <= in_font->first_char + total_chars)
-    {
-        i32 row = (in_char - in_font->first_char) / chars_per_row;
-        i32 col = (in_char - in_font->first_char) - (row * chars_per_row);
-
-        f32 row_factor = (f32) in_font->cell_height / (f32) in_font->image_height;
-        f32 col_factor = (f32) in_font->cell_width / (f32) in_font->image_width;
-
-        f32 min_u = col * col_factor;
-        f32 min_v = row * row_factor;
-
-        *out_uv_rect = (GuiRect){
-			.position =
-		 	{
-				.x = min_u,
-				.y = min_v,
-			},
-            .size =
-			{
-            	.x = col_factor,
-                .y = col_factor,
-            }
-		};
-
-        return true;
-    }
-    return false;
-}
-
 bool gui_rect_intersects_point(const GuiRect in_rect, const Vec2 in_point)
 {
     return in_point.x >= in_rect.position.x
@@ -344,13 +226,6 @@ void gui_init(GuiContext* out_context)
             .indices = NULL,
         }};
 
-    //FCS TODO: remove
-    if (!gui_load_font_OLD("data/fonts/JetBrainsMonoRegular.bff", &out_context->default_font_OLD))
-    {
-        printf("OLD: failed to load default font\n");
-        exit(1);
-    }
-
     if (!gui_load_font("data/fonts/Menlo-Regular.ttf", &out_context->default_font))
     {
         printf("failed to load default font\n");
@@ -364,10 +239,6 @@ void gui_shutdown(GuiContext* in_context)
     sb_free(in_context->draw_data.indices);
     sb_free(in_context->frame_state.open_windows);
     sb_free(in_context->prev_frame_state.open_windows);
-
-    //FCS TODO: REMOVE
-    sb_free(in_context->default_font_OLD.image_data);
-    in_context->default_font_OLD = (GuiFont_OLD){};
 
     // Clean up TTF Font
     FCS_MEM_FREE(in_context->default_font.image_data);
