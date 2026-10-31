@@ -78,6 +78,8 @@ echo ${machine}
 # Set C Standard
 C_GAME_C_STD=c11
 
+optim_define=O3
+
 if [ $machine = Mac ]; then
 
 	#Build and Run for Mac
@@ -97,6 +99,7 @@ if [ $machine = Mac ]; then
 			-framework MetalKit \
 			-framework Quartz \
 			-rpath /usr/local/lib \
+            -$optim_define \
 			-D $render_backend_define
 	else
 		clang -ObjC -g ./src/main.c \
@@ -110,6 +113,7 @@ if [ $machine = Mac ]; then
 			-framework MetalKit \
 			-framework Quartz \
 			-rpath /usr/local/lib \
+            -$optim_define \
 			-D $render_backend_define \
 			-D $mac_vulkan_backend_define \
 			$portability_define
@@ -126,6 +130,7 @@ elif [ $machine = MinGW ]; then
 		-l user32.lib ${VULKAN_SDK}/Lib/vulkan-1.lib \
 		-I ${VULKAN_SDK}/Include \
 		-I src \
+        -$optim_define \
 		-D $render_backend_define
 
 	./bin/game.exe
