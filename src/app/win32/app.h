@@ -208,6 +208,12 @@ void window_get_dimensions(const Window* const window, int* out_width, int* out_
     }
 }
 
+void window_get_framebuffer_dimensions(const Window* const window, int* out_width, int* out_height)
+{
+    // The client rect is already in pixels
+    window_get_dimensions(window, out_width, out_height);
+}
+
 void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y)
 {
     POINT out_point = {};

@@ -26,6 +26,7 @@ bool window_handle_messages(Window* window);
 void window_show_mouse_cursor(Window* window, bool in_show_mouse_cursor);
 void window_get_position(const Window* const window, int* out_x, int* out_y); //TopLeft position
 void window_get_dimensions(const Window* const window, int* out_width, int* out_height);
+void window_get_framebuffer_dimensions(const Window* const window, int* out_width, int* out_height); // In pixels; larger than window_get_dimensions on high-DPI displays
 void window_get_mouse_pos(const Window* const window, i32* out_mouse_x, i32* out_mouse_y);
 void window_set_mouse_pos(const Window* const window, i32 in_mouse_x, i32 in_mouse_y);
 void window_get_mouse_delta(const Window* const window, i32* out_mouse_delta_x, i32* out_mouse_delta_y);

@@ -259,6 +259,9 @@ Window window_create(const char* name, int width, int height)
         CAMetalLayer* metal_layer = [[CAMetalLayer alloc] init];
         [view setWantsLayer:YES];
         [view setLayer:metal_layer];
+        // A layer-hosting view doesn't inherit the display's scale, so without this Retina renders at 1x and gets upscaled
+        metal_layer.contentsScale = window.backingScaleFactor;
+        metal_layer.drawableSize = [view convertSizeToBacking:view.frame.size];
 
         [NSApp activateIgnoringOtherApps:YES];
 
@@ -314,6 +317,17 @@ void window_get_dimensions(const Window* const window, int* out_width, int* out_
     @autoreleasepool
     {
         NSSize ns_size = [[window->ns_window contentView] frame].size;
+        *out_width = ns_size.width;
+        *out_height = ns_size.height;
+    }
+}
+
+void window_get_framebuffer_dimensions(const Window* const window, int* out_width, int* out_height)
+{
+    @autoreleasepool
+    {
+        NSView* view = [window->ns_window contentView];
+        NSSize ns_size = [view convertSizeToBacking:view.frame.size];
         *out_width = ns_size.width;
         *out_height = ns_size.height;
     }

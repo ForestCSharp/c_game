@@ -608,7 +608,7 @@ void gpu_vk_resize_swapchain(GpuDevice* in_device, const Window* const in_window
 
     int swapchain_width = 0;
     int swapchain_height = 0;
-    window_get_dimensions(in_window, &swapchain_width, &swapchain_height);
+    window_get_framebuffer_dimensions(in_window, &swapchain_width, &swapchain_height);
 
     VkSurfaceCapabilitiesKHR surface_capabilities;
     VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(in_device->vk_physical_device, in_device->surface, &surface_capabilities));

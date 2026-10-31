@@ -894,11 +894,16 @@ int main()
 	GpuRenderPipeline geometry_render_pipeline;
 	gpu_create_render_pipeline(&gpu_device, &geometry_render_pipeline_create_info, &geometry_render_pipeline);
 
+	// Depth must match the backbuffer, which is in pixels rather than window points
+	i32 framebuffer_width = 0;
+	i32 framebuffer_height = 0;
+	window_get_framebuffer_dimensions(&window, &framebuffer_width, &framebuffer_height);
+
 	GpuTextureCreateInfo depth_texture_create_info = {
 		.format = GPU_FORMAT_D32_SFLOAT,	
 		.extent = {
-			.width = window_width,
-			.height = window_height,
+			.width = framebuffer_width,
+			.height = framebuffer_height,
 			.depth = 1,
 		},
 		.usage = GPU_TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT,
