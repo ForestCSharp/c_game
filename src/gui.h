@@ -25,14 +25,33 @@
  * draw_data
 */
 
+// Must match the DRAW_MODE defines in gui.frag
+typedef enum GuiDrawMode
+{
+    GUI_DRAW_MODE_SOLID = 0,
+    GUI_DRAW_MODE_GLYPH = 1, // Slug: uv is the position in font units
+} GuiDrawMode;
+
 typedef struct GuiVert
 {
     Vec2 position;
     Vec2 uv;
     Vec4 color;
-    i32 has_texture;
-	u32 padding[3];
+    i32 draw_mode;   // GuiDrawMode
+    u32 glyph_index; // Codepoint, for GUI_DRAW_MODE_GLYPH
+	u32 padding[2];
 } GuiVert;
+
+// Per-codepoint glyph record for Slug text rendering. Must match GuiGlyph in the gui shaders (std430).
+typedef struct GuiGlyph
+{
+    Vec4 bounds;     // x_min, y_min, x_max, y_max in font units
+    u32 band_offset; // Index of the glyph's first band header in TTFFont.band_data
+    u32 band_count;  // Bands per direction
+    u32 padding[2];
+} GuiGlyph;
+_Static_assert(sizeof(GuiGlyph) == 32, "GuiGlyph must match its std430 layout in the gui shaders");
+_Static_assert(sizeof(TTFCurve) == 24, "TTFCurve must match its std430 layout in the gui shaders");
 
 typedef struct GuiRect
 {
@@ -74,21 +93,8 @@ typedef struct GuiDrawData
     sbuffer(u32) indices;
 } GuiDrawData;
 
-typedef enum GuiFontType
-{
-    FONT_TYPE_ALPHA = 8,
-    FONT_TYPE_RGB = 24,
-    FONT_TYPE_RGBA = 32,
-} GuiFontType;
-
 typedef struct GuiFont {
     TTFFont ttf_font;
-
-    u32 image_width;
-    u32 image_height;
-    GuiFontType font_type;
-    sbuffer(u8) image_data;
-    u64 image_data_size;
 } GuiFont;
 
 typedef struct GuiContext
@@ -154,39 +160,7 @@ bool gui_load_font(const char* filename, GuiFont* out_font)
 
     *out_font = (GuiFont) {};
 
-    ttf_init(&out_font->ttf_font, "data/fonts/Menlo-Regular.ttf");
-
-    out_font->image_width = TTF_ATLAS_SPAN;
-    out_font->image_height = TTF_ATLAS_SPAN;
-    out_font->font_type = FONT_TYPE_RGBA;
-    out_font->image_data_size = TTF_ATLAS_SIZE * 4;
-
-    // Convert the 8bpp grayscale atlas to RGBA8 (white RGB, coverage as alpha).
-    out_font->image_data = FCS_MEM_ALLOC(out_font->image_data_size);
-    const u32 pixel_count = (u32)TTF_ATLAS_SIZE;   // TTF_ATLAS_SPAN * TTF_ATLAS_SPAN
-    for (u32 i = 0; i < pixel_count; ++i)
-    {
-        const u8 coverage = out_font->ttf_font.atlas_data[i];
-        out_font->image_data[i * 4 + 0] = 255;      // R
-        out_font->image_data[i * 4 + 1] = 255;      // G
-        out_font->image_data[i * 4 + 2] = 255;      // B
-        out_font->image_data[i * 4 + 3] = coverage;  // A
-    }
-
-    return true;
-}
-
-bool ttf_get_glyph_uv_rect(const TTFFont* font, u32 codepoint, GuiRect* out_uv)
-{
-    const f32 tile = (f32) TTF_GLYPH_SIZE / (f32) TTF_ATLAS_SPAN;
-    const f32 half_texel = 0.5f / (f32) TTF_ATLAS_SPAN;  // inset to avoid linear-filter bleed across tile edges
-    const TTFGlyphAtlasEntry* e = &font->glyph_atlas_entries[codepoint];
-    if (!e->is_rasterized) { return false; }
-    *out_uv = (GuiRect){
-        .position = { e->x_idx * tile + half_texel, e->y_idx * tile + half_texel },
-        .size = { tile - 2 * half_texel, tile - 2 * half_texel },
-    };
-    return true;
+    return ttf_init(&out_font->ttf_font, filename);
 }
 
 bool gui_rect_intersects_point(const GuiRect in_rect, const Vec2 in_point)
@@ -241,7 +215,6 @@ void gui_shutdown(GuiContext* in_context)
     sb_free(in_context->prev_frame_state.open_windows);
 
     // Clean up TTF Font
-    FCS_MEM_FREE(in_context->default_font.image_data);
     ttf_free(&in_context->default_font.ttf_font);
 }
 
@@ -312,10 +285,9 @@ void gui_draw_quad(GuiDrawData* const in_draw_data, GuiVert vertices[4])
 /* Currently takes in screen-space coordinates (i.e in pixels) and converts to [0,1] range where (0,0) is top-left and
 
  * * (1,1) is bottom right */
-void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect, const Vec4* const in_color, const GuiRect* const in_uv_rect)
+void gui_draw_box_ex(GuiDrawData* const in_draw_data, const GuiRect* const in_rect, const Vec4* const in_color, const GuiRect* const in_uv_rect,
+    const GuiDrawMode in_draw_mode, const u32 in_glyph_index)
 {
-
-    const bool has_uvs = in_uv_rect != NULL;
     const Vec2 position = in_rect->position;
     const Vec2 size = in_rect->size;
 
@@ -328,28 +300,37 @@ void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect,
 				.position = position,
 				.uv = uv_start,
 				.color = *in_color,
-				.has_texture = has_uvs,
+				.draw_mode = in_draw_mode,
+				.glyph_index = in_glyph_index,
 			},
 			(GuiVert){
 				.position = vec2_add(position, vec2_new(size.x, 0)),
 				.uv = vec2_add(uv_start, vec2_new(uv_size.x, 0)),
 				.color = *in_color,
-				.has_texture = has_uvs,
+				.draw_mode = in_draw_mode,
+				.glyph_index = in_glyph_index,
 			},
 			(GuiVert){
 				.position = vec2_add(position, vec2_new(0, size.y)),
 				.uv = vec2_add(uv_start, vec2_new(0, uv_size.y)),
 				.color = *in_color,
-				.has_texture = has_uvs,
+				.draw_mode = in_draw_mode,
+				.glyph_index = in_glyph_index,
 			},
 			(GuiVert){
 				.position = vec2_add(position, size),
 				.uv = vec2_add(uv_start, uv_size),
 				.color = *in_color,
-				.has_texture = has_uvs,
+				.draw_mode = in_draw_mode,
+				.glyph_index = in_glyph_index,
 			},
 		}
 	);
+}
+
+void gui_draw_box(GuiDrawData* const in_draw_data, const GuiRect* const in_rect, const Vec4* const in_color)
+{
+    gui_draw_box_ex(in_draw_data, in_rect, in_color, NULL, GUI_DRAW_MODE_SOLID, 0);
 }
 
 Vec2 recursive_bezier(const f32 t, const u32 num_points, const Vec2* in_points)
@@ -468,18 +449,18 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
     }
 
     const TTFFont* ttf = &in_context->default_font.ttf_font;
-    // Atlas is baked at TTF_GLYPH_SIZE (64px); render at a smaller size by scaling down.
+    // Glyphs are rendered from their outlines (Slug), so any size is exact
     const f32 render_size = 24.0f;                        // TODO: style setting
-    const f32 render_scale = render_size / (f32)TTF_GLYPH_SIZE;
-    const f32 tile_size = (f32)TTF_GLYPH_SIZE * render_scale;
+    const f32 scale = ttf_scale_for_pixel_height(ttf, render_size); // Pixels per font unit
     const size_t num_chars = strlen(in_text);
 
     // Measure: total text width from per-glyph advances (scaled to render size).
     f32 text_width = 0.0f;
     for (size_t i = 0; i < num_chars; ++i)
     {
-        const TTFGlyphAtlasEntry* e = &ttf->glyph_atlas_entries[(u8)in_text[i]];
-        text_width += e->is_rasterized ? (f32)e->advance * render_scale : 0.0f;
+        u16 advance = 0; i16 lsb = 0;
+        ttf_get_glyph_hmetric(ttf, (u8)in_text[i], &advance, &lsb);
+        text_width += (f32)advance * scale;
     }
 
     // Pen start (horizontal alignment).
@@ -500,7 +481,6 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
     }
 
     // Baseline (vertical placement). Line height = ascender - descender, at render size.
-    const f32 scale  = ttf_scale_for_pixel_height(ttf, render_size);
     const f32 asc_px = (f32)ttf->ascender * scale;
     const f32 desc_px = (f32)ttf->descender * scale;
     const f32 line_h = asc_px - desc_px;
@@ -509,32 +489,44 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
                          + asc_px;
 
     // Draw each glyph with the pen model.
+    // Each quad is the glyph's box grown by half a pixel so edge pixels with partial coverage still get shaded
+    const f32 dilation_px = 0.5f;
+    const f32 dilation_units = dilation_px / scale;
     for (size_t i = 0; i < num_chars; ++i)
     {
         const u8 current_char = (u8)in_text[i];
-        const TTFGlyphAtlasEntry* e = &ttf->glyph_atlas_entries[current_char];
-        if (!e->is_rasterized)
+        if (current_char >= ARRAY_COUNT(ttf->glyph_outlines))
         {
             continue;
         }
 
-        GuiRect uv_rect;
-        ttf_get_glyph_uv_rect(ttf, current_char, &uv_rect);
+        u16 advance = 0; i16 lsb = 0;
+        ttf_get_glyph_hmetric(ttf, current_char, &advance, &lsb);
 
-        const f32 glyph_x = pen_x + (f32)e->x_bearing * render_scale;
-        const f32 glyph_y = baseline_y - (f32)e->y_bearing * render_scale;
+        const TTFGlyphOutline* outline = &ttf->glyph_outlines[current_char];
+        if (outline->curve_count > 0)
+        {
+            const f32 width_units = (f32)(outline->x_max - outline->x_min);
+            const f32 height_units = (f32)(outline->y_max - outline->y_min);
 
-        GuiRect box_rect = gui_rect_scale(
-            (GuiRect){
-                .position = { glyph_x, glyph_y },
-                .size = { tile_size, tile_size },
-            },
-            f32_div_vec2(1.0f, in_context->frame_state.screen_size));
+            GuiRect box_rect = gui_rect_scale(
+                (GuiRect){
+                    .position = { pen_x + outline->x_min * scale - dilation_px, baseline_y - outline->y_max * scale - dilation_px },
+                    .size = { width_units * scale + 2.0f * dilation_px, height_units * scale + 2.0f * dilation_px },
+                },
+                f32_div_vec2(1.0f, in_context->frame_state.screen_size));
 
-        const Vec4 text_color = vec4_new(1, 1, 1, 1); // TODO: arg
-        gui_draw_box(&in_context->draw_data, &box_rect, &text_color, &uv_rect);
+            // Same box in font units. Font space is y-up, so the top of the quad is y_max.
+            const GuiRect glyph_rect = {
+                .position = { outline->x_min - dilation_units, outline->y_max + dilation_units },
+                .size = { width_units + 2.0f * dilation_units, -(height_units + 2.0f * dilation_units) },
+            };
 
-        pen_x += (f32)e->advance * render_scale;
+            const Vec4 text_color = vec4_new(1, 1, 1, 1); // TODO: arg
+            gui_draw_box_ex(&in_context->draw_data, &box_rect, &text_color, &glyph_rect, GUI_DRAW_MODE_GLYPH, current_char);
+        }
+
+        pen_x += (f32)advance * scale;
     }
 }
 
@@ -600,7 +592,7 @@ GuiClickState gui_make_button(
         Vec4 button_color = gui_style_get_button_color(in_style_args, out_click_state);
 
         const GuiRect normalized_draw_rect = gui_rect_scale(*in_draw_rect, f32_div_vec2(1.0, in_context->frame_state.screen_size));
-        gui_draw_box(&in_context->draw_data, &normalized_draw_rect, &button_color, NULL);
+        gui_draw_box(&in_context->draw_data, &normalized_draw_rect, &button_color);
 
         GuiRect text_rect = *in_draw_rect;
         text_rect.position.x += in_style_args->text_padding;
@@ -655,7 +647,7 @@ GuiClickState gui_make_slider_f32(GuiContext* const in_context, f32* const data_
     };
 
     const Vec4 slider_filled_color = gui_style_get_button_color(&slider_filled_style, clicked_state);
-    gui_draw_box(&in_context->draw_data, &normalized_filled_rect, &slider_filled_color, NULL);
+    gui_draw_box(&in_context->draw_data, &normalized_filled_rect, &slider_filled_color);
 
     // Draw label and current value text
     const char* format_string = "%s: %.3f";
@@ -705,7 +697,7 @@ void gui_window_begin(GuiContext* const in_context, GuiWindow* const in_window)
         if (in_window->is_expanded)
         {
             const GuiRect normalized_window_rect = gui_rect_scale(*window_rect, f32_div_vec2(1.0, in_context->frame_state.screen_size));
-            gui_draw_box(&in_context->draw_data, &normalized_window_rect, &window_color, NULL);
+            gui_draw_box(&in_context->draw_data, &normalized_window_rect, &window_color);
         }
 
         // Top Bar

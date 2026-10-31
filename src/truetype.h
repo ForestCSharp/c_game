@@ -11,6 +11,7 @@
 #include "memory/allocator.h"
 #include "memory/arena.h"
 #include "stretchy_buffer.h"
+#include "math/vec.h"
 
 // Byte-Order Helpers
 static u8 be_u8(const u8* p)
@@ -65,21 +66,6 @@ typedef struct TTFGlyph {
    i16          y_max;
 } TTFGlyph;
 
-const i32 TTF_GLYPH_SIZE = 64;
-const i32 TTF_ATLAS_SPAN = 1024;
-const i32 TTF_ATLAS_GLYPHS_PER_ROW = TTF_ATLAS_SPAN / TTF_GLYPH_SIZE;
-const i32 TTF_ATLAS_SIZE = TTF_ATLAS_SPAN * TTF_ATLAS_SPAN;
-
-typedef struct TTFGlyphAtlasEntry {
-    i32 x_idx;
-    i32 y_idx;
-    bool is_rasterized;
-    //u16 glyph_idx;
-    u16 advance;
-    i16 x_bearing;
-    i16 y_bearing;
-} TTFGlyphAtlasEntry;
-
 typedef struct TTFPoint {
    i16 x;
    i16 y;
@@ -92,10 +78,25 @@ typedef struct TTFPointFloat {
     bool on_curve;
 } TTFPointFloat;
 
-typedef struct TTFEdgeFloat {
-    TTFPointFloat start; 
-    TTFPointFloat end;
-} TTFEdgeFloat;
+// Quadratic Bezier in font units. Straight segments have p2 at the midpoint of p1 and p3.
+typedef struct TTFCurve {
+    Vec2 p1;
+    Vec2 p2;
+    Vec2 p3;
+} TTFCurve;
+
+typedef struct TTFGlyphOutline {
+    i16 x_min;
+    i16 y_min;
+    i16 x_max;
+    i16 y_max;
+    u32 curve_offset; // Index of first curve in TTFFont.curves
+    u32 curve_count;
+    u32 band_offset;  // Index of first band header in TTFFont.band_data
+    u32 band_count;   // Bands per direction
+} TTFGlyphOutline;
+
+#define TTF_MAX_BANDS 16
 
 typedef enum TTFSimpleGlyphFlagBits {
     TTF_SIMPLE_GLYPH_FLAG_NONE                                  = 0,
@@ -134,10 +135,12 @@ typedef struct TTFFont
     CMapSubtable cmap_subtables[MAX_CMAP_SUBTABLES];
     CMapSubtable* chosen_cmap_subtable;
 
-    u8* atlas_data;
-    i32 next_glyph_atlas_idx;
+    sbuffer(TTFCurve) curves;
+    TTFGlyphOutline glyph_outlines[128];
 
-    TTFGlyphAtlasEntry glyph_atlas_entries[128];
+    // Per glyph: band_count horizontal then band_count vertical headers of {curve count, index of curve list},
+    // followed by the curve lists (indices into curves)
+    sbuffer(u32) band_data;
 } TTFFont;
 
 static TableLoc find_table(const u8 *data, u16 ntables,
@@ -155,11 +158,10 @@ void ttf_free(TTFFont* font);
 
 u16 ttf_find_glyph_index(const TTFFont* font, u32 codepoint);
 u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index);
-u8* ttf_get_glyph_atlas_data(const TTFFont* font, u32 codepoint);
 void ttf_get_glyph_hmetric(const TTFFont* font, u32 codepoint, u16* out_advance, i16* out_lsb);
-void ttf_raster_glyph(TTFFont* font, u32 codepoint);
-void ttf_print_glyph(TTFFont* font, u32 codepoint);
-void ttf_write_ppm_atlas(const TTFFont* font);
+void ttf_build_curves(TTFFont* font, u32 codepoint);
+void ttf_build_bands(TTFFont* font, u32 codepoint);
+f32 ttf_slug_coverage(const TTFFont* font, u32 codepoint, f32 x, f32 y, f32 pixels_per_unit);
 
 f32 ttf_scale_for_pixel_height(const TTFFont* font, f32 height);
 i32 ttf_cmap_subtable_score(const CMapSubtable* subtable);
@@ -245,9 +247,6 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
         }
     }
 
-    out_font->atlas_data = arena_alloc(out_font->arena, TTF_ATLAS_SIZE);
-    assert(out_font->atlas_data);
-
     printf(
         "Chosen Subtable: platform_id: %u encoding_id: %u offset: %u\n", 
         out_font->chosen_cmap_subtable->platform_id, 
@@ -257,17 +256,17 @@ bool ttf_init(TTFFont* out_font, const char* in_filename)
 
     for (u32 char_code = 0; char_code < 128; ++char_code)
     {
-        printf("char_code: %u\n", char_code);
-        ttf_raster_glyph(out_font, char_code);
-        ttf_print_glyph(out_font, char_code);
+        ttf_build_curves(out_font, char_code);
+        ttf_build_bands(out_font, char_code);
     }
-    ttf_write_ppm_atlas(out_font);
 
     return true;
 }
 
 void ttf_free(TTFFont* font)
 {
+    sb_free(font->curves);
+    sb_free(font->band_data);
     arena_destroy(&font->arena);
     *font = (TTFFont) {0};
 }
@@ -345,60 +344,12 @@ u32 ttf_find_glyph_offset(const TTFFont* font, u16 glyph_index)
     } 
 }
 
-typedef struct EdgeGenState {
-    sbuffer(TTFEdgeFloat) edges;  
-
-    bool bezier_in_progress;   
-    TTFPointFloat bezier_p0;
-    TTFPointFloat bezier_p1;
-} EdgeGenState;
-
-void ttf_push_edge(EdgeGenState* state, TTFPointFloat start, TTFPointFloat end)
-{
-    TTFEdgeFloat new_edge = {
-        .start = start,
-        .end = end,
-    };
-    sb_push(state->edges, new_edge);
-}
-
 TTFPointFloat ttf_midpoint(TTFPointFloat p0, TTFPointFloat p1)
 {
    return (TTFPointFloat) {
         .x = (p0.x + p1.x) / 2.0f,
         .y = (p0.y + p1.y) / 2.0f,
    };
-}
-
-void ttf_emit_bezier(EdgeGenState* state, TTFPointFloat p0, TTFPointFloat p1, TTFPointFloat p2)
-{
-    const u32 segments = 8; 
-    TTFPointFloat prev = p0;
-    for (u32 i = 1; i <= segments; ++i)
-    {
-        const f32 t = (f32) i / (f32) segments;
-        const f32 u = 1.0f - t;
-        const f32 u_sq= u * u;
-        const f32 t_sq = t * t;
-        const f32 ut2 = u * t * 2;
-        const TTFPointFloat pt = {
-            .x = u_sq * p0.x + ut2 * p1.x + t_sq * p2.x,
-            .y = u_sq * p0.y + ut2 * p1.y + t_sq * p2.y,
-        };
-        ttf_push_edge(state, prev, pt);
-        prev = pt;
-    }
-}
-
-u8* ttf_get_glyph_atlas_data(const TTFFont* font, u32 codepoint)
-{
-    const TTFGlyphAtlasEntry* entry = &font->glyph_atlas_entries[codepoint];
-    if (!entry->is_rasterized) { return NULL; }
-
-    u8* offset_atlas_data = font->atlas_data
-        + (entry->y_idx * TTF_GLYPH_SIZE) * TTF_ATLAS_SPAN
-        + (entry->x_idx * TTF_GLYPH_SIZE);
-    return offset_atlas_data;
 }
 
 void ttf_get_glyph_hmetric(const TTFFont* font, u32 codepoint, u16* out_advance, i16* out_lsb)
@@ -422,7 +373,18 @@ void ttf_get_glyph_hmetric(const TTFFont* font, u32 codepoint, u16* out_advance,
    }    
 }
 
-void ttf_raster_glyph(TTFFont* font, u32 codepoint)
+void ttf_push_curve(TTFFont* font, TTFPointFloat p1, TTFPointFloat p2, TTFPointFloat p3)
+{
+    TTFCurve curve = {
+        .p1 = { .x = p1.x, .y = p1.y },
+        .p2 = { .x = p2.x, .y = p2.y },
+        .p3 = { .x = p3.x, .y = p3.y },
+    };
+    sb_push(font->curves, curve);
+}
+
+// Converts a glyph's outline into quadratic curves (in font units) appended to font->curves
+void ttf_build_curves(TTFFont* font, u32 codepoint)
 {
     u16 glyph_index = ttf_find_glyph_index(font, codepoint);
     if (glyph_index == 0)
@@ -433,32 +395,15 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
     u32 glyph_offset = ttf_find_glyph_offset(font, glyph_index);
     u32 glyph_length = ttf_find_glyph_offset(font, glyph_index + 1) - glyph_offset;
 
-    const f32 scale = ttf_scale_for_pixel_height(font, (f32) TTF_GLYPH_SIZE);
+    TTFGlyphOutline* outline = &font->glyph_outlines[codepoint];
+    *outline = (TTFGlyphOutline) {
+        .curve_offset = sb_count(font->curves),
+        .curve_count = 0,
+    };
 
     if (glyph_length == 0)
     {
-        // Empty glyph (e.g. space): no outline to raster, but layout still
-        // needs its advance width. Reserve a (zeroed/transparent) tile slot
-        // and record the metric so the pen advances correctly.
-        u16 empty_advance; i16 empty_lsb;
-        ttf_get_glyph_hmetric(font, codepoint, &empty_advance, &empty_lsb);
-
-        const i32 empty_idx = font->next_glyph_atlas_idx++;
-        font->glyph_atlas_entries[codepoint] = (TTFGlyphAtlasEntry) {
-            .x_idx = empty_idx % TTF_ATLAS_GLYPHS_PER_ROW,
-            .y_idx = empty_idx / TTF_ATLAS_GLYPHS_PER_ROW,
-            .is_rasterized = true,
-            .advance = (u16) (empty_advance * scale + 0.5f),
-            .x_bearing = 0,
-            .y_bearing = 0,
-        };
-
-        // Zero the tile so it's transparent (alpha 0 after RGBA conversion).
-        u8* empty_tile = ttf_get_glyph_atlas_data(font, codepoint);
-        for (u32 y = 0; y < TTF_GLYPH_SIZE; ++y)
-        {
-            memset(empty_tile + y * TTF_ATLAS_SPAN, 0, TTF_GLYPH_SIZE);
-        }
+        // Empty glyph (e.g. space): no curves
         return;
     }
 
@@ -469,327 +414,12 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
         .x_max          = be_i16(font->glyf + glyph_offset + 6), 
         .y_max          = be_i16(font->glyf + glyph_offset + 8),
     };
+    outline->x_min = glyph.x_min;
+    outline->y_min = glyph.y_min;
+    outline->x_max = glyph.x_max;
+    outline->y_max = glyph.y_max;
 
-    const f32 scaled_x_min = (f32) glyph.x_min * scale;
-    const f32 scaled_y_min = (f32) glyph.y_min * scale;
-    const f32 scaled_x_max = (f32) glyph.x_max * scale;
-    const f32 scaled_y_max = (f32) glyph.y_max * scale;
-
-    const u32 image_w = (u32)(scaled_x_max - scaled_x_min + 0.5f);
-    const u32 image_h = (u32)(scaled_y_max - scaled_y_min + 0.5f);
-
-    if (glyph.num_contours >= 0)
-    {
-        // Simple Glyph
-        u16 end_points_of_contours[glyph.num_contours];
-        const u32 GLYPH_HEADER_SIZE = 10;
-        u32 current_offset = glyph_offset + GLYPH_HEADER_SIZE;
-        for (i32 i = 0; i < glyph.num_contours; ++i)
-        {
-            end_points_of_contours[i] = be_u16(font->glyf + current_offset);
-            current_offset += 2;
-        }
-        u16 instruction_length = be_u16(font->glyf + current_offset);
-        current_offset += 2;
-
-        u8 instructions[instruction_length];
-        for (i32 i = 0; i < instruction_length; ++i)
-        {
-            instructions[i] = be_u8(font->glyf + current_offset);
-            current_offset += 1;
-        }
-
-        const u32 num_points = end_points_of_contours[glyph.num_contours - 1] + 1;
-
-        u8 flags[num_points];
-        TTFPoint points[num_points];
-
-        u32 points_filled = 0;
-        while (points_filled < num_points)
-        {
-            u8 f = be_u8(font->glyf + current_offset);
-            current_offset += 1;
-
-            if (f & TTF_SIMPLE_GLYPH_FLAG_REPEAT_FLAG)
-            {
-                u8 count = be_u8(font->glyf + current_offset);
-                current_offset += 1;
-
-                for (u32 r = 0; r <= count && points_filled < num_points; ++r)
-                {
-                    points[points_filled].on_curve = (f & TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT) != 0;
-                    flags[points_filled] = f; 
-                    points_filled++;
-                }
-            }
-            else
-            {
-                points[points_filled].on_curve = (f & TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT) != 0;
-                flags[points_filled] = f; 
-                points_filled++;
-            }
-        }
-
-        // Get point x-values, built up via an accumulator and deltas
-        i32 x_accumulator = 0;
-        for (u32 i = 0; i < num_points; ++i)
-        {
-            const u8 f = flags[i];
-            i16 dx = 0;
-
-            if (f & TTF_SIMPLE_GLYPH_FLAG_X_SHORT_VECTOR)
-            {
-                // We always read the unsigned short value
-                const u8 value = be_u8(font->glyf + current_offset);
-                current_offset += 1;
-
-                // for short values, this flag determines if delta is positive or negative
-                if (f & TTF_SIMPLE_GLYPH_FLAG_X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR)
-                {
-                   dx = (i16) value; 
-                }
-                else
-                {
-                    dx = - (i16) value;
-                }
-            }
-            else
-            {
-                // for long values, this flag determines if delta is same (0) or to read the new long
-                if (f & TTF_SIMPLE_GLYPH_FLAG_X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR)
-                {
-                   dx = 0;
-                }
-                else
-                {
-                    // read the signed long value
-                    dx = be_i16(font->glyf + current_offset);
-                    current_offset += 2;
-                }
-
-            }
-
-            x_accumulator += dx;
-            points[i].x = (i16)x_accumulator;
-                        
-        }
-
-        // Get point y-values, built up via an accumulator and deltas
-        i32 y_accumulator = 0;
-        for (u32 i = 0; i < num_points; ++i)
-        {
-            const u8 f = flags[i];
-            i16 dy = 0;
-
-            if (f & TTF_SIMPLE_GLYPH_FLAG_Y_SHORT_VECTOR)
-            {
-                // We always read the unsigned short value
-                const u8 value = be_u8(font->glyf + current_offset);
-                current_offset += 1;
-
-                // for short values, this flag determines if delta is positive or negative
-                if (f & TTF_SIMPLE_GLYPH_FLAG_Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR)
-                {
-                   dy = (i16) value; 
-                }
-                else
-                {
-                    dy = - (i16) value;
-                }
-            }
-            else
-            {
-                // for long values, this flag determines if delta is same (0) or to read the new long
-                if (f & TTF_SIMPLE_GLYPH_FLAG_Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR)
-                {
-                   dy = 0;
-                }
-                else
-                {
-                    // Read the signed long value
-                    dy = be_i16(font->glyf + current_offset);
-                    current_offset += 2;
-                }
-
-            }
-
-            y_accumulator += dy;
-            points[i].y = (i16)y_accumulator;     
-        }
-
-        const i32 glyph_atlas_idx = font->next_glyph_atlas_idx++;
-        const i32 glyph_atlas_x_idx = glyph_atlas_idx % TTF_ATLAS_GLYPHS_PER_ROW;
-        const i32 glyph_atlas_y_idx = glyph_atlas_idx / TTF_ATLAS_GLYPHS_PER_ROW;
-        printf("glyph atlas idx: %i x: %i y: %i\n", glyph_atlas_idx, glyph_atlas_x_idx, glyph_atlas_y_idx);
-
-
-        u16 glyph_advance; i16 glyph_lsb;
-        ttf_get_glyph_hmetric(font, codepoint, &glyph_advance, &glyph_lsb);
-
-        font->glyph_atlas_entries[codepoint] = (TTFGlyphAtlasEntry) {
-            .x_idx = glyph_atlas_x_idx,
-            .y_idx = glyph_atlas_y_idx,
-            .is_rasterized = true,
-            .advance = (u16) (glyph_advance * scale + 0.5f),
-            .x_bearing = scaled_x_min, 
-            .y_bearing = scaled_y_max,
-        }; 
-
-        // Scale points based on pixel height (px)
-        TTFPointFloat points_float[num_points];
-        for (u32 i = 0; i < num_points; ++i)
-        {
-            points_float[i].x = points[i].x * scale;
-            points_float[i].y = points[i].y * scale;
-            points_float[i].on_curve = points[i].on_curve;
-        }
-
-        EdgeGenState edge_gen_state = {
-            .edges = NULL,
-            .bezier_in_progress = false,
-            .bezier_p0 = {},
-            .bezier_p1 = {}
-        };
-
-        for (i16 c = 0; c < glyph.num_contours; ++c)
-        {
-            u16 start = c == 0 ? 0 : end_points_of_contours[c-1] + 1;
-            u16 end = end_points_of_contours[c];
-            const u16 n = (end - start) + 1;
-
-            u16 rot = start;
-            while (rot <= end && !points_float[rot].on_curve)
-            {
-                ++rot; 
-            }
-            assert(rot <= end);
-  
-            for (u16 step = 0; step < n; ++step)
-            {
-                const u16 current = start + ((rot - start) + step) % n;  
-                const u16 next = start + ((rot - start) + step + 1) % n;  
-
-                TTFPointFloat current_point = points_float[current];
-                TTFPointFloat next_point = points_float[next];
-
-                if (current_point.on_curve && next_point.on_curve)
-                {
-                    ttf_push_edge(&edge_gen_state, current_point, next_point);
-                }
-                else if (current_point.on_curve && !next_point.on_curve)
-                {
-                    edge_gen_state.bezier_in_progress = true;
-                    edge_gen_state.bezier_p0 = current_point;
-                    edge_gen_state.bezier_p1 = next_point;
-                }
-                else if (!current_point.on_curve && !next_point.on_curve)
-                {
-                    TTFPointFloat implied = ttf_midpoint(current_point, next_point);
-                    ttf_emit_bezier(&edge_gen_state, edge_gen_state.bezier_p0, edge_gen_state.bezier_p1, implied);
-                    edge_gen_state.bezier_p0 = implied;
-                    edge_gen_state.bezier_p1 = next_point; 
-                    // bezier still in progress 
-                }
-                else if (!current_point.on_curve && next_point.on_curve)
-                {
-                    ttf_emit_bezier(&edge_gen_state, edge_gen_state.bezier_p0, edge_gen_state.bezier_p1, next_point);
-                    edge_gen_state.bezier_in_progress = false;
-                }
-            } 
-        }
-
-        u8* offset_atlas_data = ttf_get_glyph_atlas_data(font, codepoint);
-        assert(offset_atlas_data != NULL);
-
-        for (u32 y = 0; y < TTF_GLYPH_SIZE; ++y)
-        {
-            memset(offset_atlas_data + y * TTF_ATLAS_SPAN, 0, TTF_GLYPH_SIZE);
-        }
-
-        const u32 edge_count = sb_count(edge_gen_state.edges);
-        for (u32 i = 0; i < edge_count; ++i)
-        {
-            TTFEdgeFloat* edge = &edge_gen_state.edges[i];
-            edge->start.x = edge->start.x - scaled_x_min;
-            edge->start.y = scaled_y_max - edge->start.y; 
-            edge->end.x = edge->end.x - scaled_x_min;
-            edge->end.y = scaled_y_max - edge->end.y;
-        }
-
-        // Scanline Raster
-        for (u32 y = 0; y < TTF_GLYPH_SIZE; ++y)
-        {
-            // Sample pixel y-center
-            const f32 scan_y = (f32)y + 0.5f;
-
-            // Crossings for this row
-            f32 crossings[64];
-            u32 crossings_count = 0;
-
-            // Find Edge crossings for this row
-            for (u32 e = 0; e < edge_count; ++e)
-            { 
-                // Get current edge and early-out if edge isn't on current row
-                TTFEdgeFloat* edge = &edge_gen_state.edges[e];
-                const f32 y0 = edge->start.y;
-                const f32 y1 = edge->end.y;
-                const f32 y_lo = (y0 < y1) ? y0 : y1;
-                const f32 y_hi = (y0 < y1) ? y1 : y0;
-                if (scan_y < y_lo || scan_y >= y_hi) { continue; }
-                // Determine how far (t) we are on the line using our y coords
-                const f32 t = (scan_y - y0) / (y1 - y0); 
-                // Use that t-value to determine where x sits on this row
-                const f32 x0 = edge->start.x; 
-                const f32 x1 = edge->end.x;
-                const f32 x = x0 + t * (x1 - x0);
-                // That x value is our crossing
-                crossings[crossings_count++] = x;
-            }
-
-            // insertion-sort crossings in ascending x-value
-            for (u32 i = 1; i < crossings_count; ++i)
-            {
-                f32 v = crossings[i]; 
-                u32 j = i; 
-                while (j > 0 && crossings[j-1] > v)
-                {
-                    crossings[j] = crossings[j-1];
-                    --j;
-                }
-                crossings[j] = v;
-            }
-
-            // Fill coverage image data via even-odd rule by counting by 2
-            for (u32 i = 0; i < crossings_count; i += 2)
-            {
-                const f32 x_start = crossings[i];
-                const f32 x_end  = crossings[i+1];
-
-                // 0.5f so we sit at center of f32 pixel
-                const u32 px_lo = (u32)(crossings[i] + 0.5f);
-                const u32 px_hi = (u32)(crossings[i+1] + 0.5f);
-                for (u32 x = px_lo; x < px_hi; ++x)
-                {
-                    if (x < 0 || x >= TTF_GLYPH_SIZE)
-                    {
-                        continue;
-                    }
-
-                    const f32 left = (f32)x; 
-                    const f32 right = (f32) x + 1.0f;
-                    const f32 cov_left = (x_start > left) ? x_start : left;
-                    const f32 cov_right = (x_end < right) ? x_end : right;
-                    f32 frac = cov_right - cov_left;
-                    if (frac < 0.f) { frac = 0.f; }
-                    offset_atlas_data[y * TTF_ATLAS_SPAN + x] = (u8) (frac * 255.f);
-                }
-            }
-        }
-
-        // Clean up edges
-        sb_free(edge_gen_state.edges);
-    }
-    else
+    if (glyph.num_contours < 0)
     {
         // Composite Glyph
         printf("Composite Glyph\n");
@@ -798,62 +428,381 @@ void ttf_raster_glyph(TTFFont* font, u32 codepoint)
         //TODO:
     }
 
-}
-
-void ttf_print_glyph(TTFFont* font, u32 codepoint)
-{
-    u8* offset_atlas_data = ttf_get_glyph_atlas_data(font, codepoint);
-    if (offset_atlas_data == NULL) { return; }
-
-    printf("\n");
-    for (u32 y = 0; y < TTF_GLYPH_SIZE; y += 2)
+    u16 end_points_of_contours[glyph.num_contours];
+    const u32 GLYPH_HEADER_SIZE = 10;
+    u32 current_offset = glyph_offset + GLYPH_HEADER_SIZE;
+    for (i32 i = 0; i < glyph.num_contours; ++i)
     {
-        for (u32 x = 0; x < TTF_GLYPH_SIZE; ++x)
-        {
-            const u8 top = offset_atlas_data[y * TTF_ATLAS_SPAN + x]; 
-            const u8 bot = (y + 1 < TTF_GLYPH_SIZE) ? offset_atlas_data[((y + 1) * TTF_ATLAS_SPAN) + x] : 0;
+        end_points_of_contours[i] = be_u16(font->glyf + current_offset);
+        current_offset += 2;
+    }
+    u16 instruction_length = be_u16(font->glyf + current_offset);
+    current_offset += 2;
 
-            if (top == 0 && bot == 0)
+    current_offset += instruction_length; // Skip hinting instructions
+
+    const u32 num_points = end_points_of_contours[glyph.num_contours - 1] + 1;
+
+    u8 flags[num_points];
+    TTFPoint points[num_points];
+
+    u32 points_filled = 0;
+    while (points_filled < num_points)
+    {
+        u8 f = be_u8(font->glyf + current_offset);
+        current_offset += 1;
+
+        if (f & TTF_SIMPLE_GLYPH_FLAG_REPEAT_FLAG)
+        {
+            u8 count = be_u8(font->glyf + current_offset);
+            current_offset += 1;
+
+            for (u32 r = 0; r <= count && points_filled < num_points; ++r)
             {
-                printf(" ");
+                points[points_filled].on_curve = (f & TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT) != 0;
+                flags[points_filled] = f; 
+                points_filled++;
+            }
+        }
+        else
+        {
+            points[points_filled].on_curve = (f & TTF_SIMPLE_GLYPH_FLAG_ON_CURVE_POINT) != 0;
+            flags[points_filled] = f; 
+            points_filled++;
+        }
+    }
+
+    // Get point x-values, built up via an accumulator and deltas
+    i32 x_accumulator = 0;
+    for (u32 i = 0; i < num_points; ++i)
+    {
+        const u8 f = flags[i];
+        i16 dx = 0;
+
+        if (f & TTF_SIMPLE_GLYPH_FLAG_X_SHORT_VECTOR)
+        {
+            // We always read the unsigned short value
+            const u8 value = be_u8(font->glyf + current_offset);
+            current_offset += 1;
+
+            // for short values, this flag determines if delta is positive or negative
+            if (f & TTF_SIMPLE_GLYPH_FLAG_X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR)
+            {
+               dx = (i16) value; 
             }
             else
             {
-                // ▀ renders top half in foreground, bottom half in background.                                                                                                                    
-               // Set foreground to top pixel's gray, background to bottom pixel's gray.                                                                                                          
-                printf(
-                    "\x1b[38;2;%u;%u;%u;48;2;%u;%u;%um▀\x1b[0m",                                                                                                                                
-                    top, top, top,  // foreground = top pixel gray                                                                                                                          
-                    bot, bot, bot   // background = bottom pixel gray  
-                );    
+                dx = - (i16) value;
             }
         }
-        printf("\n");
+        else
+        {
+            // for long values, this flag determines if delta is same (0) or to read the new long
+            if (f & TTF_SIMPLE_GLYPH_FLAG_X_IS_SAME_OR_POSITIVE_X_SHORT_VECTOR)
+            {
+               dx = 0;
+            }
+            else
+            {
+                // read the signed long value
+                dx = be_i16(font->glyf + current_offset);
+                current_offset += 2;
+            }
+
+        }
+
+        x_accumulator += dx;
+        points[i].x = (i16)x_accumulator;
+                    
     }
 
+    // Get point y-values, built up via an accumulator and deltas
+    i32 y_accumulator = 0;
+    for (u32 i = 0; i < num_points; ++i)
+    {
+        const u8 f = flags[i];
+        i16 dy = 0;
+
+        if (f & TTF_SIMPLE_GLYPH_FLAG_Y_SHORT_VECTOR)
+        {
+            // We always read the unsigned short value
+            const u8 value = be_u8(font->glyf + current_offset);
+            current_offset += 1;
+
+            // for short values, this flag determines if delta is positive or negative
+            if (f & TTF_SIMPLE_GLYPH_FLAG_Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR)
+            {
+               dy = (i16) value; 
+            }
+            else
+            {
+                dy = - (i16) value;
+            }
+        }
+        else
+        {
+            // for long values, this flag determines if delta is same (0) or to read the new long
+            if (f & TTF_SIMPLE_GLYPH_FLAG_Y_IS_SAME_OR_POSITIVE_Y_SHORT_VECTOR)
+            {
+               dy = 0;
+            }
+            else
+            {
+                // Read the signed long value
+                dy = be_i16(font->glyf + current_offset);
+                current_offset += 2;
+            }
+
+        }
+
+        y_accumulator += dy;
+        points[i].y = (i16)y_accumulator;     
+    }
+
+    TTFPointFloat points_float[num_points];
+    for (u32 i = 0; i < num_points; ++i)
+    {
+        points_float[i].x = points[i].x;
+        points_float[i].y = points[i].y;
+        points_float[i].on_curve = points[i].on_curve;
+    }
+
+    // Start and control point of the curve currently being built
+    TTFPointFloat bezier_p0 = {};
+    TTFPointFloat bezier_p1 = {};
+
+    for (i16 c = 0; c < glyph.num_contours; ++c)
+    {
+        u16 start = c == 0 ? 0 : end_points_of_contours[c-1] + 1;
+        u16 end = end_points_of_contours[c];
+        const u16 n = (end - start) + 1;
+
+        u16 rot = start;
+        while (rot <= end && !points_float[rot].on_curve)
+        {
+            ++rot; 
+        }
+        assert(rot <= end);
+
+        for (u16 step = 0; step < n; ++step)
+        {
+            const u16 current = start + ((rot - start) + step) % n;  
+            const u16 next = start + ((rot - start) + step + 1) % n;  
+
+            TTFPointFloat current_point = points_float[current];
+            TTFPointFloat next_point = points_float[next];
+
+            if (current_point.on_curve && next_point.on_curve)
+            {
+                ttf_push_curve(font, current_point, ttf_midpoint(current_point, next_point), next_point);
+            }
+            else if (current_point.on_curve && !next_point.on_curve)
+            {
+                bezier_p0 = current_point;
+                bezier_p1 = next_point;
+            }
+            else if (!current_point.on_curve && !next_point.on_curve)
+            {
+                TTFPointFloat implied = ttf_midpoint(current_point, next_point);
+                ttf_push_curve(font, bezier_p0, bezier_p1, implied);
+                bezier_p0 = implied;
+                bezier_p1 = next_point; 
+            }
+            else if (!current_point.on_curve && next_point.on_curve)
+            {
+                ttf_push_curve(font, bezier_p0, bezier_p1, next_point);
+            }
+        } 
+    }
+
+    outline->curve_count = sb_count(font->curves) - outline->curve_offset;
 }
 
-void ttf_write_ppm_atlas(const TTFFont* font)
+static f32 ttf_saturate(f32 value)
 {
-    FILE* f = fopen("bin/atlas.ppm", "wb");
-    if (!f) { return; }
+    return fminf(fmaxf(value, 0.0f), 1.0f);
+}
 
-    fprintf(f, "P6\n%u %u\n255\n", TTF_ATLAS_SPAN, TTF_ATLAS_SPAN);
+// Slug (Lengyel 2017): fractional winding number change from a ray cast along +x from origin.
+f32 ttf_slug_ray_coverage(Vec2 p1, Vec2 p2, Vec2 p3, Vec2 origin, f32 pixels_per_unit)
+{
+    const f32 x1 = p1.x - origin.x;
+    const f32 y1 = p1.y - origin.y;
 
-    const u32 pixel_count = (u32) TTF_ATLAS_SIZE;
-    u8* rgb = FCS_MEM_ALLOC(pixel_count * 3);
-
-    for (u32 i = 0; i < pixel_count; ++i)
+    // Which control points lie above the ray picks one of 8 classes; 0x2E74 holds each class's 2-bit root code
+    const u32 shift = (y1 > 0.0f ? 2 : 0) + (p2.y > origin.y ? 4 : 0) + (p3.y > origin.y ? 8 : 0);
+    const u32 code = (0x2E74u >> shift) & 3u;
+    if (code == 0)
     {
-        const u8 grey = font->atlas_data[i]; 
-        rgb[i * 3 + 0] = grey;
-        rgb[i * 3 + 1] = grey;
-        rgb[i * 3 + 2] = grey;
+        return 0.0f;
     }
 
-    fwrite(rgb, 1, pixel_count * 3, f);
-    FCS_MEM_FREE(rgb);
-    fclose(f);
+    // Curve is a*t^2 - 2*b*t + (p1 - origin). a and b are translation invariant, so they're computed from the
+    // untranslated points: translating first adds rounding that makes straight lines (a == 0) look curved.
+    const f32 ax = p1.x - 2.0f * p2.x + p3.x;
+    const f32 ay = p1.y - 2.0f * p2.y + p3.y;
+    const f32 bx = p1.x - p2.x;
+    const f32 by = p1.y - p2.y;
+
+    f32 t1, t2;
+    if (fabsf(ay) < 1.0f / 65536.0f)
+    {
+        // Linear case
+        t1 = t2 = y1 / (2.0f * by);
+    }
+    else
+    {
+        // Discriminant is clamped so a curve that misses the ray yields two equal roots that cancel
+        const f32 d = sqrtf(fmaxf(by * by - ay * y1, 0.0f));
+        t1 = (by - d) / ay;
+        t2 = (by + d) / ay;
+    }
+
+    f32 coverage = 0.0f;
+    if (code & 1u)
+    {
+        coverage += ttf_saturate(((ax * t1 - 2.0f * bx) * t1 + x1) * pixels_per_unit + 0.5f);
+    }
+    if (code & 2u)
+    {
+        coverage -= ttf_saturate(((ax * t2 - 2.0f * bx) * t2 + x1) * pixels_per_unit + 0.5f);
+    }
+    return coverage;
+}
+
+static Vec2 ttf_swap_xy(Vec2 v)
+{
+    return vec2_new(v.y, v.x);
+}
+
+static f32 ttf_min3(f32 a, f32 b, f32 c)
+{
+    return fminf(a, fminf(b, c));
+}
+
+static f32 ttf_max3(f32 a, f32 b, f32 c)
+{
+    return fmaxf(a, fmaxf(b, c));
+}
+
+// Band axis 0 holds horizontal bands (rays along +x), axis 1 vertical bands (rays along +y). Axis 1 swaps x and y,
+// so in both cases bands span y and rays run along x.
+static TTFCurve ttf_curve_for_axis(const TTFCurve* curve, u32 axis)
+{
+    if (axis == 0)
+    {
+        return *curve;
+    }
+    return (TTFCurve) { ttf_swap_xy(curve->p1), ttf_swap_xy(curve->p2), ttf_swap_xy(curve->p3) };
+}
+
+// Splits a glyph into equal-width horizontal and vertical bands, each listing only the curves a ray inside it can
+// cross, sorted by descending max coordinate along the ray so coverage can stop early
+void ttf_build_bands(TTFFont* font, u32 codepoint)
+{
+    TTFGlyphOutline* outline = &font->glyph_outlines[codepoint];
+    outline->band_offset = sb_count(font->band_data);
+    outline->band_count = 0;
+    if (outline->curve_count == 0)
+    {
+        return;
+    }
+
+    u32 band_count = outline->curve_count / 4;
+    band_count = band_count < 1 ? 1 : band_count > TTF_MAX_BANDS ? TTF_MAX_BANDS : band_count;
+    outline->band_count = band_count;
+    sb_add(font->band_data, 2 * 2 * band_count); // Headers, filled in below
+
+    for (u32 axis = 0; axis < 2; ++axis)
+    {
+        const f32 band_min = axis == 0 ? outline->y_min : outline->x_min;
+        const f32 band_size = ((axis == 0 ? outline->y_max : outline->x_max) - band_min) / (f32) band_count;
+
+        for (u32 band = 0; band < band_count; ++band)
+        {
+            // A font unit of slack so a sample that rounds into the neighbouring band still finds its curves
+            const f32 band_lo = band_min + band * band_size - 1.0f;
+            const f32 band_hi = band_min + (band + 1) * band_size + 1.0f;
+            const u32 list_offset = sb_count(font->band_data);
+
+            for (u32 i = 0; i < outline->curve_count; ++i)
+            {
+                const u32 curve_index = outline->curve_offset + i;
+                const TTFCurve c = ttf_curve_for_axis(&font->curves[curve_index], axis);
+
+                // Curves parallel to the ray never cross it
+                const bool parallel = c.p1.y == c.p2.y && c.p2.y == c.p3.y;
+                if (parallel || ttf_max3(c.p1.y, c.p2.y, c.p3.y) < band_lo || ttf_min3(c.p1.y, c.p2.y, c.p3.y) > band_hi)
+                {
+                    continue;
+                }
+
+                // Insertion sort, descending by max x
+                const f32 key = ttf_max3(c.p1.x, c.p2.x, c.p3.x);
+                sb_push(font->band_data, curve_index);
+                u32 j = sb_count(font->band_data) - 1;
+                while (j > list_offset)
+                {
+                    const TTFCurve prev = ttf_curve_for_axis(&font->curves[font->band_data[j - 1]], axis);
+                    if (ttf_max3(prev.p1.x, prev.p2.x, prev.p3.x) >= key)
+                    {
+                        break;
+                    }
+                    font->band_data[j] = font->band_data[j - 1];
+                    --j;
+                }
+                font->band_data[j] = curve_index;
+            }
+
+            u32* header = &font->band_data[outline->band_offset + 2 * (axis * band_count + band)];
+            header[0] = sb_count(font->band_data) - list_offset;
+            header[1] = list_offset;
+        }
+    }
+}
+
+// Signed coverage of a ray cast from sample through the band containing it (see ttf_curve_for_axis for axes)
+static f32 ttf_slug_band_coverage(const TTFFont* font, const TTFGlyphOutline* outline, u32 axis, Vec2 sample, f32 pixels_per_unit)
+{
+    const Vec2 origin = axis == 0 ? sample : ttf_swap_xy(sample);
+    const f32 band_min = axis == 0 ? outline->y_min : outline->x_min;
+    const f32 band_max = axis == 0 ? outline->y_max : outline->x_max;
+
+    // Samples outside the glyph use the edge bands; nothing there can cross their rays
+    const f32 band = floorf((origin.y - band_min) / (band_max - band_min) * (f32) outline->band_count);
+    const u32 band_index = (u32) fminf(fmaxf(band, 0.0f), (f32) (outline->band_count - 1));
+    const u32* header = &font->band_data[outline->band_offset + 2 * (axis * outline->band_count + band_index)];
+
+    f32 coverage = 0.0f;
+    for (u32 i = 0; i < header[0]; ++i)
+    {
+        const TTFCurve c = ttf_curve_for_axis(&font->curves[font->band_data[header[1] + i]], axis);
+
+        // Once a curve ends more than half a pixel behind the sample it adds nothing, and neither do the rest
+        if ((ttf_max3(c.p1.x, c.p2.x, c.p3.x) - origin.x) * pixels_per_unit < -0.5f)
+        {
+            break;
+        }
+        coverage += ttf_slug_ray_coverage(c.p1, c.p2, c.p3, origin, pixels_per_unit);
+    }
+    return coverage;
+}
+
+// Coverage in [0,1] at (x, y) in font units, averaging a +x ray and a +y ray
+f32 ttf_slug_coverage(const TTFFont* font, u32 codepoint, f32 x, f32 y, f32 pixels_per_unit)
+{
+    const TTFGlyphOutline* outline = &font->glyph_outlines[codepoint];
+    if (outline->band_count == 0)
+    {
+        return 0.0f;
+    }
+
+    const Vec2 sample = vec2_new(x, y);
+    const f32 x_coverage = ttf_slug_band_coverage(font, outline, 0, sample, pixels_per_unit);
+    // The +y ray runs on swapped axes, which mirrors the outline and flips the winding sign; abs() below absorbs it
+    const f32 y_coverage = ttf_slug_band_coverage(font, outline, 1, sample, pixels_per_unit);
+
+    return (ttf_saturate(fabsf(x_coverage)) + ttf_saturate(fabsf(y_coverage))) * 0.5f;
 }
 
 f32 ttf_scale_for_pixel_height(const TTFFont* font, f32 height)

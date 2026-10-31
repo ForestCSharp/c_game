@@ -9,6 +9,9 @@
 #include "stretchy_buffer.h"
 #include "math/lcp.h"
 #include "memory/arena.h"
+#include <string.h>
+#include "file_helpers.h"
+#include "truetype.h"
 
 bool test_mat3_inverse();
 bool test_mat4_inverse();
@@ -26,6 +29,8 @@ bool test_arena_exact_fill();
 bool test_arena_oom_detection();
 bool test_arena_oom_null_return();
 bool test_arena_growth();
+bool test_ttf_slug_coverage();
+bool test_ttf_slug_bands();
 
 int main()
 {
@@ -46,6 +51,8 @@ int main()
 	success &= test_arena_oom_detection();
 	success &= test_arena_oom_null_return();
 	success &= test_arena_growth();
+	success &= test_ttf_slug_coverage();
+	success &= test_ttf_slug_bands();
 
 
 	if (!success)
@@ -524,5 +531,173 @@ bool test_lcp_op_begin_end()
 	arena_destroy(&arena);
 
 	printf("PASSED\n");
+	return true;
+}
+
+// Exact signed area of a glyph's closed quadratic contours via Green's theorem
+static f64 ttf_glyph_exact_area(const TTFFont* font, u32 codepoint)
+{
+	const TTFGlyphOutline* outline = &font->glyph_outlines[codepoint];
+	f64 area = 0.0;
+	for (u32 i = 0; i < outline->curve_count; ++i)
+	{
+		const TTFCurve* c = &font->curves[outline->curve_offset + i];
+		const f64 p1_p2 = (f64)c->p1.x * c->p2.y - (f64)c->p1.y * c->p2.x;
+		const f64 p2_p3 = (f64)c->p2.x * c->p3.y - (f64)c->p2.y * c->p3.x;
+		const f64 p1_p3 = (f64)c->p1.x * c->p3.y - (f64)c->p1.y * c->p3.x;
+		area += (2.0 * p1_p2 + 2.0 * p2_p3 + p1_p3) / 6.0;
+	}
+	return area;
+}
+
+// Integrates one ray's signed coverage: one row per font unit (TrueType's horizontal edges lie on integers, so rows
+// sit between them), samples one pixel apart along the ray. Each row's sum telescopes to its exact chord length.
+// Sample offsets aren't dyadic so translating control points rounds, as it does for real pixel positions.
+static f64 ttf_slug_ray_area(const TTFFont* font, u32 codepoint, bool swap_axes)
+{
+	const f32 units_per_pixel = 32.0f;
+	const f32 row_offset = 0.5f + 1.0f / 192.0f;
+	const TTFGlyphOutline* o = &font->glyph_outlines[codepoint];
+	const i32 row_min = swap_axes ? o->x_min : o->y_min;
+	const i32 row_max = swap_axes ? o->x_max : o->y_max;
+	const f32 along_min = (swap_axes ? o->y_min : o->x_min) - 2.0f * units_per_pixel + units_per_pixel / 3.0f;
+	const i32 num_samples = (i32)(((swap_axes ? o->y_max : o->x_max) - along_min) / units_per_pixel) + 3;
+
+	f64 area = 0.0;
+	for (i32 row = row_min - 1; row <= row_max; ++row)
+	{
+		for (i32 s = 0; s < num_samples; ++s)
+		{
+			const Vec2 origin = vec2_new(along_min + s * units_per_pixel, row + row_offset);
+			for (u32 i = 0; i < o->curve_count; ++i)
+			{
+				const TTFCurve* c = &font->curves[o->curve_offset + i];
+				const Vec2 p1 = swap_axes ? vec2_new(c->p1.y, c->p1.x) : c->p1;
+				const Vec2 p2 = swap_axes ? vec2_new(c->p2.y, c->p2.x) : c->p2;
+				const Vec2 p3 = swap_axes ? vec2_new(c->p3.y, c->p3.x) : c->p3;
+				area += ttf_slug_ray_coverage(p1, p2, p3, origin, 1.0f / units_per_pixel);
+			}
+		}
+	}
+	return area * units_per_pixel;
+}
+
+bool test_ttf_slug_coverage()
+{
+	printf("  test_ttf_slug_coverage... ");
+
+	TTFFont font;
+	if (!ttf_init(&font, "data/fonts/Menlo-Regular.ttf"))
+	{
+		printf("FAILED (could not load font)\n");
+		return false;
+	}
+
+	const f32 pixels_per_unit = ttf_scale_for_pixel_height(&font, 24.0f);
+
+	// Middle of the I stem is fully covered, far outside it is empty
+	const TTFGlyphOutline* i_outline = &font.glyph_outlines['I'];
+	const f32 i_mid_x = (i_outline->x_min + i_outline->x_max) * 0.5f;
+	const f32 i_mid_y = (i_outline->y_min + i_outline->y_max) * 0.5f;
+	assert(ttf_slug_coverage(&font, 'I', i_mid_x, i_mid_y, pixels_per_unit) > 0.99f);
+	assert(ttf_slug_coverage(&font, 'I', i_outline->x_max + 1000.0f, i_mid_y, pixels_per_unit) == 0.0f);
+
+	// Middle of the o's hole is empty: the inner contour cancels the outer one
+	const TTFGlyphOutline* o_outline = &font.glyph_outlines['o'];
+	const f32 o_mid_x = (o_outline->x_min + o_outline->x_max) * 0.5f;
+	const f32 o_mid_y = (o_outline->y_min + o_outline->y_max) * 0.5f;
+	assert(ttf_slug_coverage(&font, 'o', o_mid_x, o_mid_y, pixels_per_unit) < 0.01f);
+
+	// Every printable glyph: both rays integrate to the exact area
+	f64 worst_error = 0.0;
+	for (u32 c = 33; c < 127; ++c)
+	{
+		const f64 exact = fabs(ttf_glyph_exact_area(&font, c));
+		assert(exact > 0.0);
+		for (i32 swap_axes = 0; swap_axes <= 1; ++swap_axes)
+		{
+			const f64 error = fabs(fabs(ttf_slug_ray_area(&font, c, swap_axes)) - exact) / exact;
+			worst_error = error > worst_error ? error : worst_error;
+			assert(error < 1e-3);
+		}
+	}
+
+	ttf_free(&font);
+
+	printf("PASSED (worst area error %.5f%%)\n", worst_error * 100.0);
+	return true;
+}
+
+// Reference coverage without bands or early exit: every curve, both rays
+static f32 ttf_slug_coverage_all_curves(const TTFFont* font, u32 codepoint, f32 x, f32 y, f32 pixels_per_unit)
+{
+	const TTFGlyphOutline* outline = &font->glyph_outlines[codepoint];
+	f32 x_coverage = 0.0f;
+	f32 y_coverage = 0.0f;
+	for (u32 i = 0; i < outline->curve_count; ++i)
+	{
+		const TTFCurve* c = &font->curves[outline->curve_offset + i];
+		x_coverage += ttf_slug_ray_coverage(c->p1, c->p2, c->p3, vec2_new(x, y), pixels_per_unit);
+		y_coverage += ttf_slug_ray_coverage(
+			vec2_new(c->p1.y, c->p1.x), vec2_new(c->p2.y, c->p2.x), vec2_new(c->p3.y, c->p3.x), vec2_new(y, x),
+			pixels_per_unit);
+	}
+	return (ttf_saturate(fabsf(x_coverage)) + ttf_saturate(fabsf(y_coverage))) * 0.5f;
+}
+
+bool test_ttf_slug_bands()
+{
+	printf("  test_ttf_slug_bands... ");
+
+	TTFFont font;
+	if (!ttf_init(&font, "data/fonts/Menlo-Regular.ttf"))
+	{
+		printf("FAILED (could not load font)\n");
+		return false;
+	}
+
+	const f32 pixel_heights[] = { 8.0f, 24.0f, 96.0f };
+	const i32 grid_size = 61;
+	f32 worst_difference = 0.0f;
+	u32 num_samples = 0;
+
+	for (u32 c = 33; c < 127; ++c)
+	{
+		const TTFGlyphOutline* o = &font.glyph_outlines[c];
+		assert(o->band_count >= 1 && o->band_count <= TTF_MAX_BANDS);
+
+		// Grid over the glyph's box plus a margin, with spacing that isn't a whole number of font units
+		const f32 margin_x = (o->x_max - o->x_min) * 0.1f;
+		const f32 margin_y = (o->y_max - o->y_min) * 0.1f;
+		const f32 step_x = (o->x_max - o->x_min + 2.0f * margin_x) / (grid_size - 0.7f);
+		const f32 step_y = (o->y_max - o->y_min + 2.0f * margin_y) / (grid_size - 0.7f);
+
+		for (u32 h = 0; h < ARRAY_COUNT(pixel_heights); ++h)
+		{
+			const f32 pixels_per_unit = ttf_scale_for_pixel_height(&font, pixel_heights[h]);
+			for (i32 gy = 0; gy < grid_size + (i32)o->band_count + 1; ++gy)
+			{
+				for (i32 gx = 0; gx < grid_size + (i32)o->band_count + 1; ++gx)
+				{
+					// Past the regular grid, coordinates land exactly on band boundaries
+					const f32 band_x = o->x_min + (gx - grid_size) * ((f32)(o->x_max - o->x_min) / o->band_count);
+					const f32 band_y = o->y_min + (gy - grid_size) * ((f32)(o->y_max - o->y_min) / o->band_count);
+					const f32 x = gx < grid_size ? o->x_min - margin_x + gx * step_x : band_x;
+					const f32 y = gy < grid_size ? o->y_min - margin_y + gy * step_y : band_y;
+
+					const f32 banded = ttf_slug_coverage(&font, c, x, y, pixels_per_unit);
+					const f32 reference = ttf_slug_coverage_all_curves(&font, c, x, y, pixels_per_unit);
+					const f32 difference = fabsf(banded - reference);
+					worst_difference = difference > worst_difference ? difference : worst_difference;
+					assert(difference < 1e-5f);
+					++num_samples;
+				}
+			}
+		}
+	}
+
+	ttf_free(&font);
+
+	printf("PASSED (%u samples, worst difference %g)\n", num_samples, worst_difference);
 	return true;
 }

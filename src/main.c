@@ -408,12 +408,6 @@ void character_update(CharacterUpdateData* in_update_data)
 
 int main()
 {
-    TTFFont font;
-    ttf_init(&font, "data/fonts/Menlo-Regular.ttf");
-
-    ttf_free(&font);
-    //exit(0);
-
 	// Init multithreaded task system
 	TaskSystem task_system;
 	task_system_init(&task_system);
@@ -917,8 +911,6 @@ int main()
     GuiContext gui_context;
     gui_init(&gui_context);
 
-    assert(gui_context.default_font.font_type == FONT_TYPE_RGBA);
-
 	// Gui Vertex Buffer
     size_t max_gui_vertices_size = sizeof(GuiVert) * 10000;
 	GpuBufferCreateInfo gui_vertex_buffer_create_info = {
@@ -941,48 +933,52 @@ int main()
 	GpuBuffer gui_index_buffer;
 	gpu_create_buffer(&gpu_device, &gui_index_buffer_create_info, &gui_index_buffer);
 
-    // Create Font Texture
-	GpuTextureCreateInfo font_texture_create_info = {
-		.format = GPU_FORMAT_RGBA8_UNORM,	
-		.extent = {
-			.width = gui_context.default_font.image_width,
-			.height = gui_context.default_font.image_height,
-			.depth = 1,
-		},
-		.usage = GPU_TEXTURE_USAGE_SAMPLED,
-		.is_cpu_visible = false,
-	};
-	GpuTexture font_texture;
-	gpu_create_texture(&gpu_device, &font_texture_create_info, &font_texture);
+	// Slug glyph data, read by gui.frag: curves, band lists, and a glyph table indexed by codepoint
+	const TTFFont* gui_ttf_font = &gui_context.default_font.ttf_font;
+	GuiGlyph gui_glyphs[ARRAY_COUNT(gui_ttf_font->glyph_outlines)];
+	for (u32 i = 0; i < ARRAY_COUNT(gui_glyphs); ++i)
+	{
+		const TTFGlyphOutline* outline = &gui_ttf_font->glyph_outlines[i];
+		gui_glyphs[i] = (GuiGlyph){
+			.bounds = vec4_new(outline->x_min, outline->y_min, outline->x_max, outline->y_max),
+			.band_offset = outline->band_offset,
+			.band_count = outline->band_count,
+		};
+	}
 
-	GpuTextureWriteInfo font_texture_write_info = {
-		.texture = &font_texture,
-		.width = gui_context.default_font.image_width,
-		.height = gui_context.default_font.image_height,
-		.data = gui_context.default_font.image_data,
+	// CPU visible because the Vulkan backend can only write to host-visible buffers
+	GpuBufferCreateInfo gui_curve_buffer_create_info = {
+		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
+		.is_cpu_visible = true,
+		.size = sizeof(TTFCurve) * sb_count(gui_ttf_font->curves),
+		.data = gui_ttf_font->curves,
 	};
-    gpu_write_texture(&gpu_device, &font_texture_write_info);
+	GpuBuffer gui_curve_buffer;
+	gpu_create_buffer(&gpu_device, &gui_curve_buffer_create_info, &gui_curve_buffer);
 
-	GpuSamplerCreateInfo font_sampler_create_info = {
-		.filters = {
-			.min = GPU_FILTER_LINEAR,
-			.mag = GPU_FILTER_LINEAR,
-		},
-		.address_modes = {
-			.u = GPU_SAMPLER_ADDRESS_MODE_REPEAT,
-			.v = GPU_SAMPLER_ADDRESS_MODE_REPEAT,
-			.w = GPU_SAMPLER_ADDRESS_MODE_REPEAT,
-		},
-		.max_anisotropy = 16,
+	GpuBufferCreateInfo gui_band_buffer_create_info = {
+		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
+		.is_cpu_visible = true,
+		.size = sizeof(u32) * sb_count(gui_ttf_font->band_data),
+		.data = gui_ttf_font->band_data,
 	};
-	GpuSampler font_sampler;
-	gpu_create_sampler(&gpu_device, &font_sampler_create_info, &font_sampler);
+	GpuBuffer gui_band_buffer;
+	gpu_create_buffer(&gpu_device, &gui_band_buffer_create_info, &gui_band_buffer);
+
+	GpuBufferCreateInfo gui_glyph_buffer_create_info = {
+		.usage = GPU_BUFFER_USAGE_STORAGE_BUFFER,
+		.is_cpu_visible = true,
+		.size = sizeof(gui_glyphs),
+		.data = gui_glyphs,
+	};
+	GpuBuffer gui_glyph_buffer;
+	gpu_create_buffer(&gpu_device, &gui_glyph_buffer_create_info, &gui_glyph_buffer);
 
 	// Create GUI Bind Group Layout, Bind Group, and Update it
 	GpuBindGroupLayoutCreateInfo gui_bind_group_layout_create_info = {
 		.index = 0,
-		.num_bindings = 4,
-		.bindings = (GpuResourceBinding[4]){
+		.num_bindings = 5,
+		.bindings = (GpuResourceBinding[5]){
 			{
 				.type = GPU_BINDING_TYPE_BUFFER,
 				.shader_stages = GPU_SHADER_STAGE_VERTEX ,	
@@ -992,12 +988,16 @@ int main()
 				.shader_stages = GPU_SHADER_STAGE_VERTEX ,	
 			},		
 			{
-				.type = GPU_BINDING_TYPE_TEXTURE,
-				.shader_stages = GPU_SHADER_STAGE_FRAGMENT,	
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU_SHADER_STAGE_FRAGMENT,
 			},
 			{
-				.type = GPU_BINDING_TYPE_SAMPLER,
-				.shader_stages = GPU_SHADER_STAGE_FRAGMENT,	
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU_SHADER_STAGE_FRAGMENT,
+			},
+			{
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.shader_stages = GPU_SHADER_STAGE_FRAGMENT,
 			},
 		},
 	};
@@ -1012,8 +1012,8 @@ int main()
 
 	const GpuBindGroupUpdateInfo gui_bind_group_update_info = {
 		.bind_group = &gui_bind_group,
-		.num_writes = 4,
-		.writes = (GpuResourceWrite[4]){
+		.num_writes = 5,
+		.writes = (GpuResourceWrite[5]){
 			{
 				.binding_index = 0,
 				.type = GPU_BINDING_TYPE_BUFFER,
@@ -1030,16 +1030,23 @@ int main()
 			},
 			{
 				.binding_index = 2,
-				.type = GPU_BINDING_TYPE_TEXTURE,
-				.texture_binding = {
-					.texture = &font_texture,
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &gui_curve_buffer,
 				},
 			},
 			{
 				.binding_index = 3,
-				.type = GPU_BINDING_TYPE_SAMPLER,
-				.sampler_binding = {
-					.sampler = &font_sampler,
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &gui_band_buffer,
+				},
+			},
+			{
+				.binding_index = 4,
+				.type = GPU_BINDING_TYPE_BUFFER,
+				.buffer_binding = {
+					.buffer = &gui_glyph_buffer,
 				},
 			},
 		},
