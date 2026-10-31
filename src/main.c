@@ -1270,17 +1270,17 @@ int main()
 		// GUI
 		if (show_mouse)
 		{
-			if (gui_button(&gui_context, "My Btn", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
+			if (gui_button(&gui_context, "Btn 1", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
 			{
 				printf("Clicked First Button\n");
 			}
 
-			if (gui_button(&gui_context, "too much text to display", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
+			if (gui_button(&gui_context, "Btn 2", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
 			{
 				printf("Holding Second Button\n");
 			}
 
-			if (gui_button(&gui_context, "this is way too much text to display", vec2_new(15, 150), vec2_new(270, 50)) ==
+			if (gui_button(&gui_context, "Btn 3", vec2_new(15, 150), vec2_new(270, 50)) ==
 				GUI_HOVERED)
 			{
 				printf("Hovering Third Button\n");
@@ -1335,7 +1335,7 @@ int main()
 				snprintf(buffer, sizeof(buffer), "Alloc Mem Usage: %i (%.2f MiB)", allocated_memory, allocated_memory / 1024.0 / 1024.0);
 
 				const f32 horizontal_padding = 5.f;
-				const f32 button_size = 600.f;
+				const f32 button_size = 400.f;
 				gui_button(
 					&gui_context, 
 					buffer, 
@@ -1353,7 +1353,7 @@ int main()
 				//printf("Total Mem Usage: %lli (%.2f MiB)\n", total_memory, total_memory / 1024.0 / 1024.0);
 
 				const f32 horizontal_padding = 5.f;
-				const f32 button_size = 600.f;
+				const f32 button_size = 400.f;
 				gui_button(
 					&gui_context, 
 					buffer, 
@@ -1451,7 +1451,7 @@ int main()
 					{.x = 800, .y = 600},
 					{.x = 1000, .y = 600},
 				};
-				gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0.6, 0, 0, 1), 0.01);
+				gui_bezier(&gui_context, 4, bezier_points, 25, vec4_new(0.6, 0, 0, 1), 5.0f);
 
 				// Bezier Controls
 				for (u32 i = 0; i < 4; ++i)

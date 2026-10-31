@@ -173,15 +173,17 @@ bool gui_rect_intersects_point(const GuiRect in_rect, const Vec2 in_point)
 
 GuiRect gui_rect_scale(const GuiRect in_rect, const Vec2 in_scale)
 {
-    return (GuiRect){.position =
-                         {
-                             .x = in_rect.position.x * in_scale.x,
-                             .y = in_rect.position.y * in_scale.y,
-                         },
+    return (GuiRect){
+        .position =
+         {
+             .x = in_rect.position.x * in_scale.x,
+             .y = in_rect.position.y * in_scale.y,
+         },
         .size = {
             .x = in_rect.size.x * in_scale.x,
             .y = in_rect.size.y * in_scale.y,
-        }};
+        }
+    };
 }
 
 void gui_init(GuiContext* out_context)
@@ -365,7 +367,9 @@ Vec2 recursive_bezier_deriv(const f32 t, const u32 num_points, const Vec2* in_po
     }
 }
 
-void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const f32 width)
+/* points and width in pixels, in_inv_screen_size converts the final verts to [0,1] range */
+void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const f32 width,
+    const Vec2 in_inv_screen_size)
 {
     assert(num_points > 0);
     assert(num_samples > 0);
@@ -389,11 +393,19 @@ void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2
 
         const Vec2 invalid_uv = vec2_new(-1, -1);
 
-        const Vec2 pos_a = vec2_add(current_pos, vec2_scale(current_normal, width));
-        const Vec2 pos_b = vec2_add(current_pos, vec2_scale(current_normal, -width));
+        Vec2 pos_a = vec2_add(current_pos, vec2_scale(current_normal, width));
+        Vec2 pos_b = vec2_add(current_pos, vec2_scale(current_normal, -width));
 
-        const Vec2 pos_c = vec2_add(next_pos, vec2_scale(next_normal, width));
-        const Vec2 pos_d = vec2_add(next_pos, vec2_scale(next_normal, -width));
+        Vec2 pos_c = vec2_add(next_pos, vec2_scale(next_normal, width));
+        Vec2 pos_d = vec2_add(next_pos, vec2_scale(next_normal, -width));
+
+        // Normalize after offsetting: [0,1] space is non-uniformly scaled, so normals computed there aren't perpendicular on screen
+        Vec2* const quad_positions[] = {&pos_a, &pos_b, &pos_c, &pos_d};
+        for (u32 i = 0; i < 4; ++i)
+        {
+            quad_positions[i]->x *= in_inv_screen_size.x;
+            quad_positions[i]->y *= in_inv_screen_size.y;
+        }
 
         gui_draw_quad(in_draw_data, 
 			(GuiVert[4]){
@@ -427,17 +439,7 @@ void gui_draw_bezier(GuiDrawData* const in_draw_data, const u32 num_points, Vec2
 /* Same as above, but in screen-space */
 void gui_bezier(GuiContext* const in_context, const u32 num_points, Vec2* points, const u32 num_samples, const Vec4 color, const f32 width)
 {
-    Vec2 normalized_points[num_points];
-    memcpy(normalized_points, points, sizeof(Vec2) * num_points);
-
-    const Vec2 window_size = in_context->frame_state.screen_size;
-    for (u32 i = 0; i < num_points; ++i)
-    {
-        normalized_points[i].x /= window_size.x;
-        normalized_points[i].y /= window_size.y;
-    }
-
-    gui_draw_bezier(&in_context->draw_data, num_points, normalized_points, num_samples, color, width);
+    gui_draw_bezier(&in_context->draw_data, num_points, points, num_samples, color, width, f32_div_vec2(1.0f, in_context->frame_state.screen_size));
 }
 
 // TODO: Add GuiTextStyleArgs (replace GuiAlignment arg (GuiAlignment should live in style args))
@@ -450,7 +452,7 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
 
     const TTFFont* ttf = &in_context->default_font.ttf_font;
     // Glyphs are rendered from their outlines (Slug), so any size is exact
-    const f32 render_size = 24.0f;                        // TODO: style setting
+    const f32 render_size = 18.0f;                        // TODO: style setting
     const f32 scale = ttf_scale_for_pixel_height(ttf, render_size); // Pixels per font unit
     const size_t num_chars = strlen(in_text);
 
