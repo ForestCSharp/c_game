@@ -452,7 +452,7 @@ void gui_make_text(GuiContext* const in_context, const char* in_text, const GuiR
 
     const TTFFont* ttf = &in_context->default_font.ttf_font;
     // Glyphs are rendered from their outlines (Slug), so any size is exact
-    const f32 render_size = 18.0f;                        // TODO: style setting
+    const f32 render_size = 18.0f; // TODO: style setting
     const f32 scale = ttf_scale_for_pixel_height(ttf, render_size); // Pixels per font unit
     const size_t num_chars = strlen(in_text);
 

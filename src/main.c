@@ -1123,6 +1123,9 @@ int main()
         accumulated_delta_time += delta_time;
         frames_rendered++;	
 
+		// Mouse is in current window points, so the GUI's screen size must track resizes
+		window_get_dimensions(&window, &window_width, &window_height);
+
 		i32 old_mouse_x = mouse_x;
 		i32 old_mouse_y = mouse_y;
         window_get_mouse_pos(&window, &mouse_x, &mouse_y);
