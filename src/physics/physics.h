@@ -1228,7 +1228,8 @@ typedef enum PhysicsConstraintType
 typedef struct PhysicsConstraintDistance
 {
 	MatMN jacobian;
-    VecN cached_lambda;
+	VecN cached_lambda;
+	f32 baumgarte_bias;
 } PhysicsConstraintDistance;
 
 typedef struct PhysicsScene PhysicsScene;
@@ -1359,6 +1360,12 @@ void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_con
 			const Vec3 world_anchor_a = physics_body_local_to_world_space(body_a, in_constraint->anchor_a);
 			const Vec3 world_anchor_b = physics_body_local_to_world_space(body_b, in_constraint->anchor_b);
 			const Vec3 r = vec3_sub(world_anchor_b, world_anchor_a);
+			// The Jacobian differentiates squared anchor distance, so slop is squared too.
+			const f32 slop_squared = 0.01f;
+			const f32 beta = 0.05f;
+			const f32 error = fmaxf(0.0f, vec3_length_squared(r) - slop_squared);
+			in_constraint->distance.baumgarte_bias = in_delta_time > 0.0f ? beta * error / in_delta_time : 0.0f;
+
 			const Vec3 ra = vec3_sub(world_anchor_a, physics_body_get_center_of_mass_world(body_a));
 			const Vec3 rb = vec3_sub(world_anchor_b, physics_body_get_center_of_mass_world(body_b));
 			const Vec3 a = world_anchor_a;
@@ -1429,6 +1436,7 @@ void physics_constraint_solve(PhysicsScene* scene, PhysicsConstraint* in_constra
 			MatMN j_w_jt = matmn_mul_matmn(arena, &j_inv_mass_matrix, &jacobian_transpose);
 			VecN j_q_dt = matmn_mul_vecn(arena, jacobian, &q_dt);
 			VecN rhs = vecn_scale(arena, &j_q_dt, -1.0f);
+			rhs.data[0] -= in_constraint->distance.baumgarte_bias;
 
 			MatN j_w_jt_matn = matn_from_matmn(arena, &j_w_jt);
 			VecN lambda_n = lcp_gauss_seidel(arena, &j_w_jt_matn, &rhs);

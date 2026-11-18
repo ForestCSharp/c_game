@@ -24,6 +24,7 @@ bool test_matmn_mul_matmn();
 bool test_matn_from_matmn();
 bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
+bool test_distance_joint_drift();
 bool test_arena_create_destroy();
 bool test_arena_alloc();
 bool test_arena_multiple_allocs();
@@ -47,6 +48,7 @@ int main()
 	success &= test_matn_from_matmn();
 	success &= test_lcp_op_begin_end();
 	success &= test_rotating_box_sweep();
+	success &= test_distance_joint_drift();
 	success &= test_arena_create_destroy();
 	success &= test_arena_alloc();
 	success &= test_arena_multiple_allocs();
@@ -521,6 +523,42 @@ bool test_rotating_box_sweep()
 	assert(ba.time_of_impact > 0.0f && ba.time_of_impact <= dt);
 	assert(fabsf(ab.time_of_impact - ba.time_of_impact) < 0.001f);
 
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_distance_joint_drift()
+{
+	printf("  test_distance_joint_drift... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	PhysicsBody sphere = {
+		.orientation = quat_identity,
+		.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 0.5f } },
+	};
+	PhysicsConstraint joint = physics_constraint_distance_init(&scene);
+	joint.body_a = physics_scene_add_body(&scene, &sphere);
+	joint.anchor_a = vec3_new(0.0f, -3.0f, 0.0f);
+	sphere.position.y = -3.05f;
+	sphere.inverse_mass = 1.0f;
+	joint.body_b = physics_scene_add_body(&scene, &sphere);
+	physics_scene_add_constraint(&scene, &joint);
+
+	const f32 dt = 1.0f / 60.0f;
+	// Gravity loads the joint, but a gap inside the slop should stay at rest.
+	physics_scene_update(&scene, dt);
+	assert(f32_nearly_equal(joint.body_b->position.y, sphere.position.y));
+
+	joint.body_b->position.y -= 1.0f;
+	for (i32 step = 0; step < 240; ++step)
+	{
+		physics_scene_update(&scene, dt);
+	}
+	const f32 gap = joint.anchor_a.y - joint.body_b->position.y;
+	assert(fabsf(gap - 0.1f) < 0.001f);
+	assert(fabsf(joint.body_b->linear_velocity.y) < 0.001f);
+
+	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;
 }
