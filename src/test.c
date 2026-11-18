@@ -9,6 +9,7 @@
 #include "stretchy_buffer.h"
 #include "math/lcp.h"
 #include "memory/arena.h"
+#include "physics/physics.h"
 #include <string.h>
 #include "file_helpers.h"
 #include "truetype.h"
@@ -22,6 +23,7 @@ bool test_matn_mul_matn();
 bool test_matmn_mul_matmn();
 bool test_matn_from_matmn();
 bool test_lcp_op_begin_end();
+bool test_rotating_box_sweep();
 bool test_arena_create_destroy();
 bool test_arena_alloc();
 bool test_arena_multiple_allocs();
@@ -44,6 +46,7 @@ int main()
 	success &= test_matmn_mul_matmn();
 	success &= test_matn_from_matmn();
 	success &= test_lcp_op_begin_end();
+	success &= test_rotating_box_sweep();
 	success &= test_arena_create_destroy();
 	success &= test_arena_alloc();
 	success &= test_arena_multiple_allocs();
@@ -486,6 +489,37 @@ bool test_matn_from_matmn()
 	assert(f32_nearly_equal(dst.rows[1].data[1], 5.0f));
 
 	arena_destroy(&arena);
+
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_rotating_box_sweep()
+{
+	printf("  test_rotating_box_sweep... ");
+
+	// The box starts below the sphere. Only its rotation can close the gap.
+	PhysicsBody sphere = {
+		.position = vec3_new(1.8f, 0.55f, 0.0f),
+		.orientation = quat_identity,
+		.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 0.2f } },
+	};
+	const PhysicsBody box = {
+		.orientation = quat_identity,
+		.angular_velocity = vec3_new(0.0f, 0.0f, 1.0f),
+		.inverse_mass = 1.0f,
+		.shape = { .type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(2.0f, 0.2f, 0.2f)) },
+	};
+	const f32 dt = 0.2f;
+	PhysicsBody box_as_b = box;
+	PhysicsBody box_as_a = box;
+	PhysicsContact ab = {}, ba = {};
+	bool hit_ab = physics_bodies_intersect_dt(&sphere, &box_as_b, dt, &ab);
+	bool hit_ba = physics_bodies_intersect_dt(&box_as_a, &sphere, dt, &ba);
+	assert(hit_ab && hit_ba);
+	assert(ab.time_of_impact > 0.0f && ab.time_of_impact <= dt);
+	assert(ba.time_of_impact > 0.0f && ba.time_of_impact <= dt);
+	assert(fabsf(ab.time_of_impact - ba.time_of_impact) < 0.001f);
 
 	printf("PASSED\n");
 	return true;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <float.h>
+
 #include "basic_types.h"
 #include "math/math_lib.h"
 

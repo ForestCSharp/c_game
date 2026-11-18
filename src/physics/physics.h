@@ -1035,7 +1035,7 @@ bool physics_bodies_conservative_advance(PhysicsBody* in_body_a, PhysicsBody* in
 
 		const Vec3 ab = vec3_normalize(vec3_sub(in_contact->point_on_b_world, in_contact->point_on_a_world));
 		const f32 angular_speed_a = physics_body_get_max_linear_speed(in_body_a, in_body_a->angular_velocity, ab);
-		const f32 angular_speed_b = physics_body_get_max_linear_speed(in_body_a, in_body_a->angular_velocity, vec3_scale(ab, -1.0f));
+		const f32 angular_speed_b = physics_body_get_max_linear_speed(in_body_b, in_body_b->angular_velocity, vec3_scale(ab, -1.0f));
 			
 		const Vec3 relative_velocity = vec3_sub(in_body_a->linear_velocity, in_body_b->linear_velocity);
 		const f32 ortho_speed = vec3_dot(relative_velocity, ab) + angular_speed_a + angular_speed_b;
