@@ -18,6 +18,7 @@ bool test_mat3_inverse();
 bool test_mat4_inverse();
 bool test_mat4_decompose();
 bool test_quat_mat_conversions();
+bool test_quat_product_matrices();
 bool test_stretchy_buffer();
 bool test_matn_mul_matn();
 bool test_matmn_mul_matmn();
@@ -25,6 +26,7 @@ bool test_matn_from_matmn();
 bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
 bool test_distance_joint_drift();
+bool test_orientation_lock();
 bool test_resting_contacts();
 bool test_manifold_points();
 bool test_manifold_warm_start();
@@ -52,6 +54,7 @@ int main()
 	success &= test_mat4_inverse();
 	success &= test_mat4_decompose();
 	success &= test_quat_mat_conversions();
+	success &= test_quat_product_matrices();
 	success &= test_stretchy_buffer();
 	success &= test_matn_mul_matn();
 	success &= test_matmn_mul_matmn();
@@ -59,6 +62,7 @@ int main()
 	success &= test_lcp_op_begin_end();
 	success &= test_rotating_box_sweep();
 	success &= test_distance_joint_drift();
+	success &= test_orientation_lock();
 	success &= test_resting_contacts();
 	success &= test_manifold_points();
 	success &= test_manifold_warm_start();
@@ -88,6 +92,26 @@ int main()
 
 	printf("ALL TESTS PASSED!\n");
 	return 0;
+}
+
+bool test_quat_product_matrices()
+{
+	printf("  test_quat_product_matrices... ");
+	const Quat q = {1, 2, -3, 4};
+	const Vec4 v = vec4_new(q.x, q.y, q.z, q.w);
+	for (i32 i = 0; i < 4; ++i)
+	{
+		Vec4 axis = vec4_zero;
+		axis.v[i] = 1.0f;
+		const Quat p = {axis.x, axis.y, axis.z, axis.w};
+		const Quat qp = quat_mul(q, p);
+		const Quat pq = quat_mul(p, q);
+		assert(vec4_nearly_equal(mat4_mul_vec4(quat_left_matrix(q), axis), vec4_new(qp.x, qp.y, qp.z, qp.w)));
+		assert(vec4_nearly_equal(mat4_mul_vec4(quat_right_matrix(q), axis), vec4_new(pq.x, pq.y, pq.z, pq.w)));
+		assert(vec4_nearly_equal(mat4_mul_vec4(quat_left_matrix(p), v), mat4_mul_vec4(quat_right_matrix(q), axis)));
+	}
+	printf("PASSED\n");
+	return true;
 }
 
 bool test_mat3_inverse()
@@ -578,6 +602,64 @@ bool test_distance_joint_drift()
 	assert(fabsf(gap - 0.1f) < 0.001f);
 	assert(fabsf(joint.body_b->linear_velocity.y) < 0.001f);
 
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_orientation_lock()
+{
+	printf("  test_orientation_lock... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	const PhysicsBody sphere = {
+		.shape = {.type = SHAPE_TYPE_SPHERE, .sphere = {.radius = 1.0f}},
+		.orientation = quat_new(vec3_new(1, 2, 0), 0.8f),
+		.inverse_mass = 1.0f,
+	};
+	PhysicsBody* a = physics_scene_add_body(&scene, &sphere);
+	PhysicsBody other = sphere;
+	other.position.x = 10.0f;
+	other.linear_velocity.x = 2.0f;
+	other.orientation = quat_new(vec3_new(0, 1, 2), -1.3f);
+	other.inverse_mass = 0.5f;
+	PhysicsBody* b = physics_scene_add_body(&scene, &other);
+	PhysicsConstraint joint = physics_constraint_orientation_init(a, b);
+	physics_scene_add_constraint(&scene, &joint);
+	const Quat rest = joint.orientation.initial_relative;
+	const f32 dt = 1.0f / 60.0f;
+	const Vec3 spin = vec3_new(3, -6, 1.5f);
+	for (i32 run = 0; run < 2; ++run)
+	{
+		a->angular_velocity = spin;
+		if (run == 1) { b->orientation = quat_scale(b->orientation, -1); }
+		for (i32 step = 0; step < 120; ++step)
+		{
+			physics_scene_update(&scene, dt);
+			const Quat relative = quat_mul(quat_inverse(a->orientation), b->orientation);
+			assert(fabsf(quat_dot(relative, rest)) > 0.999999f);
+			// B has twice A's inertia. Both should receive the momentum-weighted spin.
+			assert(vec3_length(vec3_sub(b->angular_velocity, vec3_scale(spin, 1.0f / 3.0f))) < 0.0001f);
+			assert(vec3_length(vec3_sub(a->angular_velocity, b->angular_velocity)) < 0.0001f);
+		}
+		assert(fabsf(b->position.x - a->position.x - 14.0f) < 0.001f);
+		physics_scene_reset(&scene);
+	}
+
+	// Restore even a half-turn error against a fixed body at alternating timesteps.
+	a->inverse_mass = 0;
+	b->shape = (Shape){.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(1, 2, 3))};
+	b->orientation = quat_mul(quat_new(vec3_new(1, -2, 3), 3.14159265f), other.orientation);
+	for (i32 step = 0; step < 180; ++step)
+	{
+		physics_scene_update(&scene, step % 2 ? 1.5f * dt : 0.5f * dt);
+	}
+	assert(quat_nearly_equal(a->orientation, sphere.orientation));
+	assert(fabsf(quat_dot(b->orientation, other.orientation)) > 0.999999f);
+	assert(vec3_length(b->angular_velocity) < 0.0001f);
+	physics_scene_remove_body(&scene, a);
+	assert(sb_count(scene.constraints) == 0);
+	physics_scene_update(&scene, dt);
 	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;

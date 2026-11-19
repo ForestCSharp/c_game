@@ -40,6 +40,27 @@ Mat4 quat_to_mat4(const Quat in_q)
 	return mat3_to_mat4(quat_to_mat3(in_q));
 }
 
+// Hamilton products on vectors in (x, y, z, w) order: L(a)b = R(b)a = a*b.
+Mat4 quat_left_matrix(Quat q)
+{
+	return (Mat4){ .d = {
+		{ q.w,  q.z, -q.y, -q.x},
+		{-q.z,  q.w,  q.x, -q.y},
+		{ q.y, -q.x,  q.w, -q.z},
+		{ q.x,  q.y,  q.z,  q.w},
+	} };
+}
+
+Mat4 quat_right_matrix(Quat q)
+{
+	return (Mat4){ .d = {
+		{ q.w, -q.z,  q.y, -q.x},
+		{ q.z,  q.w, -q.x, -q.y},
+		{-q.y,  q.x,  q.w, -q.z},
+		{ q.x,  q.y,  q.z,  q.w},
+	} };
+}
+
 Quat mat4_to_quat(const Mat4 in_mat)
 {
 	const float tr = in_mat.d[0][0] + in_mat.d[1][1] + in_mat.d[2][2];

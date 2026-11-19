@@ -420,6 +420,43 @@ void character_update(CharacterUpdateData* in_update_data)
 // FCS TODO:
 // need to n-buffer resources for frames in flight... (joint matrices still left to do)
 
+static void spawn_box_chain(GameObjectManager* manager, Vec3 origin, bool lock_orientation)
+{
+	const Vec3 colors[] = {{0,0,1}, {1,0,1}, {0,1,1}, {1,1,0}};
+	const Shape shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(5, 5, 5))};
+	PhysicsScene* scene = &manager->physics_scene;
+	PhysicsBody* previous = NULL;
+	for (i32 i = 0; i < ARRAY_COUNT(colors); ++i)
+	{
+		PhysicsBody* link = game_object_spawn_physics_body(manager, &(PhysicsBody){
+			.position = vec3_add(origin, vec3_new(20.0f * i, 0, 0)),
+			.orientation = quat_identity,
+			.shape = shape,
+			.inverse_mass = i == 0 ? 0.0f : 1.0f,
+			.elasticity = 1.0f,
+			.friction = 0.5f,
+			.debug_color = lock_orientation ? vec3_new(1.0f, 0.5f, 0.1f) : colors[i],
+		});
+		if (previous)
+		{
+			const Vec3 pivot = previous->position;
+			PhysicsConstraint distance = physics_constraint_distance_init(scene);
+			distance.body_a = previous;
+			distance.body_b = link;
+			distance.anchor_a = physics_body_world_to_local_space(previous, pivot);
+			distance.anchor_b = physics_body_world_to_local_space(link, pivot);
+			physics_scene_add_constraint(scene, &distance);
+			// The first moving box can swing around the fixed box.
+			if (lock_orientation && i > 1)
+			{
+				PhysicsConstraint lock = physics_constraint_orientation_init(previous, link);
+				physics_scene_add_constraint(scene, &lock);
+			}
+		}
+		previous = link;
+	}
+}
+
 int main()
 {
 	// Init multithreaded task system
@@ -564,94 +601,8 @@ int main()
 			}
 		}
 
-		PhysicsBody* body_a = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
-			.position = vec3_new(0,120,0),
-			.orientation = quat_identity,
-			.linear_velocity = vec3_zero,
-			.shape = {
-				.type = SHAPE_TYPE_BOX,
-				.box = box_shape_create(vec3_new(5,5,5)),
-			},
-			.inverse_mass = 0.f,
-			.elasticity = 1.0f,
-			.friction = 0.5f,
-			.debug_color = vec3_new(0,0,1),
-		});
-
-		PhysicsBody* body_b = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
-			.position = vec3_new(20,120,0),
-			.orientation = quat_identity,
-			.linear_velocity = vec3_zero,
-			.shape = {
-				.type = SHAPE_TYPE_BOX,
-				.box = box_shape_create(vec3_new(5,5,5)),
-			},
-			.inverse_mass = 1.f,
-			.elasticity = 1.0f,
-			.friction = 0.5f,
-			.debug_color = vec3_new(1,0,1),
-		});
-
-		PhysicsBody* body_c = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
-			.position = vec3_new(40,120,0),
-			.orientation = quat_identity,
-			.linear_velocity = vec3_zero,
-			.shape = {
-				.type = SHAPE_TYPE_BOX,
-				.box = box_shape_create(vec3_new(5,5,5)),
-			},
-			.inverse_mass = 1.f,
-			.elasticity = 1.0f,
-			.friction = 0.5f,
-			.debug_color = vec3_new(0,1,1),
-		});
-
-		PhysicsBody* body_d = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
-			.position = vec3_new(60,120,0),
-			.orientation = quat_identity,
-			.linear_velocity = vec3_zero,
-			.shape = {
-				.type = SHAPE_TYPE_BOX,
-				.box = box_shape_create(vec3_new(5,5,5)),
-			},
-			.inverse_mass = 1.f,
-			.elasticity = 1.0f,
-			.friction = 0.5f,
-			.debug_color = vec3_new(1,1,0),
-		});
-
-		{
-			const Vec3 joint_world_space_anchor_ab = body_a->position;
-
-			PhysicsConstraint distance_constraint_ab = physics_constraint_distance_init(physics_scene);
-			distance_constraint_ab.body_a = body_a;
-			distance_constraint_ab.anchor_a = physics_body_world_to_local_space(body_a, joint_world_space_anchor_ab);
-			distance_constraint_ab.body_b = body_b;
-			distance_constraint_ab.anchor_b = physics_body_world_to_local_space(body_b, joint_world_space_anchor_ab);
-			physics_scene_add_constraint(physics_scene, &distance_constraint_ab);
-		}
-
-		{
-			const Vec3 joint_world_space_anchor_bc = body_b->position;
-
-			PhysicsConstraint distance_constraint_bc = physics_constraint_distance_init(physics_scene);
-			distance_constraint_bc.body_a = body_b;
-			distance_constraint_bc.anchor_a = physics_body_world_to_local_space(body_b, joint_world_space_anchor_bc);
-			distance_constraint_bc.body_b = body_c;
-			distance_constraint_bc.anchor_b = physics_body_world_to_local_space(body_c, joint_world_space_anchor_bc);
-			physics_scene_add_constraint(physics_scene, &distance_constraint_bc);
-		}
-
-		{
-			const Vec3 joint_world_space_anchor_cd = body_c->position;
-
-			PhysicsConstraint distance_constraint_cd = physics_constraint_distance_init(physics_scene);
-			distance_constraint_cd.body_a = body_c;
-			distance_constraint_cd.anchor_a = physics_body_world_to_local_space(body_c, joint_world_space_anchor_cd);
-			distance_constraint_cd.body_b = body_d;
-			distance_constraint_cd.anchor_b = physics_body_world_to_local_space(body_d, joint_world_space_anchor_cd);
-			physics_scene_add_constraint(physics_scene, &distance_constraint_cd);
-		}
+		spawn_box_chain(game_object_manager_ptr, vec3_new(0, 120, 0), false);
+		spawn_box_chain(game_object_manager_ptr, vec3_new(90, 120, 0), true);
 
 		{
 			// side length s

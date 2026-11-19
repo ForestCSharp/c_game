@@ -1222,6 +1222,7 @@ i32 physics_contact_compare(const void* in_a, const void* in_b)
 typedef enum PhysicsConstraintType
 {
 	PHYSICS_CONSTRAINT_TYPE_DISTANCE,
+	PHYSICS_CONSTRAINT_TYPE_ORIENTATION,
 } PhysicsConstraintType;
 
 typedef struct PhysicsConstraintDistance
@@ -1230,6 +1231,13 @@ typedef struct PhysicsConstraintDistance
 	VecN cached_lambda;
 	f32 baumgarte_bias;
 } PhysicsConstraintDistance;
+
+typedef struct PhysicsConstraintOrientation
+{
+	Quat initial_relative;
+	Mat3 angular_effective_mass;
+	Vec3 target_relative_velocity;
+} PhysicsConstraintOrientation;
 
 typedef struct PhysicsScene PhysicsScene;
 
@@ -1249,6 +1257,7 @@ typedef struct PhysicsConstraint
 	union 
 	{
 		PhysicsConstraintDistance distance;
+		PhysicsConstraintOrientation orientation;
 	};	
 } PhysicsConstraint;
 
@@ -1405,6 +1414,25 @@ void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_con
 
 			break;
 		}	
+		case PHYSICS_CONSTRAINT_TYPE_ORIENTATION:
+		{
+			PhysicsConstraintOrientation* lock = &in_constraint->orientation;
+			// World rotation taking B back to its target: (A * initial_relative) * inverse(B).
+			const Quat rest = lock->initial_relative;
+			const Vec4 target = mat4_mul_vec4(quat_left_matrix(body_a->orientation), vec4_new(rest.x, rest.y, rest.z, rest.w));
+			const Vec4 error = mat4_mul_vec4(quat_right_matrix(quat_inverse(body_b->orientation)), target);
+			// Twice the quaternion vector approximates a small angle. Pick the short arc for drift correction.
+			const f32 beta = 0.2f;
+			const f32 correction = in_delta_time > 0.0f ? copysignf(2.0f * beta, error.w) / in_delta_time : 0.0f;
+			lock->target_relative_velocity = vec3_scale(vec3_new(error.x, error.y, error.z), correction);
+
+			// Equal and opposite world-space angular impulses change omega_B - omega_A by this sum.
+			const Mat3 response = mat3_add_mat3(physics_body_get_inverse_inertia_tensor_world(body_a),
+				physics_body_get_inverse_inertia_tensor_world(body_b));
+			const optional(Mat3) mass = mat3_inverse(response);
+			lock->angular_effective_mass = optional_is_set(mass) ? optional_get(mass) : mat3_zero;
+			break;
+		}
 		default:
 			break;
 	}
@@ -1447,6 +1475,16 @@ void physics_constraint_solve(PhysicsScene* scene, PhysicsConstraint* in_constra
 
 			break;
 		}	
+		case PHYSICS_CONSTRAINT_TYPE_ORIENTATION:
+		{
+			const PhysicsConstraintOrientation* lock = &in_constraint->orientation;
+			const Vec3 relative_velocity = vec3_sub(body_b->angular_velocity, body_a->angular_velocity);
+			const Vec3 impulse = mat3_mul_vec3(lock->angular_effective_mass,
+				vec3_sub(lock->target_relative_velocity, relative_velocity));
+			physics_body_apply_impulse_angular(body_a, vec3_negate(impulse));
+			physics_body_apply_impulse_angular(body_b, impulse);
+			break;
+		}
 		default:
 			break;
 	}
@@ -1821,6 +1859,9 @@ void physics_scene_reset(PhysicsScene* scene)
 				vecn_zero_in_place(&constraint->distance.cached_lambda);
 				constraint->distance.baumgarte_bias = 0.0f;
 				break;
+			case PHYSICS_CONSTRAINT_TYPE_ORIENTATION:
+				// Both solver fields are rebuilt in pre_solve. Keep the creation-time reference.
+				break;
 		}
 	}
 }
@@ -1844,6 +1885,17 @@ PhysicsConstraint physics_constraint_distance_init(PhysicsScene* scene)
 			.jacobian = matmn_new(scene->arena, 1, 12),
             .cached_lambda = vecn_new(scene->arena, 1),
 		},
+	};
+}
+
+// Locks relative rotation. Add a distance constraint when the bodies also share an anchor.
+PhysicsConstraint physics_constraint_orientation_init(PhysicsBody* body_a, PhysicsBody* body_b)
+{
+	return (PhysicsConstraint){
+		.type = PHYSICS_CONSTRAINT_TYPE_ORIENTATION,
+		.body_a = body_a,
+		.body_b = body_b,
+		.orientation.initial_relative = quat_normalize(quat_mul(quat_inverse(body_a->orientation), body_b->orientation)),
 	};
 }
 
