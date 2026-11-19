@@ -26,6 +26,9 @@ bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
 bool test_distance_joint_drift();
 bool test_resting_contacts();
+bool test_manifold_points();
+bool test_manifold_warm_start();
+bool test_manifold_lifetime();
 bool test_joint_supported_by_contact();
 bool test_contact_friction();
 bool test_contact_lift_off_and_bounce();
@@ -57,6 +60,9 @@ int main()
 	success &= test_rotating_box_sweep();
 	success &= test_distance_joint_drift();
 	success &= test_resting_contacts();
+	success &= test_manifold_points();
+	success &= test_manifold_warm_start();
+	success &= test_manifold_lifetime();
 	success &= test_joint_supported_by_contact();
 	success &= test_contact_friction();
 	success &= test_contact_lift_off_and_bounce();
@@ -638,6 +644,121 @@ bool test_resting_contacts()
 		}
 		physics_scene_destroy(&scene);
 	}
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_manifold_points()
+{
+	printf("  test_manifold_points... ");
+	PhysicsScene scene;
+	PhysicsBody* box = test_contact_scene(&scene, SHAPE_TYPE_BOX, 0.5f);
+	PhysicsContact contact = {
+		.body_a = scene.bodies[0], .body_b = box, .normal = vec3_new(0, -1, 0),
+		.point_on_a_local = vec3_new(0, 1, 0), .point_on_b_local = vec3_new(0, -0.5f, 0),
+	};
+	physics_scene_cache_contact(&scene, &contact);
+	PhysicsContactManifold* manifold = &scene.manifolds[0];
+	manifold->points[0].constraint.accumulated_impulse.x = 7.0f;
+	PhysicsContact reversed = {
+		.body_a = box, .body_b = scene.bodies[0], .normal = vec3_negate(contact.normal),
+		.point_on_a_local = contact.point_on_b_local, .point_on_b_local = contact.point_on_a_local,
+	};
+	reversed.point_on_a_local.x += 0.01f;
+	reversed.point_on_b_local.x += 0.01f;
+	physics_scene_cache_contact(&scene, &reversed);
+	assert(sb_count(scene.manifolds) == 1 && manifold->count == 1);
+	assert(manifold->points[0].constraint.accumulated_impulse.x == 7.0f);
+
+	// Adding four corners should evict the center and discard its cached impulse.
+	const Vec3 corners[] = {{-.5f, 0, -.5f}, {-.5f, 0, .5f}, {.5f, 0, -.5f}, {.5f, 0, .5f}};
+	for (i32 i = 0; i < ARRAY_COUNT(corners); ++i)
+	{
+		reversed.point_on_a_local = vec3_add(contact.point_on_b_local, corners[i]);
+		reversed.point_on_b_local = vec3_add(contact.point_on_a_local, corners[i]);
+		physics_scene_cache_contact(&scene, &reversed);
+	}
+	physics_scene_cache_contact(&scene, &contact); // A fifth point at the center loses too.
+	assert(manifold->count == 4);
+	for (i32 i = 0; i < manifold->count; ++i)
+	{
+		const PhysicsManifoldPoint* point = &manifold->points[i];
+		assert(fabsf(point->local_a.x) == .5f && fabsf(point->local_a.z) == .5f);
+		assert(point->local_a.y == 1.0f && point->local_b.y == -.5f);
+		assert(point->local_normal_a.y == 1.0f && point->constraint.accumulated_impulse.x == 0.0f);
+	}
+
+	// Slide beyond the retention distance while the two faces still touch.
+	box->position.x += 0.03f;
+	contact.point_on_a_local.x += 0.03f;
+	physics_scene_cache_contact(&scene, &contact);
+	assert(manifold->count == 1 && vec3_nearly_equal(manifold->points[0].local_a, contact.point_on_a_local));
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_manifold_warm_start()
+{
+	printf("  test_manifold_warm_start... ");
+	PhysicsScene scene;
+	PhysicsBody* box = test_contact_scene(&scene, SHAPE_TYPE_BOX, 0.5f);
+	box->friction = 0.5f;
+	PhysicsContact contact = {
+		.body_a = scene.bodies[0], .body_b = box, .normal = vec3_new(0, -1, 0),
+		.point_on_a_local = vec3_new(0, 1, 0), .point_on_b_local = vec3_new(0, -.5f, 0),
+	};
+	physics_scene_cache_contact(&scene, &contact);
+	PhysicsConstraintPenetration* joint = &scene.manifolds[0].points[0].constraint;
+	// The previous basis maps its impulse to (3, 2, 4) in world space.
+	joint->basis.columns[0] = vec3_new(1, 0, 0);
+	joint->basis.columns[1] = vec3_new(0, 1, 0);
+	joint->basis.columns[2] = vec3_new(0, 0, 1);
+	joint->accumulated_impulse = vec3_new(3, 2, 4);
+	physics_manifold_pre_solve(&scene.manifolds[0], 1.0f / 30.0f, 2.0f);
+	// With twice the dt, normal support becomes 4 and combined friction is capped at 2.
+	const Vec3 expected = vec3_new(1.2f, 4.0f, 1.6f);
+	assert(vec3_nearly_equal(mat3_mul_vec3(joint->basis, joint->accumulated_impulse), expected));
+	assert(vec3_nearly_equal(box->linear_velocity, expected));
+	assert(vec3_nearly_equal(scene.bodies[0]->linear_velocity, vec3_zero));
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_manifold_lifetime()
+{
+	printf("  test_manifold_lifetime... ");
+	PhysicsScene scene;
+	PhysicsBody* box = test_contact_scene(&scene, SHAPE_TYPE_BOX, 0.49f);
+	PhysicsBody neighbor = *box;
+	neighbor.position.x = 3.0f;
+	physics_scene_add_body(&scene, &neighbor);
+	Vec3 first_position = vec3_zero;
+	const f32 dt = 1.0f / 60.0f;
+	for (i32 run = 0; run < 2; ++run)
+	{
+		for (i32 i = 0; i < 30; ++i) { physics_scene_update(&scene, i % 2 ? 1.5f * dt : 0.5f * dt); }
+		assert(sb_count(scene.manifolds) == 2);
+		assert(scene.manifolds[0].points[0].constraint.accumulated_impulse.x > 0.0f);
+		if (run == 0)
+		{
+			first_position = box->position;
+			physics_scene_reset(&scene);
+			assert(sb_count(scene.manifolds) == 0 && scene.previous_dt == 0.0f);
+		}
+		else { assert(vec3_nearly_equal(box->position, first_position)); }
+	}
+	physics_scene_remove_body(&scene, scene.bodies[2]);
+	assert(sb_count(scene.manifolds) == 1);
+	box->linear_velocity.y = 3.0f;
+	for (i32 i = 1; i <= 2; ++i)
+	{
+		physics_scene_update(&scene, dt);
+		assert(fabsf(box->linear_velocity.y - (3.0f - i * 10.0f * dt)) < 0.0001f);
+	}
+	assert(sb_count(scene.manifolds) == 0);
+	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;
 }

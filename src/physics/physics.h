@@ -1528,6 +1528,26 @@ PhysicsConstraintPenetration physics_penetration_pre_solve(const PhysicsContact*
 	return joint;
 }
 
+static Vec3 physics_penetration_limit_impulse(Vec3 impulse, f32 friction)
+{
+	impulse.x = fmaxf(0.0f, impulse.x);
+	const f32 limit = fmaxf(0.0f, friction) * impulse.x;
+	const f32 magnitude = hypotf(impulse.y, impulse.z);
+	if (magnitude > limit)
+	{
+		impulse.y *= limit / magnitude;
+		impulse.z *= limit / magnitude;
+	}
+	return impulse;
+}
+
+static void physics_penetration_apply_impulse(PhysicsConstraintPenetration* joint, Vec3 contact_impulse)
+{
+	const Vec3 impulse = mat3_mul_vec3(joint->basis, contact_impulse);
+	physics_body_apply_impulse_at_offset(joint->body_a, vec3_negate(impulse), joint->offset_a);
+	physics_body_apply_impulse_at_offset(joint->body_b, impulse, joint->offset_b);
+}
+
 void physics_penetration_solve(PhysicsConstraintPenetration* joint)
 {
 	const Vec3 velocity_a = physics_body_velocity_at_offset(joint->body_a, joint->offset_a);
@@ -1550,18 +1570,113 @@ void physics_penetration_solve(PhysicsConstraintPenetration* joint)
 			next.y -= (k.d[2][2] * velocity.y - k.d[2][1] * velocity.z) / det;
 			next.z -= (k.d[1][1] * velocity.z - k.d[1][2] * velocity.y) / det;
 		}
-		const f32 limit = joint->friction * next.x;
-		const f32 magnitude = hypotf(next.y, next.z);
-		if (magnitude > limit)
-		{
-			next.y *= limit / magnitude;
-			next.z *= limit / magnitude;
-		}
 	}
+	next = physics_penetration_limit_impulse(next, joint->friction);
 	joint->accumulated_impulse = next;
-	const Vec3 impulse = mat3_mul_vec3(joint->basis, vec3_sub(next, old));
-	physics_body_apply_impulse_at_offset(joint->body_a, vec3_negate(impulse), joint->offset_a);
-	physics_body_apply_impulse_at_offset(joint->body_b, impulse, joint->offset_b);
+	physics_penetration_apply_impulse(joint, vec3_sub(next, old));
+}
+
+enum { PHYSICS_MANIFOLD_CAPACITY = 4 };
+static const f32 physics_contact_match_distance = 0.02f;
+
+typedef struct PhysicsManifoldPoint
+{
+	Vec3 local_a;
+	Vec3 local_b;
+	Vec3 local_normal_a; // Solver convention: A towards B.
+	PhysicsConstraintPenetration constraint;
+} PhysicsManifoldPoint;
+
+typedef struct PhysicsContactManifold
+{
+	PhysicsBody* body_a;
+	PhysicsBody* body_b;
+	PhysicsManifoldPoint points[PHYSICS_MANIFOLD_CAPACITY];
+	i32 count;
+	bool touching;
+} PhysicsContactManifold;
+
+// Called once per pair confirmed touching at the beginning of this step.
+static void physics_manifold_merge(PhysicsContactManifold* manifold, const PhysicsContact* contact)
+{
+	const bool reversed = contact->body_a != manifold->body_a;
+	const Vec3 local_a = reversed ? contact->point_on_b_local : contact->point_on_a_local;
+	const Vec3 local_b = reversed ? contact->point_on_a_local : contact->point_on_b_local;
+	const Vec3 normal = reversed ? contact->normal : vec3_negate(contact->normal);
+	const Vec3 local_normal = quat_rotate_vec3(quat_inverse(manifold->body_a->orientation), normal);
+	const f32 tolerance_sq = physics_contact_match_distance * physics_contact_match_distance;
+
+	bool matched = false;
+	i32 retained = 0;
+	for (i32 i = 0; i < manifold->count; ++i)
+	{
+		const PhysicsManifoldPoint* point = &manifold->points[i];
+		const Vec3 a = physics_body_local_to_world_space(manifold->body_a, point->local_a);
+		const Vec3 b = physics_body_local_to_world_space(manifold->body_b, point->local_b);
+		const Vec3 old_normal = quat_rotate_vec3(manifold->body_a->orientation, point->local_normal_a);
+		const Vec3 delta = vec3_sub(b, a);
+		const f32 separation = vec3_dot(delta, old_normal);
+		const Vec3 slide = vec3_sub(delta, vec3_scale(old_normal, separation));
+		if (separation > 0.0f || vec3_length_squared(slide) > tolerance_sq ||
+			vec3_dot(local_normal, point->local_normal_a) <= 0.0f)
+		{
+			continue;
+		}
+		if (vec3_length_squared(vec3_sub(local_a, point->local_a)) < tolerance_sq ||
+			vec3_length_squared(vec3_sub(local_b, point->local_b)) < tolerance_sq)
+		{
+			matched = true;
+		}
+		if (retained != i) { manifold->points[retained] = *point; }
+		++retained;
+	}
+	manifold->count = retained;
+	if (matched) { return; }
+
+	i32 slot = manifold->count;
+	if (slot == PHYSICS_MANIFOLD_CAPACITY)
+	{
+		Vec3 center = local_a;
+		for (i32 i = 0; i < manifold->count; ++i) { center = vec3_add(center, manifold->points[i].local_a); }
+		center = vec3_scale(center, 1.0f / (manifold->count + 1));
+		f32 nearest_sq = vec3_length_squared(vec3_sub(local_a, center));
+		for (i32 i = 0; i < manifold->count; ++i)
+		{
+			const f32 distance_sq = vec3_length_squared(vec3_sub(manifold->points[i].local_a, center));
+			if (distance_sq < nearest_sq)
+			{
+				slot = i;
+				nearest_sq = distance_sq;
+			}
+		}
+		if (slot == PHYSICS_MANIFOLD_CAPACITY) { return; }
+	}
+	else
+	{
+		++manifold->count;
+	}
+	manifold->points[slot] = (PhysicsManifoldPoint){
+		.local_a = local_a, .local_b = local_b, .local_normal_a = local_normal,
+	};
+}
+
+static void physics_manifold_pre_solve(PhysicsContactManifold* manifold, f32 dt, f32 impulse_scale)
+{
+	for (i32 i = 0; i < manifold->count; ++i)
+	{
+		PhysicsManifoldPoint* point = &manifold->points[i];
+		PhysicsConstraintPenetration* joint = &point->constraint;
+		const Vec3 previous_impulse = mat3_mul_vec3(joint->basis, joint->accumulated_impulse);
+		const PhysicsContact contact = {
+			.body_a = manifold->body_a, .body_b = manifold->body_b,
+			.point_on_a_local = point->local_a, .point_on_b_local = point->local_b,
+			.normal = vec3_negate(quat_rotate_vec3(manifold->body_a->orientation, point->local_normal_a)),
+		};
+		*joint = physics_penetration_pre_solve(&contact, dt);
+		const Vec3 projected = mat3_mul_vec3(mat3_transpose(joint->basis), previous_impulse);
+		joint->accumulated_impulse = physics_penetration_limit_impulse(vec3_scale(projected, impulse_scale), joint->friction);
+		physics_penetration_apply_impulse(joint, joint->accumulated_impulse);
+	}
 }
 
 typedef struct PhysicsBodyMotion
@@ -1577,8 +1692,28 @@ typedef struct PhysicsScene
 	sbuffer(PhysicsBody*) bodies;
 	sbuffer(PhysicsBodyMotion) initial_motion;
 	sbuffer(PhysicsConstraint) constraints;
+	sbuffer(PhysicsContactManifold) manifolds;
+	f32 previous_dt;
 	Arena* arena;
 } PhysicsScene;
+
+static void physics_scene_cache_contact(PhysicsScene* scene, const PhysicsContact* contact)
+{
+	i32 i = 0;
+	for (; i < sb_count(scene->manifolds); ++i)
+	{
+		const PhysicsContactManifold* manifold = &scene->manifolds[i];
+		if ((manifold->body_a == contact->body_a && manifold->body_b == contact->body_b) ||
+			(manifold->body_a == contact->body_b && manifold->body_b == contact->body_a)) { break; }
+	}
+	if (i == sb_count(scene->manifolds))
+	{
+		const PhysicsContactManifold manifold = { .body_a = contact->body_a, .body_b = contact->body_b };
+		sb_push(scene->manifolds, manifold);
+	}
+	scene->manifolds[i].touching = true;
+	physics_manifold_merge(&scene->manifolds[i], contact);
+}
 
 void physics_scene_init(PhysicsScene* out_physics_scene)
 {
@@ -1609,6 +1744,7 @@ void physics_scene_destroy(PhysicsScene* in_physics_scene)
 	sb_free(in_physics_scene->bodies);
 	sb_free(in_physics_scene->initial_motion);
 	sb_free(in_physics_scene->constraints);
+	sb_free(in_physics_scene->manifolds);
 	arena_destroy(&(in_physics_scene->arena));
 }
 
@@ -1648,6 +1784,13 @@ void physics_scene_remove_body(PhysicsScene* scene, PhysicsBody* body)
 				sb_del(scene->constraints, j);
 			}
 		}
+		for (i32 j = sb_count(scene->manifolds) - 1; j >= 0; --j)
+		{
+			if (scene->manifolds[j].body_a == body || scene->manifolds[j].body_b == body)
+			{
+				sb_del(scene->manifolds, j);
+			}
+		}
 		sb_del(scene->initial_motion, i);
 		sb_del(scene->bodies, i);
 		physics_body_destroy(body);
@@ -1657,6 +1800,8 @@ void physics_scene_remove_body(PhysicsScene* scene, PhysicsBody* body)
 
 void physics_scene_reset(PhysicsScene* scene)
 {
+	sb_free(scene->manifolds);
+	scene->previous_dt = 0.0f;
 	for (i32 i = 0; i < sb_count(scene->bodies); ++i)
 	{
 		PhysicsBody* body = scene->bodies[i];
@@ -1828,6 +1973,7 @@ sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene,
 
 void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 {
+	if (in_delta_time <= 0.0f) { return; }
 	const i32 num_bodies = sb_count(in_physics_scene->bodies);
 
 	// Acceleration due to gravity
@@ -1853,7 +1999,10 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	//printf("-------------------------------------------\n");
 
 	// Narrowphase
-	sbuffer(PhysicsConstraintPenetration) resting_contacts = NULL;
+	for (i32 i = 0; i < sb_count(in_physics_scene->manifolds); ++i)
+	{
+		in_physics_scene->manifolds[i].touching = false;
+	}
 	sbuffer(PhysicsContact) impacts = NULL;
 
 	for (i32 pair_idx = 0; pair_idx < sb_count(collision_pairs); ++pair_idx)
@@ -1873,7 +2022,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		{
 			if (contact.time_of_impact == 0.0f)
 			{
-				sb_push(resting_contacts, physics_penetration_pre_solve(&contact, in_delta_time));
+				physics_scene_cache_contact(in_physics_scene, &contact);
 			}
 			else
 			{
@@ -1901,6 +2050,16 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 			physics_constraint_pre_solve(in_physics_scene, constraint, in_delta_time);					
 		}
 
+		const f32 impulse_scale = in_physics_scene->previous_dt > 0.0f ? in_delta_time / in_physics_scene->previous_dt : 0.0f;
+		in_physics_scene->previous_dt = in_delta_time;
+		for (i32 i = sb_count(in_physics_scene->manifolds) - 1; i >= 0; --i)
+		{
+			if (!in_physics_scene->manifolds[i].touching) { sb_del(in_physics_scene->manifolds, i); }
+		}
+		for (i32 i = 0; i < sb_count(in_physics_scene->manifolds); ++i)
+		{
+			physics_manifold_pre_solve(&in_physics_scene->manifolds[i], in_delta_time, impulse_scale);
+		}
 		const i32 max_iterations = 5;
 		for (i32 iteration = 0; iteration < max_iterations; ++iteration)
 		{
@@ -1908,12 +2067,15 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 			{
 				physics_constraint_solve(in_physics_scene, &in_physics_scene->constraints[i]);
 			}
-			for (i32 i = 0; i < sb_count(resting_contacts); ++i)
+			for (i32 i = 0; i < sb_count(in_physics_scene->manifolds); ++i)
 			{
-				physics_penetration_solve(&resting_contacts[i]);
+				PhysicsContactManifold* manifold = &in_physics_scene->manifolds[i];
+				for (i32 j = 0; j < manifold->count; ++j)
+				{
+					physics_penetration_solve(&manifold->points[j].constraint);
+				}
 			}
 		}
-		sb_free(resting_contacts);
 
 		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
 		{		
