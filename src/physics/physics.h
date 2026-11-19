@@ -1223,6 +1223,7 @@ typedef enum PhysicsConstraintType
 {
 	PHYSICS_CONSTRAINT_TYPE_DISTANCE,
 	PHYSICS_CONSTRAINT_TYPE_ORIENTATION,
+	PHYSICS_CONSTRAINT_TYPE_HINGE,
 } PhysicsConstraintType;
 
 typedef struct PhysicsConstraintDistance
@@ -1238,6 +1239,21 @@ typedef struct PhysicsConstraintOrientation
 	Mat3 angular_effective_mass;
 	Vec3 target_relative_velocity;
 } PhysicsConstraintOrientation;
+
+typedef struct PhysicsConstraintHinge
+{
+	Quat initial_relative;
+	bool limited;
+	f32 min_angle, max_angle;
+	f32 angle; // Continuous signed twist across the +/-pi boundary.
+
+	// Prepared once per step, in world space.
+	Vec3 offset_a, offset_b, axis;
+	Vec3 pivot_target, swing_target;
+	f32 min_speed, max_speed, stop_impulse;
+	Mat3 pivot_mass, angular_mass;
+	Mat3 angular_response_to_point, point_impulse_per_torque;
+} PhysicsConstraintHinge;
 
 typedef struct PhysicsScene PhysicsScene;
 
@@ -1258,6 +1274,7 @@ typedef struct PhysicsConstraint
 	{
 		PhysicsConstraintDistance distance;
 		PhysicsConstraintOrientation orientation;
+		PhysicsConstraintHinge hinge;
 	};	
 } PhysicsConstraint;
 
@@ -1354,6 +1371,107 @@ void physics_constraint_apply_impulses(PhysicsConstraint* in_constraint, const V
 	physics_body_apply_impulse_angular(body_b, torque_internal_b);
 }
 
+static void physics_hinge_pre_solve(PhysicsConstraint* joint, f32 dt)
+{
+	PhysicsBody* a = joint->body_a;
+	PhysicsBody* b = joint->body_b;
+	PhysicsConstraintHinge* h = &joint->hinge;
+	const Vec3 anchor_a = physics_body_local_to_world_space(a, joint->anchor_a);
+	const Vec3 anchor_b = physics_body_local_to_world_space(b, joint->anchor_b);
+	h->offset_a = vec3_sub(anchor_a, physics_body_get_center_of_mass_world(a));
+	h->offset_b = vec3_sub(anchor_b, physics_body_get_center_of_mass_world(b));
+	h->axis = quat_rotate_vec3(a->orientation, joint->axis_a);
+	const f32 beta = 0.2f;
+	h->pivot_target = vec3_scale(vec3_sub(anchor_a, anchor_b), beta / dt);
+
+	// Split the change from the creation pose into swing and twist about A's local axis.
+	Quat delta = quat_mul(quat_mul(quat_inverse(a->orientation), b->orientation), quat_conjugate(h->initial_relative));
+	if (delta.w < 0.0f) { delta = quat_scale(delta, -1.0f); }
+	const f32 axial = vec3_dot(joint->axis_a, vec3_new(delta.x, delta.y, delta.z));
+	const Vec3 twist_vector = vec3_scale(joint->axis_a, axial);
+	const Quat twist = {twist_vector.x, twist_vector.y, twist_vector.z, delta.w};
+	const bool has_twist = quat_size_squared(twist) > 1e-12f;
+	const Quat swing = has_twist ? quat_mul(delta, quat_conjugate(quat_normalize(twist))) : delta;
+	h->swing_target = quat_rotate_vec3(a->orientation, vec3_scale(vec3_new(swing.x, swing.y, swing.z), -2.0f * beta / dt));
+	if (h->limited)
+	{
+		if (has_twist)
+		{
+			const f32 principal = 2.0f * atan2f(axial, delta.w);
+			h->angle += remainderf(principal - h->angle, 2.0f * PI);
+		}
+		h->stop_impulse = 0.0f;
+		// Allow approach up to a stop this step, or correct an existing violation gradually.
+		const f32 lower = h->min_angle - h->angle;
+		const f32 upper = h->max_angle - h->angle;
+		h->min_speed = lower * (lower > 0.0f ? beta : 1.0f) / dt;
+		h->max_speed = upper * (upper < 0.0f ? beta : 1.0f) / dt;
+	}
+
+	const Mat3 inertia_a = physics_body_get_inverse_inertia_tensor_world(a);
+	const Mat3 inertia_b = physics_body_get_inverse_inertia_tensor_world(b);
+	Mat3 point_response;
+	for (i32 i = 0; i < 3; ++i)
+	{
+		const Vec3 unit = mat3_identity.columns[i];
+		const Vec3 spin_a = mat3_mul_vec3(inertia_a, vec3_cross(h->offset_a, unit));
+		const Vec3 spin_b = mat3_mul_vec3(inertia_b, vec3_cross(h->offset_b, unit));
+		h->angular_response_to_point.columns[i] = vec3_add(spin_a, spin_b);
+		point_response.columns[i] = vec3_add(vec3_scale(unit, a->inverse_mass + b->inverse_mass),
+			vec3_add(vec3_cross(spin_a, h->offset_a), vec3_cross(spin_b, h->offset_b)));
+	}
+	const optional(Mat3) pivot_mass = mat3_inverse(point_response);
+	h->pivot_mass = optional_is_set(pivot_mass) ? optional_get(pivot_mass) : mat3_zero;
+
+	// A torque at an offset pivot also changes its velocity. Cancel that change with a
+	// point impulse, then measure the angular response with the pivot held in place.
+	const Mat3 point_response_to_torque = mat3_transpose(h->angular_response_to_point);
+	Mat3 angular_response = mat3_add_mat3(inertia_a, inertia_b);
+	for (i32 i = 0; i < 3; ++i)
+	{
+		const Vec3 compensation = vec3_negate(mat3_mul_vec3(h->pivot_mass, point_response_to_torque.columns[i]));
+		h->point_impulse_per_torque.columns[i] = compensation;
+		angular_response.columns[i] = vec3_add(angular_response.columns[i], mat3_mul_vec3(h->angular_response_to_point, compensation));
+	}
+	const optional(Mat3) angular_mass = mat3_inverse(angular_response);
+	h->angular_mass = optional_is_set(angular_mass) ? optional_get(angular_mass) : mat3_zero;
+}
+
+static void physics_hinge_solve(PhysicsConstraint* joint)
+{
+	PhysicsBody* a = joint->body_a;
+	PhysicsBody* b = joint->body_b;
+	PhysicsConstraintHinge* h = &joint->hinge;
+	const Vec3 pivot_velocity = vec3_sub(physics_body_velocity_at_offset(b, h->offset_b),
+		physics_body_velocity_at_offset(a, h->offset_a));
+	Vec3 point = mat3_mul_vec3(h->pivot_mass, vec3_sub(h->pivot_target, pivot_velocity));
+	const Vec3 angular_velocity = vec3_add(vec3_sub(b->angular_velocity, a->angular_velocity),
+		mat3_mul_vec3(h->angular_response_to_point, point));
+	Vec3 torque = mat3_mul_vec3(h->angular_mass, vec3_sub(h->swing_target, angular_velocity));
+
+	// Choose the axial speed that requires zero torque about the free axis.
+	// Clamping that speed supplies a one-sided impulse only when a stop needs it.
+	const Vec3 torque_per_speed = mat3_mul_vec3(h->angular_mass, h->axis);
+	const f32 axial_mass = vec3_dot(h->axis, torque_per_speed);
+	if (axial_mass > 0.0f)
+	{
+		f32 speed = -vec3_dot(h->axis, torque) / axial_mass;
+		if (h->limited)
+		{
+			// Remove this step's previous stop impulse before deciding whether the stop still bears load.
+			const f32 unloaded_speed = speed - h->stop_impulse / axial_mass;
+			speed = CLAMP(unloaded_speed, h->min_speed, h->max_speed);
+			h->stop_impulse = (speed - unloaded_speed) * axial_mass;
+		}
+		torque = vec3_add(torque, vec3_scale(torque_per_speed, speed));
+	}
+	point = vec3_add(point, mat3_mul_vec3(h->point_impulse_per_torque, torque));
+	physics_body_apply_impulse_linear(a, vec3_negate(point));
+	physics_body_apply_impulse_linear(b, point);
+	physics_body_apply_impulse_angular(a, vec3_negate(vec3_add(torque, vec3_cross(h->offset_a, point))));
+	physics_body_apply_impulse_angular(b, vec3_add(torque, vec3_cross(h->offset_b, point)));
+}
+
 void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_constraint, const f32 in_delta_time)
 {
 	PhysicsBody* body_a = in_constraint->body_a;
@@ -1433,6 +1551,9 @@ void physics_constraint_pre_solve(PhysicsScene* scene, PhysicsConstraint* in_con
 			lock->angular_effective_mass = optional_is_set(mass) ? optional_get(mass) : mat3_zero;
 			break;
 		}
+		case PHYSICS_CONSTRAINT_TYPE_HINGE:
+			physics_hinge_pre_solve(in_constraint, in_delta_time);
+			break;
 		default:
 			break;
 	}
@@ -1485,6 +1606,9 @@ void physics_constraint_solve(PhysicsScene* scene, PhysicsConstraint* in_constra
 			physics_body_apply_impulse_angular(body_b, impulse);
 			break;
 		}
+		case PHYSICS_CONSTRAINT_TYPE_HINGE:
+			physics_hinge_solve(in_constraint);
+			break;
 		default:
 			break;
 	}
@@ -1859,8 +1983,11 @@ void physics_scene_reset(PhysicsScene* scene)
 				vecn_zero_in_place(&constraint->distance.cached_lambda);
 				constraint->distance.baumgarte_bias = 0.0f;
 				break;
+			case PHYSICS_CONSTRAINT_TYPE_HINGE:
+				constraint->hinge.angle = 0.0f;
+				break;
 			case PHYSICS_CONSTRAINT_TYPE_ORIENTATION:
-				// Both solver fields are rebuilt in pre_solve. Keep the creation-time reference.
+				// Rebuild solver data next step and retain the creation-time reference.
 				break;
 		}
 	}
@@ -1897,6 +2024,32 @@ PhysicsConstraint physics_constraint_orientation_init(PhysicsBody* body_a, Physi
 		.body_b = body_b,
 		.orientation.initial_relative = quat_normalize(quat_mul(quat_inverse(body_a->orientation), body_b->orientation)),
 	};
+}
+
+// The pivot and axis are specified in world space at creation.
+PhysicsConstraint physics_constraint_hinge_init(PhysicsBody* a, PhysicsBody* b, Vec3 pivot, Vec3 axis)
+{
+	assert(vec3_length_squared(axis) > 0.0f);
+	const Quat inverse_a = quat_inverse(a->orientation);
+	return (PhysicsConstraint){
+		.type = PHYSICS_CONSTRAINT_TYPE_HINGE, .body_a = a, .body_b = b,
+		.anchor_a = physics_body_world_to_local_space(a, pivot),
+		.anchor_b = physics_body_world_to_local_space(b, pivot),
+		.axis_a = quat_rotate_vec3(inverse_a, vec3_normalize(axis)),
+		.hinge.initial_relative = quat_normalize(quat_mul(inverse_a, b->orientation)),
+	};
+}
+
+// Signed radians about the hinge axis, measured from the creation pose.
+PhysicsConstraint physics_constraint_limited_hinge_init(PhysicsBody* a, PhysicsBody* b, Vec3 pivot, Vec3 axis,
+	f32 min_angle, f32 max_angle)
+{
+	assert(min_angle >= -PI && min_angle <= max_angle && max_angle <= PI);
+	PhysicsConstraint joint = physics_constraint_hinge_init(a, b, pivot, axis);
+	joint.hinge.limited = true;
+	joint.hinge.min_angle = min_angle;
+	joint.hinge.max_angle = max_angle;
+	return joint;
 }
 
 typedef struct PseudoPhysicsBody

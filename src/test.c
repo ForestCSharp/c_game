@@ -27,6 +27,7 @@ bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
 bool test_distance_joint_drift();
 bool test_orientation_lock();
+bool test_hinges();
 bool test_resting_contacts();
 bool test_manifold_points();
 bool test_manifold_warm_start();
@@ -63,6 +64,7 @@ int main()
 	success &= test_rotating_box_sweep();
 	success &= test_distance_joint_drift();
 	success &= test_orientation_lock();
+	success &= test_hinges();
 	success &= test_resting_contacts();
 	success &= test_manifold_points();
 	success &= test_manifold_warm_start();
@@ -661,6 +663,84 @@ bool test_orientation_lock()
 	assert(sb_count(scene.constraints) == 0);
 	physics_scene_update(&scene, dt);
 	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_hinges()
+{
+	printf("  test_hinges... ");
+	const Vec3 axis = vec3_normalize(vec3_new(1, 2, -1));
+	Vec3 marker, tangent;
+	vec3_get_ortho(axis, &marker, &tangent);
+	// Put the centers on the hinge axis so gravity introduces no relative torque.
+	for (i32 limited = 0; limited <= 1; ++limited)
+	{
+		PhysicsScene scene;
+		physics_scene_init(&scene);
+		const PhysicsBody sphere = {
+			.shape = {.type = SHAPE_TYPE_SPHERE, .sphere = {.radius = 0.5f}},
+			.orientation = quat_new(vec3_new(2, 1, 0), 0.8f), .inverse_mass = 1.0f,
+		};
+		PhysicsBody* a = physics_scene_add_body(&scene, &sphere);
+		PhysicsBody other = sphere;
+		other.position = vec3_scale(axis, 2.0f);
+		other.orientation = quat_new(vec3_new(-1, 2, 0), -1.3f);
+		other.angular_velocity = vec3_scale(axis, 6.0f);
+		PhysicsBody* b = physics_scene_add_body(&scene, &other);
+		const Vec3 pivot = vec3_scale(axis, 1.0f);
+		const f32 lower = -0.35f, upper = 0.85f;
+		PhysicsConstraint joint = limited ? physics_constraint_limited_hinge_init(a, b, pivot, axis, lower, upper)
+			: physics_constraint_hinge_init(a, b, pivot, axis);
+		physics_scene_add_constraint(&scene, &joint);
+		const Vec3 marker_a = quat_rotate_vec3(quat_inverse(a->orientation), marker);
+		const Vec3 marker_b = quat_rotate_vec3(quat_inverse(b->orientation), marker);
+		const Vec3 axis_b = quat_rotate_vec3(quat_inverse(b->orientation), axis);
+
+		for (i32 run = 0; run < 2; ++run)
+		{
+			if (run == 1) { b->orientation = quat_scale(b->orientation, -1); }
+			f32 last_angle = 0, travel = 0;
+			for (i32 step = 0; step < 180; ++step)
+			{
+				if (limited && (step == 60 || step == 120))
+				{
+					// Drive back into the range from each stop, leaving both bodies free to react.
+					b->angular_velocity = vec3_add(a->angular_velocity, vec3_scale(axis, step == 60 ? -6 : 6));
+				}
+				const f32 dt = step % 2 ? 1.0f / 40.0f : 1.0f / 120.0f;
+				physics_scene_update(&scene, dt);
+				const Vec3 n = quat_rotate_vec3(a->orientation, joint.axis_a);
+				const Vec3 u = quat_rotate_vec3(a->orientation, marker_a);
+				const Vec3 v = quat_rotate_vec3(b->orientation, marker_b);
+				const f32 angle = atan2f(vec3_dot(n, vec3_cross(u, v)), vec3_dot(u, v));
+				travel += remainderf(angle - last_angle, 2.0f * PI);
+				last_angle = angle;
+				assert(vec3_dot(n, quat_rotate_vec3(b->orientation, axis_b)) > 0.99999f);
+				assert(vec3_length(vec3_sub(physics_body_local_to_world_space(a, joint.anchor_a),
+					physics_body_local_to_world_space(b, joint.anchor_b))) < 0.002f);
+				if (limited)
+				{
+					assert(angle >= lower - 0.001f && angle <= upper + 0.001f);
+					if (step == 59 || step == 179) { assert(fabsf(angle - upper) < 0.001f); }
+					if (step == 119) { assert(fabsf(angle - lower) < 0.001f); }
+				}
+			}
+			if (!limited) { assert(fabsf(travel - 18.0f) < 0.005f); }
+			physics_scene_reset(&scene);
+		}
+		// Disturb both the pivot and the alignment, including an almost inverted hinge axis.
+		b->position = vec3_add(b->position, marker);
+		b->orientation = quat_mul(quat_new(marker, PI - 0.001f), b->orientation);
+		a->inverse_mass = 0.0f;
+		for (i32 step = 0; step < 180; ++step) { physics_scene_update(&scene, 1.0f / 60.0f); }
+		assert(vec3_dot(axis, quat_rotate_vec3(b->orientation, axis_b)) > 0.9999f);
+		assert(vec3_length(vec3_sub(pivot, physics_body_local_to_world_space(b, joint.anchor_b))) < 0.01f);
+		assert(quat_nearly_equal(a->orientation, sphere.orientation));
+		physics_scene_remove_body(&scene, a);
+		assert(sb_count(scene.constraints) == 0);
+		physics_scene_destroy(&scene);
+	}
 	printf("PASSED\n");
 	return true;
 }

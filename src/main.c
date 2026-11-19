@@ -425,10 +425,10 @@ static void spawn_box_chain(GameObjectManager* manager, Vec3 origin, bool lock_o
 	const Vec3 colors[] = {{0,0,1}, {1,0,1}, {0,1,1}, {1,1,0}};
 	const Shape shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(5, 5, 5))};
 	PhysicsScene* scene = &manager->physics_scene;
-	PhysicsBody* previous = NULL;
+	PhysicsBody* links[ARRAY_COUNT(colors)];
 	for (i32 i = 0; i < ARRAY_COUNT(colors); ++i)
 	{
-		PhysicsBody* link = game_object_spawn_physics_body(manager, &(PhysicsBody){
+		links[i] = game_object_spawn_physics_body(manager, &(PhysicsBody){
 			.position = vec3_add(origin, vec3_new(20.0f * i, 0, 0)),
 			.orientation = quat_identity,
 			.shape = shape,
@@ -437,23 +437,33 @@ static void spawn_box_chain(GameObjectManager* manager, Vec3 origin, bool lock_o
 			.friction = 0.5f,
 			.debug_color = lock_orientation ? vec3_new(1.0f, 0.5f, 0.1f) : colors[i],
 		});
-		if (previous)
+	}
+
+	const i32 first_distance_link = lock_orientation ? 2 : 1;
+	for (i32 i = first_distance_link; i < ARRAY_COUNT(links); ++i)
+	{
+		PhysicsBody* previous = links[i - 1];
+		PhysicsBody* link = links[i];
+		const Vec3 pivot = previous->position;
+		PhysicsConstraint distance = physics_constraint_distance_init(scene);
+		distance.body_a = previous;
+		distance.body_b = link;
+		distance.anchor_a = physics_body_world_to_local_space(previous, pivot);
+		distance.anchor_b = physics_body_world_to_local_space(link, pivot);
+		physics_scene_add_constraint(scene, &distance);
+		if (lock_orientation)
 		{
-			const Vec3 pivot = previous->position;
-			PhysicsConstraint distance = physics_constraint_distance_init(scene);
-			distance.body_a = previous;
-			distance.body_b = link;
-			distance.anchor_a = physics_body_world_to_local_space(previous, pivot);
-			distance.anchor_b = physics_body_world_to_local_space(link, pivot);
-			physics_scene_add_constraint(scene, &distance);
-			// The first moving box can swing around the fixed box.
-			if (lock_orientation && i > 1)
-			{
-				PhysicsConstraint lock = physics_constraint_orientation_init(previous, link);
-				physics_scene_add_constraint(scene, &lock);
-			}
+			PhysicsConstraint lock = physics_constraint_orientation_init(previous, link);
+			physics_scene_add_constraint(scene, &lock);
 		}
-		previous = link;
+	}
+
+	// Solve the root stop after the outer links have loaded it on each pass.
+	if (lock_orientation)
+	{
+		PhysicsConstraint hinge = physics_constraint_limited_hinge_init(links[0], links[1],
+			origin, vec3_new(0, 0, 1), degrees_to_radians(-75), degrees_to_radians(45));
+		physics_scene_add_constraint(scene, &hinge);
 	}
 }
 
