@@ -23,8 +23,6 @@
 #include "task/task.h"
 #include "string_type.h"
 
-#include "physics/physics.h"
-
 #include "truetype.h"
 
 typedef struct AnimationUpdateTaskData
@@ -71,7 +69,6 @@ void animation_update_task(void* in_arg)
 
 typedef struct Character
 {
-	PhysicsBody* collider;
 	GameObjectHandle root_object_handle;
 	GameObjectHandle body_object_handle;
 	GameObjectHandle head_object_handle;
@@ -89,12 +86,11 @@ static Vec3 character_collider_center(TRS root)
 	return vec3_add(root.translation, vec3_new(0, -4.5f * root.scale.y, 0));
 }
 
-void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_gpu_device, PhysicsScene* physics_scene, Character* out_character)
+void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_gpu_device, Character* out_character)
 {
 	assert(out_character != NULL);
 
 	const Vec3 character_root_position = vec3_new(0,75,150);
-	PhysicsBody* collider;
 
 	GameObjectHandle root_object_handle			= ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle body_object_handle			= ADD_OBJECT(game_object_manager_ptr);
@@ -115,14 +111,15 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, root_object_handle, root_transform);
 		const Vec3 collider_half_extents = vec3_mul_componentwise(vec3_new(4.5f, 8.0f, 4.5f), root_transform.trs.scale);
-		collider = physics_scene_add_body(physics_scene, &(PhysicsBody) {
+		const PhysicsBody collider = {
 			.position = character_collider_center(root_transform.trs),
 			.orientation = quat_identity,
 			.shape = { .type = SHAPE_TYPE_BOX, .box = box_shape_create(collider_half_extents) },
 			.inverse_mass = 0.0f,
 			.elasticity = 0.0f,
 			.friction = 0.8f,
-		});
+		};
+		OBJECT_CREATE_COMPONENT(PhysicsBodyComponent, game_object_manager_ptr, root_object_handle, &collider);
 
 		PlayerControlComponent player_control = {
 			.move_speed = 200.0f,
@@ -252,7 +249,6 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 
 	//FCS TODO: Leaking the StaticModels by not adding them to this struct and cleaning them up later
 	*out_character = (Character) {
-		.collider = collider,
 		.root_object_handle	= root_object_handle,
 		.body_object_handle	= body_object_handle,
 		.head_object_handle = head_object_handle,
@@ -445,11 +441,13 @@ int main()
 	gpu_create_device(&window, &gpu_device);
 	const u32 swapchain_count = gpu_get_swapchain_count(&gpu_device);
 
-	// Init Physics Scene
-	PhysicsScene physics_scene = {};
-	physics_scene_init(&physics_scene);
+	// Game objects and physics
+	GameObjectManager game_object_manager = {};
+	GameObjectManager* game_object_manager_ptr = &game_object_manager;
+	game_object_manager_init(game_object_manager_ptr);
 
-	// TODO: Move physics body creation into the game_object system.
+	PhysicsScene* physics_scene = &game_object_manager.physics_scene;
+
 	{	// Add lots of bodies
 		const i32 sqrt_iter_count = 3;
 		for (i32 x = 0; x < sqrt_iter_count; ++x)
@@ -463,7 +461,7 @@ int main()
 				{	// Spheres
 
 					const f32 radius = 5.f;
-					physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+					game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 						.position = vec3_new(pos_x,50.f,pos_z),
 						.orientation = quat_identity,
 						.linear_velocity = vec3_new(0,0,0),
@@ -485,7 +483,7 @@ int main()
 					const f32 h = 5;
 					const f32 d = 5;
 
-					physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+					game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 						.position = vec3_new(pos_x,60.f,pos_z),
 						.orientation = quat_identity,
 						.linear_velocity = vec3_zero,
@@ -504,7 +502,7 @@ int main()
 	}
 
 	{
-		physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 			.position = vec3_new(0,20,0),
 			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
@@ -519,7 +517,7 @@ int main()
 		});
 
 		// Floor
-		physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 			.position = vec3_new(0,-50,0),
 			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
@@ -553,7 +551,7 @@ int main()
 				{
 					const f32 pos_z = 35.0f - center_offset + z * box_spacing;
 					const bool blue = (x + level + z) % 2 == 0;
-					physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+					game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 						.position = vec3_new(pos_x, height, pos_z),
 						.orientation = quat_identity,
 						.shape = stack_box,
@@ -566,7 +564,7 @@ int main()
 			}
 		}
 
-		PhysicsBody* body_a = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		PhysicsBody* body_a = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 			.position = vec3_new(0,120,0),
 			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
@@ -580,7 +578,7 @@ int main()
 			.debug_color = vec3_new(0,0,1),
 		});
 
-		PhysicsBody* body_b = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		PhysicsBody* body_b = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 			.position = vec3_new(20,120,0),
 			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
@@ -594,7 +592,7 @@ int main()
 			.debug_color = vec3_new(1,0,1),
 		});
 
-		PhysicsBody* body_c = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		PhysicsBody* body_c = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 			.position = vec3_new(40,120,0),
 			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
@@ -608,7 +606,7 @@ int main()
 			.debug_color = vec3_new(0,1,1),
 		});
 
-		PhysicsBody* body_d = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+		PhysicsBody* body_d = game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 			.position = vec3_new(60,120,0),
 			.orientation = quat_identity,
 			.linear_velocity = vec3_zero,
@@ -625,34 +623,34 @@ int main()
 		{
 			const Vec3 joint_world_space_anchor_ab = body_a->position;
 
-			PhysicsConstraint distance_constraint_ab = physics_constraint_distance_init(&physics_scene);
+			PhysicsConstraint distance_constraint_ab = physics_constraint_distance_init(physics_scene);
 			distance_constraint_ab.body_a = body_a;
 			distance_constraint_ab.anchor_a = physics_body_world_to_local_space(body_a, joint_world_space_anchor_ab);
 			distance_constraint_ab.body_b = body_b;
 			distance_constraint_ab.anchor_b = physics_body_world_to_local_space(body_b, joint_world_space_anchor_ab);
-			physics_scene_add_constraint(&physics_scene, &distance_constraint_ab);
+			physics_scene_add_constraint(physics_scene, &distance_constraint_ab);
 		}
 
 		{
 			const Vec3 joint_world_space_anchor_bc = body_b->position;
 
-			PhysicsConstraint distance_constraint_bc = physics_constraint_distance_init(&physics_scene);
+			PhysicsConstraint distance_constraint_bc = physics_constraint_distance_init(physics_scene);
 			distance_constraint_bc.body_a = body_b;
 			distance_constraint_bc.anchor_a = physics_body_world_to_local_space(body_b, joint_world_space_anchor_bc);
 			distance_constraint_bc.body_b = body_c;
 			distance_constraint_bc.anchor_b = physics_body_world_to_local_space(body_c, joint_world_space_anchor_bc);
-			physics_scene_add_constraint(&physics_scene, &distance_constraint_bc);
+			physics_scene_add_constraint(physics_scene, &distance_constraint_bc);
 		}
 
 		{
 			const Vec3 joint_world_space_anchor_cd = body_c->position;
 
-			PhysicsConstraint distance_constraint_cd = physics_constraint_distance_init(&physics_scene);
+			PhysicsConstraint distance_constraint_cd = physics_constraint_distance_init(physics_scene);
 			distance_constraint_cd.body_a = body_c;
 			distance_constraint_cd.anchor_a = physics_body_world_to_local_space(body_c, joint_world_space_anchor_cd);
 			distance_constraint_cd.body_b = body_d;
 			distance_constraint_cd.anchor_b = physics_body_world_to_local_space(body_d, joint_world_space_anchor_cd);
-			physics_scene_add_constraint(&physics_scene, &distance_constraint_cd);
+			physics_scene_add_constraint(physics_scene, &distance_constraint_cd);
 		}
 
 		{
@@ -667,7 +665,7 @@ int main()
 				vec3_new( 0.0f,     -s / 2.0f,   a)
 			};
 
-			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 				.position = vec3_new(0,5,0),
 				.orientation = quat_identity,
 				.linear_velocity = vec3_zero,
@@ -700,7 +698,7 @@ int main()
 				vec3_new( w, h,-d),
 			};
 
-			physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+			game_object_spawn_physics_body(game_object_manager_ptr, &(PhysicsBody) {
 				.position = vec3_new(-50,50,0),
 				.orientation = quat_identity,
 				.linear_velocity = vec3_zero,
@@ -719,13 +717,8 @@ int main()
 		}
 	}
 
-	//GameObject + Components Setup
-	GameObjectManager game_object_manager = {};
-	GameObjectManager* game_object_manager_ptr = &game_object_manager;
-	game_object_manager_init(game_object_manager_ptr);
-
 	Character character;
-	character_create(game_object_manager_ptr, &gpu_device, &physics_scene, &character);
+	character_create(game_object_manager_ptr, &gpu_device, &character);
 
 	// Set up Static Model
 	StaticModel static_model;
@@ -1252,7 +1245,7 @@ int main()
 
 		if (reset_simulation)
 		{
-			physics_scene_reset(&physics_scene);
+			physics_scene_reset(physics_scene);
 			for (i32 i = 0; i < ARRAY_COUNT(player_pose_objects); ++i)
 			{
 				OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, player_pose_objects[i])->trs = initial_player_pose[i];
@@ -1345,16 +1338,17 @@ int main()
 		const double anim_update_time_ms = time_seconds(anim_update_end_time - anim_update_start_time) * 1000;
 
 		// Update Physics scene
+		PhysicsBody* character_collider = OBJECT_GET_COMPONENT(PhysicsBodyComponent, game_object_manager_ptr, character.root_object_handle)->body;
 		if (!reset_simulation)
 		{
 			const TRS character_root = game_object_compute_global_transform(&game_object_manager, character.root_object_handle);
 			const Vec3 collider_target = character_collider_center(character_root);
 			// Sweep from the previous pose so contacts see the player's velocity, including sprinting.
-			character.collider->linear_velocity = delta_time > 0.0
-				? vec3_scale(vec3_sub(collider_target, character.collider->position), 1.0 / delta_time)
+			character_collider->linear_velocity = delta_time > 0.0
+				? vec3_scale(vec3_sub(collider_target, character_collider->position), 1.0 / delta_time)
 				: vec3_zero;
-			physics_scene_update(&physics_scene, delta_time);
-			character.collider->position = collider_target;
+			physics_scene_update(physics_scene, delta_time);
+			character_collider->position = collider_target;
 		}
 
 		// GUI
@@ -1676,10 +1670,10 @@ int main()
 		{
 			//FCS TODO: Need some directionality so we can see orientation/rotational changes on spheres...
 
-			for (i32 body_idx = 0; body_idx < sb_count(physics_scene.bodies); ++body_idx)
+			for (i32 body_idx = 0; body_idx < sb_count(physics_scene->bodies); ++body_idx)
 			{
-				const PhysicsBody* body = physics_scene.bodies[body_idx];
-				if (body == character.collider) { continue; } // The mech mesh represents this body.
+				const PhysicsBody* body = physics_scene->bodies[body_idx];
+				if (body == character_collider) { continue; } // The mech mesh represents this body.
 				switch (body->shape.type)
 				{
 					case SHAPE_TYPE_SPHERE: 
@@ -1823,7 +1817,7 @@ int main()
 
 	gpu_destroy_device(&gpu_device);
 
-	physics_scene_destroy(&physics_scene);
+	game_object_manager_destroy(game_object_manager_ptr);
 
 	task_system_shutdown(&task_system);
 

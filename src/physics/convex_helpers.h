@@ -334,7 +334,7 @@ void convex_hull_add_point(ConvexHull* in_convex_hull, const Vec3 in_point)
 {
 	// Find all triangles that face this point
 	sbuffer(i32) facing_tri_indices = NULL;
-	for (i32 i = sb_count(in_convex_hull->tris); i >= 0; --i)
+	for (i32 i = sb_count(in_convex_hull->tris) - 1; i >= 0; --i)
 	{
 		const ConvexTri tri = in_convex_hull->tris[i];
 		const Vec3 a = in_convex_hull->points[tri.a];

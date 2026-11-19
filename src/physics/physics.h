@@ -1591,11 +1591,20 @@ void physics_scene_init(PhysicsScene* out_physics_scene)
 	};
 }
 
+static void physics_body_destroy(PhysicsBody* body)
+{
+	if (body->shape.type == SHAPE_TYPE_CONVEX)
+	{
+		convex_hull_destroy(&body->shape.convex.hull);
+	}
+	FCS_MEM_FREE(body);
+}
+
 void physics_scene_destroy(PhysicsScene* in_physics_scene)
 {
 	for (i32 body_idx = 0; body_idx < sb_count(in_physics_scene->bodies); ++body_idx)
 	{
-		FCS_MEM_FREE(in_physics_scene->bodies[body_idx]);
+		physics_body_destroy(in_physics_scene->bodies[body_idx]);
 	}
 	sb_free(in_physics_scene->bodies);
 	sb_free(in_physics_scene->initial_motion);
@@ -1624,6 +1633,26 @@ PhysicsBody* physics_scene_add_body(PhysicsScene* in_physics_scene, const Physic
 	sb_push(in_physics_scene->initial_motion, initial);
 
 	return new_body;
+}
+
+void physics_scene_remove_body(PhysicsScene* scene, PhysicsBody* body)
+{
+	for (i32 i = 0; i < sb_count(scene->bodies); ++i)
+	{
+		if (scene->bodies[i] != body) { continue; }
+		for (i32 j = sb_count(scene->constraints) - 1; j >= 0; --j)
+		{
+			const PhysicsConstraint* constraint = &scene->constraints[j];
+			if (constraint->body_a == body || constraint->body_b == body)
+			{
+				sb_del(scene->constraints, j);
+			}
+		}
+		sb_del(scene->initial_motion, i);
+		sb_del(scene->bodies, i);
+		physics_body_destroy(body);
+		return;
+	}
 }
 
 void physics_scene_reset(PhysicsScene* scene)

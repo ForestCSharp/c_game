@@ -7,6 +7,7 @@
 #include "basic_types.h"
 #include "math/math_lib.h"
 #include "uniforms.h"
+#include "physics/physics.h"
 
 const i64 INVALID_INDEX = -1;
 
@@ -24,7 +25,10 @@ struct {\
 	sbuffer(i64) free_list;\
 } COMPONENT_DATA_VAR_NAME(type);
 
-#define DEFINE_COMPONENT_INTERFACE(type) \
+#define COPY_COMPONENT_VALUE(manager, value) (value)
+#define RELEASE_COMPONENT_VALUE(manager, component) ((void)0)
+#define DEFINE_COMPONENT_INTERFACE(type) DEFINE_COMPONENT_INTERFACE_WITH_LIFETIME(type, type, COPY_COMPONENT_VALUE, RELEASE_COMPONENT_VALUE)
+#define DEFINE_COMPONENT_INTERFACE_WITH_LIFETIME(type, input_type, create_value, release_value) \
 	typedef struct { i64 idx; } COMPONENT_HANDLE_STRUCT_NAME(type);\
 	type* game_object_manager_get_##type(GameObjectManager* manager, i64 component_idx)\
 	{\
@@ -37,8 +41,9 @@ struct {\
 		const i64 component_idx = object->component_ids[COMPONENT_TYPE(type)];\
 		return game_object_manager_get_##type(manager, component_idx);\
 	}\
-	COMPONENT_HANDLE_STRUCT_NAME(type) game_object_manager_create_##type(GameObjectManager* manager, type value)\
+	COMPONENT_HANDLE_STRUCT_NAME(type) game_object_manager_create_##type(GameObjectManager* manager, input_type input)\
 	{\
+		type value = create_value(manager, input);\
 		COMPONENT_HANDLE_STRUCT_NAME(type) out_handle = {};\
 		if (sb_count(manager->COMPONENT_DATA_VAR_NAME(type).free_list) > 0)\
 		{\
@@ -59,6 +64,7 @@ struct {\
 	{\
 		assert(idx > INVALID_INDEX && idx < sb_count(manager->COMPONENT_DATA_VAR_NAME(type).component_array));\
 		assert(manager->COMPONENT_DATA_VAR_NAME(type).component_array[idx].ref_count == 0);\
+		release_value(manager, &manager->COMPONENT_DATA_VAR_NAME(type).component_array[idx].component);\
 		sb_push(manager->COMPONENT_DATA_VAR_NAME(type).free_list, idx);\
 	}\
 	void game_object_manager_set_##type(GameObjectManager* manager, GameObjectHandle object_handle, COMPONENT_HANDLE_STRUCT_NAME(type)* component_handle)\
@@ -163,6 +169,11 @@ typedef struct CameraComponent
 	float fov;
 } CameraComponent;
 
+typedef struct PhysicsBodyComponent
+{
+	PhysicsBody* body;
+} PhysicsBodyComponent;
+
 typedef enum ComponentType
 {
 	COMPONENT_TYPE(TransformComponent),
@@ -171,6 +182,7 @@ typedef enum ComponentType
 	COMPONENT_TYPE(ObjectRenderDataComponent),
 	COMPONENT_TYPE(PlayerControlComponent),
 	COMPONENT_TYPE(CameraComponent),
+	COMPONENT_TYPE(PhysicsBodyComponent),
 	COMPONENT_TYPE_COUNT,
 } ComponentType;
 
@@ -182,6 +194,7 @@ typedef struct GameObject
 
 typedef struct GameObjectManager
 {
+	PhysicsScene physics_scene;
 	sbuffer(GameObject) game_object_array;
 	sbuffer(GameObjectHandle) game_object_free_list;
 	
@@ -191,6 +204,7 @@ typedef struct GameObjectManager
 	DEFINE_COMPONENT_STORAGE(ObjectRenderDataComponent);
 	DEFINE_COMPONENT_STORAGE(PlayerControlComponent);
 	DEFINE_COMPONENT_STORAGE(CameraComponent);
+	DEFINE_COMPONENT_STORAGE(PhysicsBodyComponent);
 
 } GameObjectManager;
 
@@ -201,16 +215,31 @@ DEFINE_COMPONENT_INTERFACE(ObjectRenderDataComponent);
 DEFINE_COMPONENT_INTERFACE(PlayerControlComponent);
 DEFINE_COMPONENT_INTERFACE(CameraComponent);
 
+static PhysicsBodyComponent physics_body_component_create(GameObjectManager* manager, const PhysicsBody* body)
+{
+	return (PhysicsBodyComponent){ .body = physics_scene_add_body(&manager->physics_scene, body) };
+}
+
+static void physics_body_component_release(GameObjectManager* manager, PhysicsBodyComponent* component)
+{
+	physics_scene_remove_body(&manager->physics_scene, component->body);
+	component->body = NULL;
+}
+
+DEFINE_COMPONENT_INTERFACE_WITH_LIFETIME(PhysicsBodyComponent, const PhysicsBody*, physics_body_component_create, physics_body_component_release);
+
 void game_object_manager_init(GameObjectManager* manager)
 {
 	assert(manager);
 	*manager = (GameObjectManager){};
+	physics_scene_init(&manager->physics_scene);
 }
 
 void game_object_manager_destroy(GameObjectManager* manager)
 {
 	assert(manager);
 
+	physics_scene_destroy(&manager->physics_scene);
 	sb_free(manager->game_object_array);
 	sb_free(manager->game_object_free_list);
 
@@ -225,6 +254,13 @@ void game_object_manager_destroy(GameObjectManager* manager)
 
 	sb_free(manager->COMPONENT_DATA_VAR_NAME(ObjectRenderDataComponent).component_array);
 	sb_free(manager->COMPONENT_DATA_VAR_NAME(ObjectRenderDataComponent).free_list);
+
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(PlayerControlComponent).component_array);
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(PlayerControlComponent).free_list);
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(CameraComponent).component_array);
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(CameraComponent).free_list);
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(PhysicsBodyComponent).component_array);
+	sb_free(manager->COMPONENT_DATA_VAR_NAME(PhysicsBodyComponent).free_list);
 }
 
 GameObjectHandle game_object_manager_add_object(GameObjectManager* manager)
@@ -240,6 +276,7 @@ GameObjectHandle game_object_manager_add_object(GameObjectManager* manager)
 	{
 		out_handle.idx = manager->game_object_free_list[0].idx;
 		sb_del(manager->game_object_free_list, 0);
+		manager->game_object_array[out_handle.idx] = new_object;
 	}
 	else
 	{
@@ -248,6 +285,13 @@ GameObjectHandle game_object_manager_add_object(GameObjectManager* manager)
 	}
 
 	return out_handle;
+}
+
+PhysicsBody* game_object_spawn_physics_body(GameObjectManager* manager, const PhysicsBody* body)
+{
+	const GameObjectHandle object = ADD_OBJECT(manager);
+	OBJECT_CREATE_COMPONENT(PhysicsBodyComponent, manager, object, body);
+	return OBJECT_GET_COMPONENT(PhysicsBodyComponent, manager, object)->body;
 }
 
 bool game_object_manager_is_valid_object(GameObjectManager* manager, GameObjectHandle in_handle)
@@ -261,6 +305,14 @@ void game_object_manager_remove_object(GameObjectManager* manager, GameObjectHan
 {
 	i64 obj_idx = in_handle.idx;
 	assert(obj_idx >= 0 && obj_idx < sb_count(manager->game_object_array));
+	if (!manager->game_object_array[obj_idx].is_valid) { return; }
+	OBJECT_SET_COMPONENT(PhysicsBodyComponent, manager, in_handle, NULL);
+	OBJECT_SET_COMPONENT(TransformComponent, manager, in_handle, NULL);
+	OBJECT_SET_COMPONENT(StaticModelComponent, manager, in_handle, NULL);
+	OBJECT_SET_COMPONENT(AnimatedModelComponent, manager, in_handle, NULL);
+	OBJECT_SET_COMPONENT(ObjectRenderDataComponent, manager, in_handle, NULL);
+	OBJECT_SET_COMPONENT(PlayerControlComponent, manager, in_handle, NULL);
+	OBJECT_SET_COMPONENT(CameraComponent, manager, in_handle, NULL);
 	manager->game_object_array[obj_idx].is_valid = false;
 	sb_push(manager->game_object_free_list, ((GameObjectHandle){.idx = obj_idx }));
 }
@@ -304,17 +356,14 @@ void game_object_render_data_setup(GameObjectManager* manager, GpuDevice* in_gpu
 {
 	ObjectRenderDataComponent object_render_data = {};
 
+	StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, manager, object_handle);
+	AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, manager, object_handle);
+	if (!static_model_component && !animated_model_component) { return; }
+
 	//For each backbuffer...
 	u32 swapchain_count = gpu_get_swapchain_count(in_gpu_device);
 	for (i32 swapchain_idx = 0; swapchain_idx < swapchain_count; ++swapchain_idx)
 	{
-		StaticModelComponent* static_model_component = OBJECT_GET_COMPONENT(StaticModelComponent, manager, object_handle);
-		AnimatedModelComponent* animated_model_component = OBJECT_GET_COMPONENT(AnimatedModelComponent, manager, object_handle);
-		if (!static_model_component && !animated_model_component)
-		{
-			continue;
-		}
-
 		// Shouldn't have both types of models
 		assert(static_model_component == NULL || animated_model_component == NULL);
 

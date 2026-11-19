@@ -31,6 +31,7 @@ bool test_contact_friction();
 bool test_contact_lift_off_and_bounce();
 bool test_kinematic_collider();
 bool test_physics_scene_reset();
+bool test_physics_scene_remove_body();
 bool test_arena_create_destroy();
 bool test_arena_alloc();
 bool test_arena_multiple_allocs();
@@ -61,6 +62,7 @@ int main()
 	success &= test_contact_lift_off_and_bounce();
 	success &= test_kinematic_collider();
 	success &= test_physics_scene_reset();
+	success &= test_physics_scene_remove_body();
 	success &= test_arena_create_destroy();
 	success &= test_arena_alloc();
 	success &= test_arena_multiple_allocs();
@@ -798,6 +800,40 @@ bool test_physics_scene_reset()
 		assert(scene.constraints[0].distance.cached_lambda.data[0] == 0.0f);
 		assert(scene.constraints[0].distance.baumgarte_bias == 0.0f);
 	}
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_physics_scene_remove_body()
+{
+	printf("  test_physics_scene_remove_body... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	PhysicsBody sphere = {
+		.orientation = quat_identity,
+		.inverse_mass = 1.0f,
+		.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 0.5f } },
+	};
+	PhysicsBody* links[3];
+	for (i32 i = 0; i < ARRAY_COUNT(links); ++i)
+	{
+		sphere.position.y = 2.0f * i;
+		links[i] = physics_scene_add_body(&scene, &sphere);
+	}
+	for (i32 i = 0; i < ARRAY_COUNT(links); ++i)
+	{
+		PhysicsConstraint joint = physics_constraint_distance_init(&scene);
+		joint.body_a = links[i];
+		joint.body_b = links[(i + 1) % ARRAY_COUNT(links)];
+		physics_scene_add_constraint(&scene, &joint);
+	}
+	physics_scene_remove_body(&scene, links[1]);
+	assert(sb_count(scene.bodies) == 2 && sb_count(scene.constraints) == 1);
+	assert(scene.constraints[0].body_a == links[2] && scene.constraints[0].body_b == links[0]);
+	physics_scene_update(&scene, 1.0f / 60.0f);
+	physics_scene_reset(&scene);
+	assert(links[0]->position.y == 0.0f && links[2]->position.y == 4.0f);
 	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;
