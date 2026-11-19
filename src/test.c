@@ -28,6 +28,7 @@ bool test_rotating_box_sweep();
 bool test_distance_joint_drift();
 bool test_orientation_lock();
 bool test_hinges();
+bool test_constant_velocity_joints();
 bool test_resting_contacts();
 bool test_manifold_points();
 bool test_manifold_warm_start();
@@ -65,6 +66,7 @@ int main()
 	success &= test_distance_joint_drift();
 	success &= test_orientation_lock();
 	success &= test_hinges();
+	success &= test_constant_velocity_joints();
 	success &= test_resting_contacts();
 	success &= test_manifold_points();
 	success &= test_manifold_warm_start();
@@ -737,6 +739,82 @@ bool test_hinges()
 		assert(vec3_dot(axis, quat_rotate_vec3(b->orientation, axis_b)) > 0.9999f);
 		assert(vec3_length(vec3_sub(pivot, physics_body_local_to_world_space(b, joint.anchor_b))) < 0.01f);
 		assert(quat_nearly_equal(a->orientation, sphere.orientation));
+		physics_scene_remove_body(&scene, a);
+		assert(sb_count(scene.constraints) == 0);
+		physics_scene_destroy(&scene);
+	}
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_constant_velocity_joints()
+{
+	printf("  test_constant_velocity_joints... ");
+	const Vec3 x = vec3_new(1, 0, 0), y = vec3_new(0, 1, 0), z = vec3_new(0, 0, 1);
+	const Vec3 pivot = vec3_new(4, 0, 0);
+	const Vec2 limits = vec2_new(0.4f, 0.8f);
+	for (i32 limited = 0; limited <= 1; ++limited)
+	{
+		PhysicsScene scene;
+		physics_scene_init(&scene);
+		const PhysicsBody mount = {
+			.shape = {.type = SHAPE_TYPE_SPHERE, .sphere = {.radius = 0.5f}},
+			.orientation = quat_new(z, 0.9f),
+		};
+		PhysicsBody* a = physics_scene_add_body(&scene, &mount);
+		PhysicsBody arm = mount;
+		arm.inverse_mass = 1;
+		arm.position = pivot;
+		arm.orientation = quat_new(vec3_new(1, 2, -3), 1.2f);
+		PhysicsBody* b = physics_scene_add_body(&scene, &arm);
+		PhysicsConstraint joint = limited ? physics_constraint_limited_cv_init(a, b, pivot, x, y, limits)
+			: physics_constraint_cv_init(a, b, pivot, x);
+		physics_scene_add_constraint(&scene, &joint);
+		for (i32 run = 0; run < 2; ++run)
+		{
+			// Drive around all four corners, releasing one stop while the other stays loaded.
+			const Vec3 free_axis = run == 0 ? y : z;
+			if (run == 1) { b->orientation = quat_scale(b->orientation, -1); }
+			f32 elapsed = 0;
+			for (i32 i = 0; i < 180; ++i)
+			{
+				const f32 dt = (i % 2) ? 1.0f / 40.0f : 1.0f / 120.0f;
+				const f32 sign_u = (i < 45 || i >= 135) ? 1.0f : -1.0f;
+				const f32 sign_v = i < 90 ? 1.0f : -1.0f;
+				if (limited) { b->angular_velocity = vec3_new(1.0f, sign_u * 4.0f, sign_v * 4.0f); }
+				else if (i == 0) { b->angular_velocity = vec3_add(vec3_scale(free_axis, 3.0f), x); }
+				physics_scene_update(&scene, dt);
+				elapsed += dt;
+				Quat delta = quat_mul(b->orientation, quat_inverse(arm.orientation));
+				if (delta.w < 0) { delta = quat_scale(delta, -1); }
+				assert(fabsf(delta.x) < 0.002f);
+				assert(vec3_length(vec3_sub(pivot, b->position)) < 0.001f);
+				if (limited)
+				{
+					const f32 u = 2.0f * asinf(delta.y), v = 2.0f * asinf(delta.z);
+					assert(fabsf(u) < limits.x + 0.003f && fabsf(v) < limits.y + 0.003f);
+					if (i % 45 == 44)
+					{
+						assert(fabsf(u - sign_u * limits.x) < 0.003f && fabsf(v - sign_v * limits.y) < 0.003f);
+					}
+				}
+				else { assert(fabsf(quat_dot(delta, quat_new(free_axis, 3.0f * elapsed))) > 0.99999f); }
+			}
+			physics_scene_reset(&scene);
+		}
+		// An existing twist error must also recover with no external drive.
+		b->orientation = quat_mul(quat_new(x, PI - 0.002f), arm.orientation);
+		for (i32 step = 0; step < 120; ++step) { physics_scene_update(&scene, 1.0f / 60.0f); }
+		const Quat recovered = quat_mul(b->orientation, quat_inverse(arm.orientation));
+		assert(fabsf(recovered.x) < 0.001f && vec3_length(b->angular_velocity) < 0.002f);
+		physics_scene_reset(&scene);
+
+		// Two moving bodies share a twist impulse, with initially different local frames.
+		a->inverse_mass = 1;
+		b->angular_velocity = vec3_scale(x, 4);
+		physics_scene_update(&scene, 1.0f / 60.0f);
+		assert(vec3_length(vec3_sub(a->angular_velocity, vec3_scale(x, 2))) < 0.001f);
+		assert(vec3_length(vec3_sub(b->angular_velocity, a->angular_velocity)) < 0.001f);
 		physics_scene_remove_body(&scene, a);
 		assert(sb_count(scene.constraints) == 0);
 		physics_scene_destroy(&scene);

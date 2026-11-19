@@ -467,6 +467,92 @@ static void spawn_box_chain(GameObjectManager* manager, Vec3 origin, bool lock_o
 	}
 }
 
+static void spawn_shoulder_demo(GameObjectManager* manager)
+{
+	const Vec3 pivot = vec3_new(180, 120, 0);
+	PhysicsBody* mount = game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = pivot, .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(3, 3, 3))},
+		.debug_color = vec3_new(0.15f, 0.65f, 0.55f),
+	});
+	const Vec3 arm_offset = vec3_new(16, 0, 0);
+	const Vec3 spin = vec3_new(0, 1.5f, 0);
+	PhysicsBody* arm = game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = vec3_add(pivot, arm_offset), .orientation = quat_identity,
+		.linear_velocity = vec3_cross(spin, arm_offset), .angular_velocity = spin,
+		.inverse_mass = 1, .friction = 0.5f,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(9, 3, 3))},
+		.debug_color = vec3_new(0.25f, 1.0f, 0.8f),
+	});
+	PhysicsConstraint shoulder = physics_constraint_limited_cv_init(mount, arm, pivot,
+		vec3_new(1, 0, 0), vec3_new(0, 1, 0), vec2_new(degrees_to_radians(35), degrees_to_radians(60)));
+	physics_scene_add_constraint(&manager->physics_scene, &shoulder);
+}
+
+static PhysicsBody* spawn_ragdoll_box(GameObjectManager* manager, Vec3 center, Quat orientation,
+	Vec3 half_extents, f32 inverse_mass, Vec3 color)
+{
+	return game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = center, .orientation = orientation,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(half_extents)},
+		.inverse_mass = inverse_mass, .friction = 0.8f, .debug_color = color,
+	});
+}
+
+static void spawn_ragdoll_demo(GameObjectManager* manager, Vec3 origin)
+{
+	PhysicsScene* scene = &manager->physics_scene;
+	// Tilt the whole starting pose so one foot hits first and the joints take a load.
+	const Quat pose = quat_new(vec3_new(1, 0, 0.4f), degrees_to_radians(18));
+	const Vec3 across = quat_rotate_vec3(pose, vec3_new(1, 0, 0));
+	const Vec3 up = quat_rotate_vec3(pose, vec3_new(0, 1, 0));
+	PhysicsBody* torso = spawn_ragdoll_box(manager, origin, pose,
+		vec3_new(10, 16, 6), 0.5f, vec3_new(0.55f, 0.28f, 0.85f));
+	PhysicsBody* head = spawn_ragdoll_box(manager,
+		physics_body_local_to_world_space(torso, vec3_new(0, 27, 0)), pose,
+		vec3_new(6.8f, 6.8f, 6.8f), 2.0f, vec3_new(1.0f, 0.82f, 0.57f));
+	const Vec3 neck_pivot = physics_body_local_to_world_space(torso, vec3_new(0, 19, 0));
+	PhysicsConstraint neck = physics_constraint_limited_hinge_init(torso, head, neck_pivot, across,
+		degrees_to_radians(-30), degrees_to_radians(30));
+	physics_scene_add_constraint(scene, &neck);
+
+	for (i32 side = -1; side <= 1; side += 2)
+	{
+		PhysicsBody* upper_arm = spawn_ragdoll_box(manager,
+			physics_body_local_to_world_space(torso, vec3_new(side * 21, 10, 0)), pose,
+			vec3_new(6, 3.6f, 3.6f), 1.8f, vec3_new(0.78f, 0.56f, 1.0f));
+		PhysicsBody* forearm = spawn_ragdoll_box(manager,
+			physics_body_local_to_world_space(torso, vec3_new(side * 35, 10, 0)), pose,
+			vec3_new(6, 3.6f, 3.6f), 2.25f, vec3_new(0.88f, 0.72f, 1.0f));
+		const Vec3 shoulder_pivot = physics_body_local_to_world_space(torso, vec3_new(side * 13.6f, 10, 0));
+		PhysicsConstraint shoulder = physics_constraint_limited_cv_init(torso, upper_arm, shoulder_pivot,
+			vec3_scale(across, side), up, vec2_new(degrees_to_radians(55), degrees_to_radians(70)));
+		physics_scene_add_constraint(scene, &shoulder);
+
+		// Put the elbow on the front edge so the forearm can fold forward past 90 degrees.
+		const Vec3 elbow_pivot = physics_body_local_to_world_space(torso, vec3_new(side * 28, 10, 3.6f));
+		PhysicsConstraint elbow = physics_constraint_limited_hinge_init(upper_arm, forearm,
+			elbow_pivot, vec3_scale(up, -side), 0, degrees_to_radians(135));
+		physics_scene_add_constraint(scene, &elbow);
+
+		const f32 leg_x = side * 6.6f;
+		PhysicsBody* thigh = spawn_ragdoll_box(manager,
+			physics_body_local_to_world_space(torso, vec3_new(leg_x, -29.5f, 0)), pose,
+			vec3_new(4, 7.5f, 4), 1.8f, vec3_new(0.37f, 0.4f, 0.83f));
+		PhysicsBody* shin = spawn_ragdoll_box(manager,
+			physics_body_local_to_world_space(torso, vec3_new(leg_x, -46.5f, 0)), pose,
+			vec3_new(4, 7.5f, 4), 2.25f, vec3_new(0.52f, 0.57f, 0.94f));
+		const Vec3 hip_pivot = physics_body_local_to_world_space(torso, vec3_new(leg_x, -19, 0));
+		PhysicsConstraint hip = physics_constraint_limited_hinge_init(torso, thigh, hip_pivot, across,
+			degrees_to_radians(-55), degrees_to_radians(40));
+		physics_scene_add_constraint(scene, &hip);
+		const Vec3 knee_pivot = physics_body_local_to_world_space(torso, vec3_new(leg_x, -38, -4));
+		PhysicsConstraint knee = physics_constraint_limited_hinge_init(thigh, shin,
+			knee_pivot, across, 0, degrees_to_radians(125));
+		physics_scene_add_constraint(scene, &knee);
+	}
+}
+
 int main()
 {
 	// Init multithreaded task system
@@ -613,6 +699,8 @@ int main()
 
 		spawn_box_chain(game_object_manager_ptr, vec3_new(0, 120, 0), false);
 		spawn_box_chain(game_object_manager_ptr, vec3_new(90, 120, 0), true);
+		spawn_shoulder_demo(game_object_manager_ptr);
+		spawn_ragdoll_demo(game_object_manager_ptr, vec3_new(250, 62, 0));
 
 		{
 			// side length s
