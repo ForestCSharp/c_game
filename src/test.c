@@ -29,6 +29,8 @@ bool test_resting_contacts();
 bool test_joint_supported_by_contact();
 bool test_contact_friction();
 bool test_contact_lift_off_and_bounce();
+bool test_kinematic_collider();
+bool test_physics_scene_reset();
 bool test_arena_create_destroy();
 bool test_arena_alloc();
 bool test_arena_multiple_allocs();
@@ -57,6 +59,8 @@ int main()
 	success &= test_joint_supported_by_contact();
 	success &= test_contact_friction();
 	success &= test_contact_lift_off_and_bounce();
+	success &= test_kinematic_collider();
+	success &= test_physics_scene_reset();
 	success &= test_arena_create_destroy();
 	success &= test_arena_alloc();
 	success &= test_arena_multiple_allocs();
@@ -705,6 +709,95 @@ bool test_contact_lift_off_and_bounce()
 	physics_scene_update(&scene, dt);
 	assert(fabsf(box->linear_velocity.y - 0.8f * (12.0f + 10.0f * dt)) < 0.001f);
 	assert(box->position.y > 0.5f);
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_kinematic_collider()
+{
+	printf("  test_kinematic_collider... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	const Shape box = {
+		.type = SHAPE_TYPE_BOX,
+		.box = box_shape_create(vec3_new(1, 1, 1)),
+	};
+	PhysicsBody* player = physics_scene_add_body(&scene, &(PhysicsBody) {
+		.shape = box, .orientation = quat_identity, .inverse_mass = 0.0f,
+		.position = vec3_new(-4, 0, 0), .linear_velocity = vec3_new(500, 0, 0),
+	});
+	PhysicsBody* crate = physics_scene_add_body(&scene, &(PhysicsBody) {
+		.shape = box, .orientation = quat_identity, .inverse_mass = 1.0f,
+	});
+	// At sprint speed the player would cross the entire crate in one frame.
+	const f32 dt = 1.0f / 60.0f;
+	physics_scene_update(&scene, dt);
+	assert(fabsf(player->position.x - (-4.0f + 500.0f * dt)) < 0.0001f);
+	assert(player->position.y == 0 && player->linear_velocity.x == 500);
+	assert(vec3_nearly_equal(player->angular_velocity, vec3_zero));
+	assert(crate->position.x > player->position.x && crate->linear_velocity.x > 0);
+
+	// Stop input and send the crate back into the stationary player.
+	const Vec3 stopped = player->position;
+	player->linear_velocity = vec3_zero;
+	crate->position = vec3_add(stopped, vec3_new(2, 0, 0));
+	crate->orientation = quat_identity;
+	crate->angular_velocity = vec3_zero;
+	crate->linear_velocity = vec3_new(-10, 0, 0);
+	physics_scene_update(&scene, dt);
+	assert(vec3_nearly_equal(player->position, stopped));
+	assert(vec3_nearly_equal(player->linear_velocity, vec3_zero));
+	assert(vec3_nearly_equal(player->angular_velocity, vec3_zero));
+	assert(crate->linear_velocity.x > -0.01f);
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_physics_scene_reset()
+{
+	printf("  test_physics_scene_reset... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	const PhysicsBody initial = {
+		.position = vec3_new(0, 3, 0),
+		.orientation = quat_new(vec3_new(0, 1, 0), 0.5f),
+		.linear_velocity = vec3_new(1, 0, 0),
+		.angular_velocity = vec3_new(0, 2, 0),
+		.inverse_mass = 1.0f,
+		.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 0.5f } },
+	};
+	PhysicsBody* body = physics_scene_add_body(&scene, &initial);
+	PhysicsBody base = initial;
+	base.position = vec3_zero;
+	base.inverse_mass = 0.0f;
+	base.angular_velocity = vec3_zero;
+	PhysicsBody* support = physics_scene_add_body(&scene, &base);
+	PhysicsConstraint joint = physics_constraint_distance_init(&scene);
+	joint.body_a = support;
+	joint.body_b = body;
+	joint.anchor_a = vec3_new(0, 2, 0);
+	physics_scene_add_constraint(&scene, &joint);
+
+	Vec3 first_run_position = vec3_zero;
+	for (i32 run = 0; run < 2; ++run)
+	{
+		for (i32 step = 0; step < 12; ++step) { physics_scene_update(&scene, 1.0f / 60.0f); }
+		if (run == 0) { first_run_position = body->position; }
+		else { assert(vec3_nearly_equal(first_run_position, body->position)); }
+		assert(!vec3_nearly_equal(body->position, initial.position));
+		assert(scene.constraints[0].distance.cached_lambda.data[0] != 0.0f);
+
+		physics_scene_reset(&scene);
+		assert(vec3_nearly_equal(body->position, initial.position));
+		assert(quat_nearly_equal(body->orientation, initial.orientation));
+		assert(vec3_nearly_equal(body->linear_velocity, initial.linear_velocity));
+		assert(vec3_nearly_equal(body->angular_velocity, initial.angular_velocity));
+		assert(vec3_nearly_equal(support->position, base.position));
+		assert(scene.constraints[0].distance.cached_lambda.data[0] == 0.0f);
+		assert(scene.constraints[0].distance.baumgarte_bias == 0.0f);
+	}
 	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;

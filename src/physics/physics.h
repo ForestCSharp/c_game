@@ -841,10 +841,9 @@ void physics_body_apply_impulse(PhysicsBody* in_body, Vec3 in_impulse, Vec3 in_l
 
 void physics_body_update(PhysicsBody* in_body, f32 in_delta_time)
 {	
-	if (in_body->inverse_mass <= 0.f) { return; }
-
-	// Update position based on linear velocity
+	// An infinite-mass body can still translate at a game-controlled velocity.
 	in_body->position = vec3_add(in_body->position, vec3_scale(in_body->linear_velocity, in_delta_time));
+	if (in_body->inverse_mass <= 0.f) { return; }
 
 	// Update orientation and position based on angular velocity
 	Vec3 center_of_mass = physics_body_get_center_of_mass_world(in_body);
@@ -1565,9 +1564,18 @@ void physics_penetration_solve(PhysicsConstraintPenetration* joint)
 	physics_body_apply_impulse_at_offset(joint->body_b, impulse, joint->offset_b);
 }
 
+typedef struct PhysicsBodyMotion
+{
+	Vec3 position;
+	Quat orientation;
+	Vec3 linear_velocity;
+	Vec3 angular_velocity;
+} PhysicsBodyMotion;
+
 typedef struct PhysicsScene
 {
 	sbuffer(PhysicsBody*) bodies;
+	sbuffer(PhysicsBodyMotion) initial_motion;
 	sbuffer(PhysicsConstraint) constraints;
 	Arena* arena;
 } PhysicsScene;
@@ -1590,6 +1598,7 @@ void physics_scene_destroy(PhysicsScene* in_physics_scene)
 		FCS_MEM_FREE(in_physics_scene->bodies[body_idx]);
 	}
 	sb_free(in_physics_scene->bodies);
+	sb_free(in_physics_scene->initial_motion);
 	sb_free(in_physics_scene->constraints);
 	arena_destroy(&(in_physics_scene->arena));
 }
@@ -1606,8 +1615,40 @@ PhysicsBody* physics_scene_add_body(PhysicsScene* in_physics_scene, const Physic
 
 	*new_body = *in_body;
 	sb_push(in_physics_scene->bodies, new_body);
+	const PhysicsBodyMotion initial = {
+		.position = new_body->position,
+		.orientation = new_body->orientation,
+		.linear_velocity = new_body->linear_velocity,
+		.angular_velocity = new_body->angular_velocity,
+	};
+	sb_push(in_physics_scene->initial_motion, initial);
 
 	return new_body;
+}
+
+void physics_scene_reset(PhysicsScene* scene)
+{
+	for (i32 i = 0; i < sb_count(scene->bodies); ++i)
+	{
+		PhysicsBody* body = scene->bodies[i];
+		const PhysicsBodyMotion initial = scene->initial_motion[i];
+		body->position = initial.position;
+		body->orientation = initial.orientation;
+		body->linear_velocity = initial.linear_velocity;
+		body->angular_velocity = initial.angular_velocity;
+	}
+
+	for (i32 i = 0; i < sb_count(scene->constraints); ++i)
+	{
+		PhysicsConstraint* constraint = &scene->constraints[i];
+		switch (constraint->type)
+		{
+			case PHYSICS_CONSTRAINT_TYPE_DISTANCE:
+				vecn_zero_in_place(&constraint->distance.cached_lambda);
+				constraint->distance.baumgarte_bias = 0.0f;
+				break;
+		}
+	}
 }
 
 void physics_scene_add_constraint(PhysicsScene* in_physics_scene, PhysicsConstraint* in_constraint)

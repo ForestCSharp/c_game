@@ -71,6 +71,7 @@ void animation_update_task(void* in_arg)
 
 typedef struct Character
 {
+	PhysicsBody* collider;
 	GameObjectHandle root_object_handle;
 	GameObjectHandle body_object_handle;
 	GameObjectHandle head_object_handle;
@@ -82,11 +83,18 @@ typedef struct Character
 
 } Character;
 
-void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_gpu_device, Character* out_character)
+// The mech's root is at its torso. Center the upright collider between its head and feet.
+static Vec3 character_collider_center(TRS root)
+{
+	return vec3_add(root.translation, vec3_new(0, -4.5f * root.scale.y, 0));
+}
+
+void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_gpu_device, PhysicsScene* physics_scene, Character* out_character)
 {
 	assert(out_character != NULL);
 
-	const Vec3 character_root_position = vec3_new(0,50,-15);
+	const Vec3 character_root_position = vec3_new(0,75,150);
+	PhysicsBody* collider;
 
 	GameObjectHandle root_object_handle			= ADD_OBJECT(game_object_manager_ptr);
 	GameObjectHandle body_object_handle			= ADD_OBJECT(game_object_manager_ptr);
@@ -106,6 +114,15 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 			.parent = {},
 		};
 		OBJECT_CREATE_COMPONENT(TransformComponent, game_object_manager_ptr, root_object_handle, root_transform);
+		const Vec3 collider_half_extents = vec3_mul_componentwise(vec3_new(4.5f, 8.0f, 4.5f), root_transform.trs.scale);
+		collider = physics_scene_add_body(physics_scene, &(PhysicsBody) {
+			.position = character_collider_center(root_transform.trs),
+			.orientation = quat_identity,
+			.shape = { .type = SHAPE_TYPE_BOX, .box = box_shape_create(collider_half_extents) },
+			.inverse_mass = 0.0f,
+			.elasticity = 0.0f,
+			.friction = 0.8f,
+		});
 
 		PlayerControlComponent player_control = {
 			.move_speed = 200.0f,
@@ -235,6 +252,7 @@ void character_create(GameObjectManager* game_object_manager_ptr, GpuDevice* in_
 
 	//FCS TODO: Leaking the StaticModels by not adding them to this struct and cleaning them up later
 	*out_character = (Character) {
+		.collider = collider,
 		.root_object_handle	= root_object_handle,
 		.body_object_handle	= body_object_handle,
 		.head_object_handle = head_object_handle,
@@ -431,6 +449,7 @@ int main()
 	PhysicsScene physics_scene = {};
 	physics_scene_init(&physics_scene);
 
+	// TODO: Move physics body creation into the game_object system.
 	{	// Add lots of bodies
 		const i32 sqrt_iter_count = 3;
 		for (i32 x = 0; x < sqrt_iter_count; ++x)
@@ -706,7 +725,7 @@ int main()
 	game_object_manager_init(game_object_manager_ptr);
 
 	Character character;
-	character_create(game_object_manager_ptr, &gpu_device, &character);
+	character_create(game_object_manager_ptr, &gpu_device, &physics_scene, &character);
 
 	// Set up Static Model
 	StaticModel static_model;
@@ -1135,6 +1154,15 @@ int main()
 
 	bool show_mouse = true;
 	window_show_mouse_cursor(&window, show_mouse);
+	bool reset_key_was_down = false;
+	const GameObjectHandle player_pose_objects[] = {
+		character.root_object_handle, character.legs_object_handle, character.camera_root_object_handle,
+	};
+	TRS initial_player_pose[ARRAY_COUNT(player_pose_objects)];
+	for (i32 i = 0; i < ARRAY_COUNT(player_pose_objects); ++i)
+	{
+		initial_player_pose[i] = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, player_pose_objects[i])->trs;
+	}
 
 	GpuCommandBuffer command_buffers[swapchain_count];
 	for (i32 command_buffer_idx = 0; command_buffer_idx < swapchain_count; ++command_buffer_idx)
@@ -1203,6 +1231,14 @@ int main()
 		gui_begin_frame(&gui_context, gui_frame_state);
 		debug_draw_begin_frame(&debug_draw_context, current_frame);
 
+		const bool reset_key_down = window_input_pressed(&window, 'R');
+		bool reset_simulation = reset_key_down && !reset_key_was_down;
+		reset_key_was_down = reset_key_down;
+		if (show_mouse && gui_button(&gui_context, "Reset simulation (R)", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
+		{
+			reset_simulation = true;
+		}
+
 		if (!show_mouse) 
 		{
 			int x,y;
@@ -1214,7 +1250,15 @@ int main()
 			window_set_mouse_pos(&window, x + width/2, y + height/2);
 		}
 
-		if (!show_mouse)
+		if (reset_simulation)
+		{
+			physics_scene_reset(&physics_scene);
+			for (i32 i = 0; i < ARRAY_COUNT(player_pose_objects); ++i)
+			{
+				OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, player_pose_objects[i])->trs = initial_player_pose[i];
+			}
+		}
+		else if (!show_mouse)
 		{
 			character_update(&(CharacterUpdateData) {
 				.character = &character,
@@ -1301,16 +1345,21 @@ int main()
 		const double anim_update_time_ms = time_seconds(anim_update_end_time - anim_update_start_time) * 1000;
 
 		// Update Physics scene
-		physics_scene_update(&physics_scene, delta_time);
+		if (!reset_simulation)
+		{
+			const TRS character_root = game_object_compute_global_transform(&game_object_manager, character.root_object_handle);
+			const Vec3 collider_target = character_collider_center(character_root);
+			// Sweep from the previous pose so contacts see the player's velocity, including sprinting.
+			character.collider->linear_velocity = delta_time > 0.0
+				? vec3_scale(vec3_sub(collider_target, character.collider->position), 1.0 / delta_time)
+				: vec3_zero;
+			physics_scene_update(&physics_scene, delta_time);
+			character.collider->position = collider_target;
+		}
 
 		// GUI
 		if (show_mouse)
 		{
-			if (gui_button(&gui_context, "Btn 1", vec2_new(15, 50), vec2_new(270, 50)) == GUI_CLICKED)
-			{
-				printf("Clicked First Button\n");
-			}
-
 			if (gui_button(&gui_context, "Btn 2", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
 			{
 				printf("Holding Second Button\n");
@@ -1630,6 +1679,7 @@ int main()
 			for (i32 body_idx = 0; body_idx < sb_count(physics_scene.bodies); ++body_idx)
 			{
 				const PhysicsBody* body = physics_scene.bodies[body_idx];
+				if (body == character.collider) { continue; } // The mech mesh represents this body.
 				switch (body->shape.type)
 				{
 					case SHAPE_TYPE_SPHERE: 
