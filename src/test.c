@@ -25,6 +25,10 @@ bool test_matn_from_matmn();
 bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
 bool test_distance_joint_drift();
+bool test_resting_contacts();
+bool test_joint_supported_by_contact();
+bool test_contact_friction();
+bool test_contact_lift_off_and_bounce();
 bool test_arena_create_destroy();
 bool test_arena_alloc();
 bool test_arena_multiple_allocs();
@@ -49,6 +53,10 @@ int main()
 	success &= test_lcp_op_begin_end();
 	success &= test_rotating_box_sweep();
 	success &= test_distance_joint_drift();
+	success &= test_resting_contacts();
+	success &= test_joint_supported_by_contact();
+	success &= test_contact_friction();
+	success &= test_contact_lift_off_and_bounce();
 	success &= test_arena_create_destroy();
 	success &= test_arena_alloc();
 	success &= test_arena_multiple_allocs();
@@ -558,6 +566,145 @@ bool test_distance_joint_drift()
 	assert(fabsf(gap - 0.1f) < 0.001f);
 	assert(fabsf(joint.body_b->linear_velocity.y) < 0.001f);
 
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+// Both fixtures have their support surface at y = 0 and touch at center height 0.5.
+static PhysicsBody* test_contact_scene(PhysicsScene* scene, ShapeType shape, f32 height)
+{
+	physics_scene_init(scene);
+	PhysicsBody support = {
+		.orientation = quat_identity,
+		.friction = 1.0f,
+		.elasticity = 1.0f,
+	};
+	PhysicsBody body = support;
+	if (shape == SHAPE_TYPE_SPHERE)
+	{
+		body.shape = support.shape = (Shape){ .type = shape, .sphere = { .radius = 0.5f } };
+		support.position.y = -0.5f;
+	}
+	else
+	{
+		body.shape = (Shape){ .type = shape, .box = box_shape_create(vec3_new(0.5f, 0.5f, 0.5f)) };
+		support.shape = (Shape){ .type = shape, .box = box_shape_create(vec3_new(20, 1, 20)) };
+		support.position.y = -1.0f;
+	}
+	physics_scene_add_body(scene, &support);
+	body.position.y = height;
+	body.inverse_mass = 1.0f;
+	return physics_scene_add_body(scene, &body);
+}
+
+bool test_resting_contacts()
+{
+	printf("  test_resting_contacts... ");
+	const f32 dt = 1.0f / 60.0f;
+	const ShapeType shapes[] = { SHAPE_TYPE_BOX, SHAPE_TYPE_SPHERE };
+	for (i32 i = 0; i < ARRAY_COUNT(shapes); ++i)
+	{
+		PhysicsScene scene;
+		PhysicsBody* body = test_contact_scene(&scene, shapes[i], 0.46f);
+		PhysicsBody* support = scene.bodies[0];
+		for (i32 reversed = 0; reversed < 2; ++reversed)
+		{
+			PhysicsContact contact = {};
+			assert(physics_bodies_intersect_dt(reversed ? body : support, reversed ? support : body, dt, &contact));
+			assert(contact.time_of_impact == 0.0f);
+			assert(fabsf(contact.separation_distance + 0.04f) < 0.0001f);
+			assert(fabsf(contact.normal.y - (reversed ? 1.0f : -1.0f)) < 0.0001f);
+			PhysicsConstraintPenetration joint = physics_penetration_pre_solve(&contact, dt);
+			physics_penetration_solve(&joint);
+			assert(fabsf(body->linear_velocity.y - 0.3f) < 0.0001f);
+			body->linear_velocity = vec3_zero;
+			body->angular_velocity = vec3_zero;
+		}
+		for (i32 step = 0; step < 360; ++step)
+		{
+			physics_scene_update(&scene, dt);
+			if (step >= 120)
+			{
+				assert(fabsf(physics_body_get_bounds(body).min.y + 0.02f) < 0.001f);
+				assert(fabsf(body->linear_velocity.y) < 0.001f);
+			}
+		}
+		physics_scene_destroy(&scene);
+	}
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_joint_supported_by_contact()
+{
+	printf("  test_joint_supported_by_contact... ");
+	PhysicsScene scene;
+	PhysicsBody* base = test_contact_scene(&scene, SHAPE_TYPE_BOX, 0.49f);
+	PhysicsBody load = *base;
+	load.position.y = 2.5f;
+	PhysicsConstraint joint = physics_constraint_distance_init(&scene);
+	joint.body_a = base;
+	joint.anchor_a = vec3_new(0, 2, 0);
+	joint.body_b = physics_scene_add_body(&scene, &load);
+	physics_scene_add_constraint(&scene, &joint);
+
+	// Contact support must reach the load through the joint within this same step.
+	physics_scene_update(&scene, 1.0f / 60.0f);
+	assert(fabsf(base->linear_velocity.y) < 0.001f);
+	assert(fabsf(joint.body_b->linear_velocity.y) < 0.02f);
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_contact_friction()
+{
+	printf("  test_contact_friction... ");
+	const f32 dt = 1.0f / 60.0f;
+	const f32 coefficients[] = { 0.0f, 0.8f };
+	for (i32 i = 0; i < ARRAY_COUNT(coefficients); ++i)
+	{
+		PhysicsScene scene;
+		PhysicsBody* box = test_contact_scene(&scene, SHAPE_TYPE_BOX, 0.5f);
+		box->friction = coefficients[i];
+		box->elasticity = 0.0f;
+		box->linear_velocity = vec3_new(1.2f, 0.0f, 1.6f);
+		physics_scene_update(&scene, dt);
+		// Sliding diagonally exercises the combined bound on both tangent impulses.
+		f32 speed = hypotf(box->linear_velocity.x, box->linear_velocity.z);
+		assert(fabsf(speed - (2.0f - box->friction * 10.0f * dt)) < 0.001f);
+		for (i32 step = 1; step < 60; ++step)
+		{
+			physics_scene_update(&scene, dt);
+		}
+		speed = hypotf(box->linear_velocity.x, box->linear_velocity.z);
+		if (box->friction > 0.0f) { assert(speed < 0.3f); }
+		else { assert(fabsf(speed - 2.0f) < 0.01f); }
+		physics_scene_destroy(&scene);
+	}
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_contact_lift_off_and_bounce()
+{
+	printf("  test_contact_lift_off_and_bounce... ");
+	const f32 dt = 1.0f / 60.0f;
+	PhysicsScene scene;
+	PhysicsBody* box = test_contact_scene(&scene, SHAPE_TYPE_BOX, 0.49f);
+	box->linear_velocity = vec3_new(1.0f, 2.0f, 0.0f);
+	physics_scene_update(&scene, dt);
+	assert(fabsf(box->linear_velocity.y - (2.0f - 10.0f * dt)) < 0.0001f);
+	assert(fabsf(box->linear_velocity.x - 1.0f) < 0.0001f);
+	assert(box->position.y > 0.5f);
+
+	box->position = vec3_new(0.0f, 0.6f, 0.0f);
+	box->linear_velocity = vec3_new(0.0f, -12.0f, 0.0f);
+	box->elasticity = 0.8f;
+	physics_scene_update(&scene, dt);
+	assert(fabsf(box->linear_velocity.y - 0.8f * (12.0f + 10.0f * dt)) < 0.001f);
+	assert(box->position.y > 0.5f);
 	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;

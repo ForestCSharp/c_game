@@ -197,7 +197,7 @@ typedef struct PhysicsContact
 	Vec3 point_on_a_local;
 	Vec3 point_on_b_local;
 
-	Vec3 normal;
+	Vec3 normal; // Points from B toward A.
 	f32 separation_distance;
 	f32 time_of_impact;
 
@@ -821,19 +821,22 @@ void physics_body_apply_impulse_angular(PhysicsBody* in_body, Vec3 in_impulse)
 	}
 }
 
+// World-space offset measured from the body's center of mass.
+Vec3 physics_body_velocity_at_offset(const PhysicsBody* body, Vec3 offset)
+{
+	return vec3_add(body->linear_velocity, vec3_cross(body->angular_velocity, offset));
+}
+
+void physics_body_apply_impulse_at_offset(PhysicsBody* body, Vec3 impulse, Vec3 offset)
+{
+	physics_body_apply_impulse_linear(body, impulse);
+	physics_body_apply_impulse_angular(body, vec3_cross(offset, impulse));
+}
+
 void physics_body_apply_impulse(PhysicsBody* in_body, Vec3 in_impulse, Vec3 in_location)
 {
-	// Apply linear impulse
-	physics_body_apply_impulse_linear(in_body, in_impulse);
-
-	// Get center of mass
-	const Vec3 center_of_mass = physics_body_get_center_of_mass_world(in_body);	
-	// Get direction vector to location from center of mass
-	const Vec3 r = vec3_sub(in_location, center_of_mass);
-	// Compute angular impulse based on the cross product of that direction vector and your impulse 
-	const Vec3 impulse_angular = vec3_cross(r, in_impulse);
-	// Apply angular impulse
-	physics_body_apply_impulse_angular(in_body, impulse_angular);
+	const Vec3 offset = vec3_sub(in_location, physics_body_get_center_of_mass_world(in_body));
+	physics_body_apply_impulse_at_offset(in_body, in_impulse, offset);
 }
 
 void physics_body_update(PhysicsBody* in_body, f32 in_delta_time)
@@ -919,6 +922,7 @@ bool physics_body_intersect_sphere_sphere(
 	const f32 in_delta_time,
 	Vec3* out_point_on_a,
 	Vec3* out_point_on_b,
+	Vec3* out_normal,
 	f32* out_time_of_impact
 )
 {
@@ -967,7 +971,14 @@ bool physics_body_intersect_sphere_sphere(
 
 	const Vec3 new_pos_a = vec3_add(in_pos_a, vec3_scale(in_vel_a, time_of_impact));
 	const Vec3 new_pos_b = vec3_add(in_pos_b, vec3_scale(in_vel_b, time_of_impact));
-	const Vec3 a_to_b_norm = vec3_normalize(vec3_sub(new_pos_b, new_pos_a));
+	Vec3 a_to_b_norm = vec3_normalize(vec3_sub(new_pos_b, new_pos_a));
+	if (vec3_length_squared(a_to_b_norm) == 0.0f)
+	{
+		// Coincident centers have no geometric normal. Use the direction of separation.
+		a_to_b_norm = vec3_length_squared(relative_velocity) > 0.0f
+			? vec3_normalize(vec3_negate(relative_velocity)) : vec3_new(1, 0, 0);
+	}
+	*out_normal = vec3_negate(a_to_b_norm);
 
 	*out_point_on_a = vec3_add(new_pos_a, vec3_scale(a_to_b_norm, in_sphere_a->radius));
 	*out_point_on_b = vec3_sub(new_pos_b, vec3_scale(a_to_b_norm, in_sphere_b->radius));
@@ -986,15 +997,16 @@ bool physics_bodies_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, Ph
 		const Vec3 normal = vec3_normalize(vec3_sub(pt_on_b, pt_on_a));
 
 		const Vec3 biased_normal = vec3_scale(normal,bias);
-		pt_on_a = vec3_sub(pt_on_a, biased_normal);
-		pt_on_b = vec3_add(pt_on_b, biased_normal);
+		// EPA witnesses lie on the expanded shapes. Move them back to the surfaces.
+		pt_on_a = vec3_add(pt_on_a, biased_normal);
+		pt_on_b = vec3_sub(pt_on_b, biased_normal);
 
 		in_contact->normal = normal;
 		in_contact->point_on_a_world = pt_on_a;
 		in_contact->point_on_b_world = pt_on_b;
 		in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
 		in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);
-		in_contact->separation_distance = -vec3_length(vec3_sub(pt_on_a, pt_on_b));
+		in_contact->separation_distance = vec3_dot(vec3_sub(pt_on_a, pt_on_b), normal);
 		return true;
 	}
 
@@ -1089,7 +1101,8 @@ bool physics_bodies_intersect_dt(PhysicsBody* in_body_a, PhysicsBody* in_body_b,
 			vel_b,
 			in_delta_time, 
 			&in_contact->point_on_a_world, 
-			&in_contact->point_on_b_world, 
+			&in_contact->point_on_b_world,
+			&in_contact->normal,
 			&in_contact->time_of_impact)
 		)
 		{
@@ -1097,10 +1110,9 @@ bool physics_bodies_intersect_dt(PhysicsBody* in_body_a, PhysicsBody* in_body_b,
 			physics_body_update(in_body_a, in_contact->time_of_impact);
 			physics_body_update(in_body_b, in_contact->time_of_impact);
 
-			// Compute local space points and normal
+			// Compute local space points
 			in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
 			in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);
-			in_contact->normal = vec3_normalize(vec3_sub(in_body_a->position, in_body_b->position));
 			
 			// Roll back
 			physics_body_update(in_body_a, -in_contact->time_of_impact);
@@ -1147,8 +1159,8 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 	const Vec3 rb = vec3_sub(point_on_b, physics_body_get_center_of_mass_world(body_b));
 
 	// Get world space velocity of motion at point and rotation by combining linear and angular velocity
-	const Vec3 velocity_a = vec3_add(body_a->linear_velocity, vec3_cross(body_a->angular_velocity, ra));	
-	const Vec3 velocity_b = vec3_add(body_b->linear_velocity, vec3_cross(body_b->angular_velocity, rb));
+	const Vec3 velocity_a = physics_body_velocity_at_offset(body_a, ra);
+	const Vec3 velocity_b = physics_body_velocity_at_offset(body_b, rb);
 	const Vec3 velocity_a_to_b = vec3_sub(velocity_a, velocity_b);
 
 	{	// Collision Impulse
@@ -1193,18 +1205,6 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 		const Vec3 friction_impulse = vec3_scale(velocity_tangent, reduced_mass * friction);
 		physics_body_apply_impulse(body_a, vec3_negate(friction_impulse), point_on_a);
 		physics_body_apply_impulse(body_b, friction_impulse, point_on_b);
-	}
-
-	// Resolve interpenetration 
-	if (in_contact->time_of_impact == 0.0f)
-	{
-		// Move colliding objects to just outside of each other
-		const f32 ta = body_a->inverse_mass / inverse_mass_sum;
-		const f32 tb = body_b->inverse_mass / inverse_mass_sum;
-
-		const Vec3 ds = vec3_sub(in_contact->point_on_b_world, in_contact->point_on_a_world);
-		body_a->position = vec3_add(body_a->position, vec3_scale(ds, ta));
-		body_b->position = vec3_add(body_b->position, vec3_scale(ds,-tb));
 	}
 }
 
@@ -1478,6 +1478,93 @@ void physics_constraint_post_solve(PhysicsScene* scene, PhysicsConstraint* in_co
 	}
 }
 
+// Prepared once from a zero-time contact. Offsets and axes stay fixed during the velocity solve.
+typedef struct PhysicsConstraintPenetration
+{
+	PhysicsBody* body_a;
+	PhysicsBody* body_b;
+	Vec3 offset_a;
+	Vec3 offset_b;
+	Mat3 basis;                // normal (A to B), then two tangents
+	Mat3 inverse_effective_mass; // contact-space velocity change per unit impulse
+	Vec3 accumulated_impulse;
+	f32 separation_speed;
+	f32 friction;
+} PhysicsConstraintPenetration;
+
+PhysicsConstraintPenetration physics_penetration_pre_solve(const PhysicsContact* contact, f32 dt)
+{
+	PhysicsBody* a = contact->body_a;
+	PhysicsBody* b = contact->body_b;
+	const Vec3 anchor_a = physics_body_local_to_world_space(a, contact->point_on_a_local);
+	const Vec3 anchor_b = physics_body_local_to_world_space(b, contact->point_on_b_local);
+	PhysicsConstraintPenetration joint = {
+		.body_a = a,
+		.body_b = b,
+		.offset_a = vec3_sub(anchor_a, physics_body_get_center_of_mass_world(a)),
+		.offset_b = vec3_sub(anchor_b, physics_body_get_center_of_mass_world(b)),
+		.friction = a->friction * b->friction,
+	};
+	const Vec3 normal = vec3_negate(contact->normal); // Collision queries report B to A.
+	joint.basis.columns[0] = normal;
+	vec3_get_ortho(normal, &joint.basis.columns[1], &joint.basis.columns[2]);
+
+	const f32 separation = vec3_dot(vec3_sub(anchor_b, anchor_a), normal);
+	const f32 slop = 0.02f;
+	const f32 beta = 0.25f;
+	joint.separation_speed = dt > 0.0f ? beta * fmaxf(0.0f, -separation - slop) / dt : 0.0f;
+
+	const Mat3 inertia_a = physics_body_get_inverse_inertia_tensor_world(a);
+	const Mat3 inertia_b = physics_body_get_inverse_inertia_tensor_world(b);
+	const Mat3 world_to_contact = mat3_transpose(joint.basis);
+	for (i32 i = 0; i < 3; ++i)
+	{
+		const Vec3 axis = joint.basis.columns[i];
+		const Vec3 spin_a = mat3_mul_vec3(inertia_a, vec3_cross(joint.offset_a, axis));
+		const Vec3 spin_b = mat3_mul_vec3(inertia_b, vec3_cross(joint.offset_b, axis));
+		const Vec3 angular = vec3_add(vec3_cross(spin_a, joint.offset_a), vec3_cross(spin_b, joint.offset_b));
+		const Vec3 response = vec3_add(vec3_scale(axis, a->inverse_mass + b->inverse_mass), angular);
+		joint.inverse_effective_mass.columns[i] = mat3_mul_vec3(world_to_contact, response);
+	}
+	return joint;
+}
+
+void physics_penetration_solve(PhysicsConstraintPenetration* joint)
+{
+	const Vec3 velocity_a = physics_body_velocity_at_offset(joint->body_a, joint->offset_a);
+	const Vec3 velocity_b = physics_body_velocity_at_offset(joint->body_b, joint->offset_b);
+	Vec3 velocity = mat3_mul_vec3(mat3_transpose(joint->basis), vec3_sub(velocity_b, velocity_a));
+	const Mat3 k = joint->inverse_effective_mass;
+	if (k.d[0][0] <= 0.0f) { return; }
+
+	const Vec3 old = joint->accumulated_impulse;
+	Vec3 next = old;
+	next.x = fmaxf(0.0f, old.x + (joint->separation_speed - velocity.x) / k.d[0][0]);
+	velocity = vec3_add(velocity, vec3_scale(k.columns[0], next.x - old.x));
+
+	// Solve the two coupled tangent rows and project onto the Coulomb friction disk.
+	if (joint->friction > 0.0f)
+	{
+		const f32 det = k.d[1][1] * k.d[2][2] - k.d[1][2] * k.d[2][1];
+		if (det > 0.0f)
+		{
+			next.y -= (k.d[2][2] * velocity.y - k.d[2][1] * velocity.z) / det;
+			next.z -= (k.d[1][1] * velocity.z - k.d[1][2] * velocity.y) / det;
+		}
+		const f32 limit = joint->friction * next.x;
+		const f32 magnitude = hypotf(next.y, next.z);
+		if (magnitude > limit)
+		{
+			next.y *= limit / magnitude;
+			next.z *= limit / magnitude;
+		}
+	}
+	joint->accumulated_impulse = next;
+	const Vec3 impulse = mat3_mul_vec3(joint->basis, vec3_sub(next, old));
+	physics_body_apply_impulse_at_offset(joint->body_a, vec3_negate(impulse), joint->offset_a);
+	physics_body_apply_impulse_at_offset(joint->body_b, impulse, joint->offset_b);
+}
+
 typedef struct PhysicsScene
 {
 	sbuffer(PhysicsBody*) bodies;
@@ -1696,9 +1783,8 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	//printf("-------------------------------------------\n");
 
 	// Narrowphase
-	const i32 max_contacts = num_bodies * num_bodies;
-	sbuffer(PhysicsContact) contacts = NULL;
-	sb_reserve(contacts, max_contacts);
+	sbuffer(PhysicsConstraintPenetration) resting_contacts = NULL;
+	sbuffer(PhysicsContact) impacts = NULL;
 
 	for (i32 pair_idx = 0; pair_idx < sb_count(collision_pairs); ++pair_idx)
 	{
@@ -1715,7 +1801,14 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		PhysicsContact contact = {};
 		if (physics_bodies_intersect_dt(body_a, body_b, in_delta_time, &contact))
 		{
-			sb_push(contacts, contact);
+			if (contact.time_of_impact == 0.0f)
+			{
+				sb_push(resting_contacts, physics_penetration_pre_solve(&contact, in_delta_time));
+			}
+			else
+			{
+				sb_push(impacts, contact);
+			}
 		}
 	}
 
@@ -1723,10 +1816,10 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	sb_free(collision_pairs);
 
 	// Sort contacts by time of impact
-	const i32 num_contacts = sb_count(contacts);
-	if (num_contacts > 1)
+	const i32 num_impacts = sb_count(impacts);
+	if (num_impacts > 1)
 	{
-		qsort(contacts, num_contacts, sizeof(PhysicsContact), physics_contact_compare);
+		qsort(impacts, num_impacts, sizeof(PhysicsContact), physics_contact_compare);
 	}
 
 	// Solve Constraints
@@ -1738,15 +1831,19 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 			physics_constraint_pre_solve(in_physics_scene, constraint, in_delta_time);					
 		}
 
-        const i32 max_iterations = 5;
-        for (i32 iteration = 0; iteration < max_iterations; ++iteration)
-        {
-            for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
-            {		
-                PhysicsConstraint* constraint = &in_physics_scene->constraints[constraint_idx];
-                physics_constraint_solve(in_physics_scene, constraint);					
-            }
-        }
+		const i32 max_iterations = 5;
+		for (i32 iteration = 0; iteration < max_iterations; ++iteration)
+		{
+			for (i32 i = 0; i < num_constraints; ++i)
+			{
+				physics_constraint_solve(in_physics_scene, &in_physics_scene->constraints[i]);
+			}
+			for (i32 i = 0; i < sb_count(resting_contacts); ++i)
+			{
+				physics_penetration_solve(&resting_contacts[i]);
+			}
+		}
+		sb_free(resting_contacts);
 
 		for (i32 constraint_idx = 0; constraint_idx < num_constraints; ++constraint_idx)
 		{		
@@ -1757,9 +1854,9 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 
 	// peform physics body updates and contact resolution at each contact time of impact
 	f32 accumulated_delta_time = 0.f;
-	for (i32 contact_idx = 0; contact_idx < sb_count(contacts); ++contact_idx)
+	for (i32 contact_idx = 0; contact_idx < num_impacts; ++contact_idx)
 	{
-		PhysicsContact* contact = &contacts[contact_idx];
+		PhysicsContact* contact = &impacts[contact_idx];
 
 		const f32 contact_delta_time = contact->time_of_impact - accumulated_delta_time;
 
@@ -1784,7 +1881,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	}
 
 	// Free contacts
-	sb_free(contacts);
+	sb_free(impacts);
 
 	// Update physics bodies for any remaining delta time
 	const f32 remaining_delta_time = in_delta_time - accumulated_delta_time;

@@ -514,6 +514,39 @@ int main()
 			.debug_color = vec3_new(0,1,0),
 		});
 
+		// Freestanding box stack beside the drop grid.
+		const i32 boxes_per_side = 4;
+		const f32 box_half_size = 5.0f;
+		const f32 box_clearance = 0.005f;
+		const f32 box_spacing = 2.0f * box_half_size + box_clearance;
+		const f32 center_offset = (boxes_per_side - 1) * box_spacing * 0.5f;
+		const Shape stack_box = {
+			.type = SHAPE_TYPE_BOX,
+			.box = box_shape_create(vec3_new(box_half_size, box_half_size, box_half_size)),
+		};
+		for (i32 level = 0; level < boxes_per_side; ++level)
+		{
+			const f32 height = box_half_size + level * box_spacing;
+			for (i32 x = 0; x < boxes_per_side; ++x)
+			{
+				const f32 pos_x = -40.0f - center_offset + x * box_spacing;
+				for (i32 z = 0; z < boxes_per_side; ++z)
+				{
+					const f32 pos_z = 35.0f - center_offset + z * box_spacing;
+					const bool blue = (x + level + z) % 2 == 0;
+					physics_scene_add_body(&physics_scene, &(PhysicsBody) {
+						.position = vec3_new(pos_x, height, pos_z),
+						.orientation = quat_identity,
+						.shape = stack_box,
+						.inverse_mass = 1.0f,
+						.elasticity = 0.0f,
+						.friction = 0.8f,
+						.debug_color = blue ? vec3_new(0.2f, 0.55f, 1.0f) : vec3_new(1.0f, 0.55f, 0.15f),
+					});
+				}
+			}
+		}
+
 		PhysicsBody* body_a = physics_scene_add_body(&physics_scene, &(PhysicsBody) {
 			.position = vec3_new(0,120,0),
 			.orientation = quat_identity,
