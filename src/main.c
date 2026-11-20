@@ -1241,14 +1241,6 @@ int main()
 	bool show_mouse = true;
 	window_show_mouse_cursor(&window, show_mouse);
 	bool reset_key_was_down = false;
-	const GameObjectHandle player_pose_objects[] = {
-		character.root_object_handle, character.legs_object_handle, character.camera_root_object_handle,
-	};
-	TRS initial_player_pose[ARRAY_COUNT(player_pose_objects)];
-	for (i32 i = 0; i < ARRAY_COUNT(player_pose_objects); ++i)
-	{
-		initial_player_pose[i] = OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, player_pose_objects[i])->trs;
-	}
 
 	GpuCommandBuffer command_buffers[swapchain_count];
 	for (i32 command_buffer_idx = 0; command_buffer_idx < swapchain_count; ++command_buffer_idx)
@@ -1336,15 +1328,7 @@ int main()
 			window_set_mouse_pos(&window, x + width/2, y + height/2);
 		}
 
-		if (reset_simulation)
-		{
-			physics_scene_reset(physics_scene);
-			for (i32 i = 0; i < ARRAY_COUNT(player_pose_objects); ++i)
-			{
-				OBJECT_GET_COMPONENT(TransformComponent, &game_object_manager, player_pose_objects[i])->trs = initial_player_pose[i];
-			}
-		}
-		else if (!show_mouse)
+		if (!show_mouse)
 		{
 			character_update(&(CharacterUpdateData) {
 				.character = &character,
@@ -1432,17 +1416,22 @@ int main()
 
 		// Update Physics scene
 		PhysicsBody* character_collider = OBJECT_GET_COMPONENT(PhysicsBodyComponent, game_object_manager_ptr, character.root_object_handle)->body;
-		if (!reset_simulation)
+		const TRS character_root = game_object_compute_global_transform(&game_object_manager, character.root_object_handle);
+		const Vec3 collider_target = character_collider_center(character_root);
+		if (reset_simulation)
 		{
-			const TRS character_root = game_object_compute_global_transform(&game_object_manager, character.root_object_handle);
-			const Vec3 collider_target = character_collider_center(character_root);
+			physics_scene_reset(physics_scene);
+		}
+		else
+		{
 			// Sweep from the previous pose so contacts see the player's velocity, including sprinting.
 			character_collider->linear_velocity = delta_time > 0.0
 				? vec3_scale(vec3_sub(collider_target, character_collider->position), 1.0 / delta_time)
 				: vec3_zero;
 			physics_scene_update(physics_scene, delta_time);
-			character_collider->position = collider_target;
 		}
+		// Anchor the collider to the current player pose even on the reset frame.
+		character_collider->position = collider_target;
 
 		// GUI
 		if (show_mouse)

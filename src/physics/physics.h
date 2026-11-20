@@ -2231,68 +2231,48 @@ PhysicsConstraint physics_constraint_limited_cv_init(PhysicsBody* a, PhysicsBody
 	return joint;
 }
 
-typedef struct PseudoPhysicsBody
+static Bounds physics_body_swept_bounds(const PhysicsBody* body, f32 dt)
 {
-	i32 id;
-	f32 value;
-	bool is_min;
-} PseudoPhysicsBody;
-
-i32 pseudo_physics_body_compare(const void* a, const void* b)
-{
-	const PseudoPhysicsBody* pseudo_body_a = (const PseudoPhysicsBody*) a;
-	const PseudoPhysicsBody* pseudo_body_b = (const PseudoPhysicsBody*) b;
-	return (pseudo_body_a->value < pseudo_body_b->value) ? -1 : 1;
-}
-
-sbuffer(PseudoPhysicsBody) pseudo_physics_bodies_create_sorted(sbuffer(PhysicsBody*) in_bodies, const f32 in_delta_time)
-{
-	// Axis we project our min and max onto 
-	const Vec3 projection_axis = vec3_normalize(vec3_new(1,1,1));
-
-	const i32 num_bodies = sb_count(in_bodies);
-	const i32 num_pseudo_bodies = num_bodies * 2;
-
-	sbuffer(PseudoPhysicsBody) out_pseudo_bodies = NULL;
-	sb_reserve(out_pseudo_bodies, num_pseudo_bodies);
-
-	for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)
+	Bounds bounds;
+	if (body->inverse_mass > 0.0f && body->shape.type != SHAPE_TYPE_SPHERE &&
+		vec3_length_squared(body->angular_velocity) > 0.0f)
 	{
-		const PhysicsBody* body = in_bodies[body_idx];	
-		Bounds bounds = physics_body_get_bounds(body);
-
-		// Expand bounds by position change this timestep
-		const Vec3 scaled_velocity = vec3_scale(body->linear_velocity, in_delta_time);
-		const Vec3 expanded_min = vec3_add(bounds.min, scaled_velocity);
-		const Vec3 expanded_max = vec3_add(bounds.max, scaled_velocity);
-		bounds_expand_point(&bounds, expanded_min);
-		bounds_expand_point(&bounds, expanded_max);
-
-		// Also expand by some arbitrary extent to broader detection/rejection
-		const f32 epsilon = 0.01f;
-		bounds_expand_point(&bounds, vec3_add(bounds.min, vec3_scale(vec3_new(-1,-1,-1), epsilon)));
-		bounds_expand_point(&bounds, vec3_add(bounds.max, vec3_scale(vec3_new( 1, 1, 1), epsilon)));
-
-		// Create a min and max PseudoPhysicsBody by projecting the bounds min and max onto our 1D axis
-		PseudoPhysicsBody new_pseudo_body_min = {
-			.id = body_idx,
-			.value = vec3_dot(projection_axis, bounds.min),
-			.is_min = true,
-		};
-		sb_push(out_pseudo_bodies, new_pseudo_body_min);
-
-		PseudoPhysicsBody new_pseudo_body_max = {
-			.id = body_idx,
-			.value = vec3_dot(projection_axis, bounds.max),
-			.is_min = false,
-		};
-		sb_push(out_pseudo_bodies, new_pseudo_body_max);
+		// A sphere about the center of mass encloses every intermediate orientation.
+		const bool is_box = body->shape.type == SHAPE_TYPE_BOX;
+		const Bounds local = is_box ? body->shape.box.bounds : body->shape.convex.bounds;
+		const Vec3 center = is_box ? body->shape.box.center_of_mass : body->shape.convex.center_of_mass;
+		const Vec3 reach = vec3_componentwise_max(vec3_sub(center, local.min), vec3_sub(local.max, center));
+		const f32 radius = vec3_length(reach);
+		const Vec3 extent = vec3_new(radius, radius, radius);
+		const Vec3 world_center = physics_body_get_center_of_mass_world(body);
+		bounds = (Bounds){ .min = vec3_sub(world_center, extent), .max = vec3_add(world_center, extent) };
+	}
+	else
+	{
+		bounds = physics_body_get_bounds(body);
 	}
 
-	// Sort pseudo bodies by their value, which is dot(axis, bounds.min) or dot(axis, bounnds.max) for a body
-	qsort(out_pseudo_bodies, num_pseudo_bodies, sizeof(PseudoPhysicsBody), pseudo_physics_body_compare);
+	const Vec3 travel = vec3_scale(body->linear_velocity, dt);
+	const Vec3 padding = vec3_new(0.01f, 0.01f, 0.01f);
+	bounds.min = vec3_sub(vec3_add(bounds.min, vec3_componentwise_min(travel, vec3_zero)), padding);
+	bounds.max = vec3_add(vec3_add(bounds.max, vec3_componentwise_max(travel, vec3_zero)), padding);
+	return bounds;
+}
 
-	return out_pseudo_bodies;
+typedef struct SweepEntry
+{
+	Bounds bounds;
+	i32 body_idx;
+	bool is_dynamic;
+} SweepEntry;
+
+static i32 sweep_entry_compare(const void* lhs, const void* rhs)
+{
+	const SweepEntry* a = lhs;
+	const SweepEntry* b = rhs;
+	if (a->bounds.min.x < b->bounds.min.x) { return -1; }
+	if (a->bounds.min.x > b->bounds.min.x) { return 1; }
+	return a->body_idx - b->body_idx;
 }
 
 typedef struct CollisionPair
@@ -2309,50 +2289,52 @@ bool collision_pair_equals(CollisionPair* in_lhs, CollisionPair* in_rhs)
 				&&	(in_lhs->idx_b == in_rhs->idx_a));
 }
 
+static i32 collision_pair_compare(const void* lhs, const void* rhs)
+{
+	const CollisionPair* a = lhs;
+	const CollisionPair* b = rhs;
+	if (a->idx_a != b->idx_a) { return a->idx_a - b->idx_a; }
+	return a->idx_b - b->idx_b;
+}
+
 sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene, f32 in_delta_time)
 {
-	sbuffer(CollisionPair) out_collision_pairs = NULL;
+	const i32 count = sb_count(in_physics_scene->bodies);
+	if (count < 2) { return NULL; }
 
-	// Sweep and Prune 1D
+	sbuffer(SweepEntry) entries = NULL;
+	sb_add(entries, count);
+	for (i32 i = 0; i < count; ++i)
 	{
-		// Created sorted array of pseudo bodies. Bodies are sorted by their min and max projections onto a 1D axis
-		sbuffer(PseudoPhysicsBody) sorted_pseudo_bodies = pseudo_physics_bodies_create_sorted(in_physics_scene->bodies, in_delta_time);
-
-		const i32 num_pseudo_bodies = sb_count(sorted_pseudo_bodies);
-
-		// Build Collision Pairs from those pseudo bodies
-		for (i32 i = 0; i < num_pseudo_bodies; ++i)		
-		{	
-			PseudoPhysicsBody* pseudo_body_a = &sorted_pseudo_bodies[i];
-
-			// We only care about starting a search when we find a min point.
-			if (!pseudo_body_a->is_min) { continue; }
-
-			CollisionPair new_collision_pair = {
-				.idx_a = pseudo_body_a->id,
-			};
-
-			for (i32 j = i+1; j < num_pseudo_bodies; ++j)		
-			{
-				PseudoPhysicsBody* pseudo_body_b = &sorted_pseudo_bodies[j];
-
-				// if we hit pseudo_body_a's own max, we stop looking
-				if(pseudo_body_b->id == pseudo_body_a->id) { break;}
-
-				// We only record a collision pair if we hit the MIN point of Body B	
-				if (!pseudo_body_b->is_min) { continue; }
-				
-				new_collision_pair.idx_b = pseudo_body_b->id;
-				sb_push(out_collision_pairs, new_collision_pair);
-			}
-		}
-
-		// Free pseudo bodies
-		sb_free(sorted_pseudo_bodies);
+		const PhysicsBody* body = in_physics_scene->bodies[i];
+		entries[i] = (SweepEntry){
+			.bounds = physics_body_swept_bounds(body, in_delta_time),
+			.body_idx = i,
+			.is_dynamic = body->inverse_mass > 0.0f,
+		};
 	}
+	qsort(entries, count, sizeof(*entries), sweep_entry_compare);
 
-	// return collision pairs
-	return out_collision_pairs;
+	sbuffer(CollisionPair) pairs = NULL;
+	for (i32 i = 0; i < count; ++i)
+	{
+		const SweepEntry* a = &entries[i];
+		for (i32 j = i + 1; j < count; ++j)
+		{
+			const SweepEntry* b = &entries[j];
+			if (b->bounds.min.x > a->bounds.max.x) { break; }
+			if (!a->is_dynamic && !b->is_dynamic) { continue; }
+			if (!bounds_intersect(a->bounds, b->bounds)) { continue; }
+
+			const CollisionPair pair = { MIN(a->body_idx, b->body_idx), MAX(a->body_idx, b->body_idx) };
+			sb_push(pairs, pair);
+		}
+	}
+	sb_free(entries);
+
+	// Keep contact solver order independent of bodies crossing along X.
+	if (sb_count(pairs) > 1) { qsort(pairs, sb_count(pairs), sizeof(*pairs), collision_pair_compare); }
+	return pairs;
 }
 
 void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
@@ -2404,12 +2386,6 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		CollisionPair* collision_pair = &collision_pairs[pair_idx];
 		PhysicsBody* body_a = in_physics_scene->bodies[collision_pair->idx_a];
 		PhysicsBody* body_b = in_physics_scene->bodies[collision_pair->idx_b];
-
-		// Skip if both bodies have zero mass
-		if (body_a->inverse_mass <= 0.f && body_b->inverse_mass <= 0.f)
-		{
-			continue;
-		}
 
 		PhysicsContact contact = {};
 		if (physics_bodies_intersect_dt(body_a, body_b, in_delta_time, &contact))

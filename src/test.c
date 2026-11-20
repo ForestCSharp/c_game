@@ -25,6 +25,7 @@ bool test_matmn_mul_matmn();
 bool test_matn_from_matmn();
 bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
+bool test_broad_phase_sweep();
 bool test_distance_joint_drift();
 bool test_orientation_lock();
 bool test_hinges();
@@ -65,6 +66,7 @@ int main()
 	success &= test_matn_from_matmn();
 	success &= test_lcp_op_begin_end();
 	success &= test_rotating_box_sweep();
+	success &= test_broad_phase_sweep();
 	success &= test_distance_joint_drift();
 	success &= test_orientation_lock();
 	success &= test_hinges();
@@ -575,6 +577,54 @@ bool test_rotating_box_sweep()
 	assert(ba.time_of_impact > 0.0f && ba.time_of_impact <= dt);
 	assert(fabsf(ab.time_of_impact - ba.time_of_impact) < 0.001f);
 
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_broad_phase_sweep()
+{
+	printf("  test_broad_phase_sweep... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	assert(physics_scene_broad_phase(&scene, 0.4f) == NULL);
+
+	PhysicsBody bar = {
+		.orientation = quat_identity, .inverse_mass = 1.0f, .angular_velocity = {0, 0, 2.5f},
+		.shape = { .type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(5, 0.1f, 0.1f)) },
+	};
+	PhysicsBody target = {
+		.orientation = quat_identity, .position = {3.7f, 3, 0},
+		.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 0.35f } },
+	};
+	physics_scene_add_body(&scene, &target);
+	assert(physics_scene_broad_phase(&scene, 0.4f) == NULL);
+	physics_scene_add_body(&scene, &bar);
+	physics_scene_add_body(&scene, &target); // Tied bounds, both targets have infinite mass.
+	target.position.z = 20;
+	physics_scene_add_body(&scene, &target); // Shares the X interval only.
+
+	sbuffer(CollisionPair) pairs = physics_scene_broad_phase(&scene, 0.4f);
+	assert(sb_count(pairs) == 2);
+	assert(pairs[0].idx_a == 0 && pairs[0].idx_b == 1);
+	assert(pairs[1].idx_a == 1 && pairs[1].idx_b == 2);
+	sb_free(pairs);
+
+	physics_scene_remove_body(&scene, scene.bodies[1]);
+	pairs = physics_scene_broad_phase(&scene, 0.4f);
+	assert(sb_count(pairs) == 0);
+	sb_free(pairs);
+
+	// The moving sphere reaches the two targets exactly at the end of the step.
+	target.position = vec3_new(11.4f, 3, 0);
+	target.linear_velocity = vec3_new(-7, 0, 0);
+	target.inverse_mass = 1;
+	physics_scene_add_body(&scene, &target);
+	pairs = physics_scene_broad_phase(&scene, 1.0f);
+	assert(sb_count(pairs) == 2);
+	assert(pairs[0].idx_a == 0 && pairs[0].idx_b == 3);
+	assert(pairs[1].idx_a == 1 && pairs[1].idx_b == 3);
+	sb_free(pairs);
+	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;
 }
