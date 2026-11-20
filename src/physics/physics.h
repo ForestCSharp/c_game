@@ -995,7 +995,7 @@ bool physics_body_intersect_sphere_sphere(
 }
 
 // Checks collision at current point in time for two bodies
-bool physics_bodies_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, PhysicsContact* in_contact)
+bool physics_bodies_intersect(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, PhysicsContact* in_contact)
 {
 	const f32 bias = 0.001f;
 	Vec3 pt_on_a;
@@ -1012,8 +1012,8 @@ bool physics_bodies_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, Ph
 		in_contact->normal = normal;
 		in_contact->point_on_a_world = pt_on_a;
 		in_contact->point_on_b_world = pt_on_b;
-		in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
-		in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);
+		in_contact->point_on_a_local = physics_body_world_to_local_space(in_body_a, in_contact->point_on_a_world);
+		in_contact->point_on_b_local = physics_body_world_to_local_space(in_body_b, in_contact->point_on_b_world);
 		in_contact->separation_distance = vec3_dot(vec3_sub(pt_on_a, pt_on_b), normal);
 		return true;
 	}
@@ -1021,8 +1021,8 @@ bool physics_bodies_intersect(PhysicsBody* in_body_a, PhysicsBody* in_body_b, Ph
 	physics_bodies_gjk_closest_points(in_body_a, in_body_b, &pt_on_a, &pt_on_b);	
 	in_contact->point_on_a_world = pt_on_a;
 	in_contact->point_on_b_world = pt_on_b;
-	in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
-	in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);	
+	in_contact->point_on_a_local = physics_body_world_to_local_space(in_body_a, in_contact->point_on_a_world);
+	in_contact->point_on_b_local = physics_body_world_to_local_space(in_body_b, in_contact->point_on_b_world);
 	in_contact->separation_distance = vec3_length(vec3_sub(pt_on_a, pt_on_b));
 	return false;
 }
@@ -1032,18 +1032,19 @@ bool physics_bodies_conservative_advance(PhysicsBody* in_body_a, PhysicsBody* in
 	in_contact->body_a = in_body_a;
 	in_contact->body_b = in_body_b;
 
+	// Prediction advances private poses. Contacts keep pointing to the live bodies for resolution.
+	PhysicsBody predicted_a = *in_body_a;
+	PhysicsBody predicted_b = *in_body_b;
 	f32 toi = 0.f;
 	i32 num_iterations = 0;
 
 	f32 dt = in_delta_time;
 	while (dt > 0.f)
 	{
-		const bool did_intersect = physics_bodies_intersect(in_body_a, in_body_b, in_contact);
+		const bool did_intersect = physics_bodies_intersect(&predicted_a, &predicted_b, in_contact);
 		if (did_intersect)
 		{
 			in_contact->time_of_impact = toi;
-			physics_body_update(in_body_a, -toi);
-			physics_body_update(in_body_b, -toi);
 			return true;
 		}
 
@@ -1054,10 +1055,10 @@ bool physics_bodies_conservative_advance(PhysicsBody* in_body_a, PhysicsBody* in
 		}
 
 		const Vec3 ab = vec3_normalize(vec3_sub(in_contact->point_on_b_world, in_contact->point_on_a_world));
-		const f32 angular_speed_a = physics_body_get_max_linear_speed(in_body_a, in_body_a->angular_velocity, ab);
-		const f32 angular_speed_b = physics_body_get_max_linear_speed(in_body_b, in_body_b->angular_velocity, vec3_scale(ab, -1.0f));
+		const f32 angular_speed_a = physics_body_get_max_linear_speed(&predicted_a, predicted_a.angular_velocity, ab);
+		const f32 angular_speed_b = physics_body_get_max_linear_speed(&predicted_b, predicted_b.angular_velocity, vec3_scale(ab, -1.0f));
 			
-		const Vec3 relative_velocity = vec3_sub(in_body_a->linear_velocity, in_body_b->linear_velocity);
+		const Vec3 relative_velocity = vec3_sub(predicted_a.linear_velocity, predicted_b.linear_velocity);
 		const f32 ortho_speed = vec3_dot(relative_velocity, ab) + angular_speed_a + angular_speed_b;
 		if (ortho_speed <= 0.f)
 		{
@@ -1072,13 +1073,10 @@ bool physics_bodies_conservative_advance(PhysicsBody* in_body_a, PhysicsBody* in
 
 		dt -= time_to_go;
 		toi += time_to_go;
-		physics_body_update(in_body_a, time_to_go);
-		physics_body_update(in_body_b, time_to_go);
+		physics_body_update(&predicted_a, time_to_go);
+		physics_body_update(&predicted_b, time_to_go);
 	}
 
-	// Unwind the clock
-	physics_body_update(in_body_a, -toi);
-	physics_body_update(in_body_b, -toi);
 	return false;
 }
 
@@ -1114,17 +1112,15 @@ bool physics_bodies_intersect_dt(PhysicsBody* in_body_a, PhysicsBody* in_body_b,
 			&in_contact->time_of_impact)
 		)
 		{
-			// Update to time of impact
-			physics_body_update(in_body_a, in_contact->time_of_impact);
-			physics_body_update(in_body_b, in_contact->time_of_impact);
-
-			// Compute local space points
-			in_contact->point_on_a_local = physics_body_world_to_local_space(in_contact->body_a, in_contact->point_on_a_world);
-			in_contact->point_on_b_local = physics_body_world_to_local_space(in_contact->body_b, in_contact->point_on_b_world);
-			
-			// Roll back
-			physics_body_update(in_body_a, -in_contact->time_of_impact);
-			physics_body_update(in_body_b, -in_contact->time_of_impact);
+			PhysicsBody predicted_a = *in_body_a;
+			PhysicsBody predicted_b = *in_body_b;
+			if (in_contact->time_of_impact > 0.0f)
+			{
+				physics_body_update(&predicted_a, in_contact->time_of_impact);
+				physics_body_update(&predicted_b, in_contact->time_of_impact);
+			}
+			in_contact->point_on_a_local = physics_body_world_to_local_space(&predicted_a, in_contact->point_on_a_world);
+			in_contact->point_on_b_local = physics_body_world_to_local_space(&predicted_b, in_contact->point_on_b_world);
 
 			// Compute separation distance
 			const Vec3 a_to_b = vec3_sub(in_body_b->position, in_body_a->position);

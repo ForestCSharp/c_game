@@ -25,6 +25,7 @@ bool test_matmn_mul_matmn();
 bool test_matn_from_matmn();
 bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
+bool test_collision_query_preserves_bodies();
 bool test_broad_phase_sweep();
 bool test_distance_joint_drift();
 bool test_orientation_lock();
@@ -66,6 +67,7 @@ int main()
 	success &= test_matn_from_matmn();
 	success &= test_lcp_op_begin_end();
 	success &= test_rotating_box_sweep();
+	success &= test_collision_query_preserves_bodies();
 	success &= test_broad_phase_sweep();
 	success &= test_distance_joint_drift();
 	success &= test_orientation_lock();
@@ -577,6 +579,52 @@ bool test_rotating_box_sweep()
 	assert(ba.time_of_impact > 0.0f && ba.time_of_impact <= dt);
 	assert(fabsf(ab.time_of_impact - ba.time_of_impact) < 0.001f);
 
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_collision_query_preserves_bodies()
+{
+	printf("  test_collision_query_preserves_bodies... ");
+	for (i32 use_box = 0; use_box <= 1; ++use_box)
+	{
+		PhysicsBody a = {
+			.orientation = quat_identity, .inverse_mass = 1, .linear_velocity = {100, 0, 0},
+			.angular_velocity = {1, 2, 3},
+			.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 2 } },
+		};
+		if (use_box)
+		{
+			a.shape = (Shape){ .type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(2, 1, 0.5f)) };
+		}
+		PhysicsBody b = {
+			.position = {3, 0, 0}, .orientation = quat_identity, .inverse_mass = 1,
+			.linear_velocity = {1, 0, 0}, .angular_velocity = {0, 4, 0},
+			.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 0.5f } },
+		};
+		unsigned char original_a[sizeof(a)], original_b[sizeof(b)];
+		memcpy(original_a, &a, sizeof(a));
+		memcpy(original_b, &b, sizeof(b));
+		f32 first_toi = 0.0f;
+		for (i32 repeat = 0; repeat < 3; ++repeat)
+		{
+			PhysicsContact contact = {};
+			assert(physics_bodies_intersect_dt(&a, &b, 1.0f / 60.0f, &contact));
+			assert(contact.body_a == &a && contact.body_b == &b);
+			assert(contact.time_of_impact > 0 && contact.time_of_impact <= 1.0f / 60.0f);
+			if (repeat == 0) { first_toi = contact.time_of_impact; }
+			assert(contact.time_of_impact == first_toi);
+			assert(memcmp(original_a, &a, sizeof(a)) == 0 && memcmp(original_b, &b, sizeof(b)) == 0);
+
+			PhysicsBody b_at_hit = b;
+			physics_body_update(&b_at_hit, first_toi);
+			const Vec3 b_world = physics_body_local_to_world_space(&b_at_hit, contact.point_on_b_local);
+			assert(vec3_length(vec3_sub(b_world, contact.point_on_b_world)) < 1e-5f);
+
+			assert(!physics_bodies_intersect_dt(&a, &b, first_toi * 0.99f, &contact));
+			assert(memcmp(original_a, &a, sizeof(a)) == 0 && memcmp(original_b, &b, sizeof(b)) == 0);
+		}
+	}
 	printf("PASSED\n");
 	return true;
 }
