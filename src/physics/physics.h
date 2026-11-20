@@ -175,6 +175,14 @@ Mat3 shape_get_inertia_tensor_matrix(Shape* in_shape)
 	assert(false);
 }
 
+// Round trip from the spawn position to spawn + travel and back, with smooth reversals.
+typedef struct PhysicsLinearMover
+{
+	Vec3 travel;
+	f32 period; // Seconds per round trip. Zero leaves velocity under the caller's control.
+	f64 elapsed;
+} PhysicsLinearMover;
+
 typedef struct PhysicsBody
 {
 	Vec3 position;
@@ -187,6 +195,7 @@ typedef struct PhysicsBody
 	f32 friction;
 
 	Vec3 debug_color;
+	PhysicsLinearMover mover;
 
 } PhysicsBody;
 
@@ -1254,6 +1263,8 @@ typedef struct PhysicsConstraintHinge
 	bool limited;
 	f32 min_angle, max_angle;
 	f32 angle; // Continuous signed twist across the +/-pi boundary.
+	optional(f32) motor_speed; // Target omega_B - omega_A along the hinge axis, in radians/second.
+	optional(f32) initial_motor_speed;
 
 	// Prepared once per step, in world space.
 	PhysicsPivotSolver pivot;
@@ -1500,14 +1511,19 @@ static void physics_hinge_solve(PhysicsConstraint* joint)
 		mat3_mul_vec3(h->pivot.angular_response_to_point, point));
 	Vec3 torque = mat3_mul_vec3(h->angular_mass, vec3_sub(h->swing_target, angular_velocity));
 
-	// Choose the axial speed that requires zero torque about the free axis.
-	// Clamping that speed supplies a one-sided impulse only when a stop needs it.
+	// The free axial speed needs zero drive torque. An ideal motor instead asks
+	// for a prescribed speed, subject to any stops on the hinge.
 	const Vec3 torque_per_speed = mat3_mul_vec3(h->angular_mass, h->axis);
 	const f32 axial_mass = vec3_dot(h->axis, torque_per_speed);
 	if (axial_mass > 0.0f)
 	{
 		f32 speed = -vec3_dot(h->axis, torque) / axial_mass;
-		if (h->limited)
+		if (optional_is_set(h->motor_speed))
+		{
+			speed = optional_get(h->motor_speed);
+			if (h->limited) { speed = CLAMP(speed, h->min_speed, h->max_speed); }
+		}
+		else if (h->limited)
 		{
 			// Remove this step's previous stop impulse before deciding whether the stop still bears load.
 			const f32 unloaded_speed = speed - h->stop_impulse / axial_mass;
@@ -2034,9 +2050,11 @@ PhysicsBody* physics_scene_add_body(PhysicsScene* in_physics_scene, const Physic
 		can reference them even as additional bodies are added.
 		This new body effectively takes ownership of the passed-in data
 	*/
+	assert(in_body->mover.period == 0.0f || (in_body->mover.period > 0.0f && in_body->inverse_mass == 0.0f));
 	PhysicsBody* new_body = FCS_MEM_ALLOC_ZEROED(sizeof(PhysicsBody));
 
 	*new_body = *in_body;
+	new_body->mover.elapsed = 0.0;
 	sb_push(in_physics_scene->bodies, new_body);
 	const PhysicsBodyMotion initial = {
 		.position = new_body->position,
@@ -2088,6 +2106,7 @@ void physics_scene_reset(PhysicsScene* scene)
 		body->orientation = initial.orientation;
 		body->linear_velocity = initial.linear_velocity;
 		body->angular_velocity = initial.angular_velocity;
+		body->mover.elapsed = 0.0;
 	}
 
 	for (i32 i = 0; i < sb_count(scene->constraints); ++i)
@@ -2101,6 +2120,7 @@ void physics_scene_reset(PhysicsScene* scene)
 				break;
 			case PHYSICS_CONSTRAINT_TYPE_HINGE:
 				constraint->hinge.angle = 0.0f;
+				constraint->hinge.motor_speed = constraint->hinge.initial_motor_speed;
 				break;
 			case PHYSICS_CONSTRAINT_TYPE_CONSTANT_VELOCITY:
 			case PHYSICS_CONSTRAINT_TYPE_ORIENTATION:
@@ -2112,7 +2132,12 @@ void physics_scene_reset(PhysicsScene* scene)
 
 void physics_scene_add_constraint(PhysicsScene* in_physics_scene, PhysicsConstraint* in_constraint)
 {
-	sb_push(in_physics_scene->constraints, *in_constraint);
+	PhysicsConstraint joint = *in_constraint;
+	if (joint.type == PHYSICS_CONSTRAINT_TYPE_HINGE)
+	{
+		joint.hinge.initial_motor_speed = joint.hinge.motor_speed;
+	}
+	sb_push(in_physics_scene->constraints, joint);
 }
 
 PhysicsConstraint physics_constraint_distance_init(PhysicsScene* scene)
@@ -2155,6 +2180,14 @@ PhysicsConstraint physics_constraint_hinge_init(PhysicsBody* a, PhysicsBody* b, 
 		.axis_a = quat_rotate_vec3(inverse_a, vec3_normalize(axis)),
 		.hinge.initial_relative = quat_normalize(quat_mul(inverse_a, b->orientation)),
 	};
+}
+
+// Ideal rotary motor: signed target speed in radians/second, pivot and axis in world space.
+PhysicsConstraint physics_constraint_motor_init(PhysicsBody* a, PhysicsBody* b, Vec3 pivot, Vec3 axis, f32 speed)
+{
+	PhysicsConstraint joint = physics_constraint_hinge_init(a, b, pivot, axis);
+	optional_set(joint.hinge.motor_speed, speed);
+	return joint;
 }
 
 // Signed radians about the hinge axis, measured from the creation pose.
@@ -2327,7 +2360,7 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 	if (in_delta_time <= 0.0f) { return; }
 	const i32 num_bodies = sb_count(in_physics_scene->bodies);
 
-	// Acceleration due to gravity
+	// Set velocities before broad phase so sweeps and resting contacts see platform motion.
 	for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)
 	{
 		PhysicsBody* body = in_physics_scene->bodies[body_idx];
@@ -2337,6 +2370,16 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 			f32 mass = 1.0f / body->inverse_mass;
 			Vec3 impulse_gravity = vec3_scale(vec3_new(0.f, -10.f, 0.f), mass * in_delta_time);
 			physics_body_apply_impulse_linear(body, impulse_gravity);
+		}
+		else if (body->mover.period > 0.0f)
+		{
+			PhysicsLinearMover* mover = &body->mover;
+			mover->elapsed = fmod(mover->elapsed + in_delta_time, mover->period);
+			const f64 phase = mover->elapsed / mover->period;
+			const f32 fraction = (f32)(0.5 - 0.5 * cos(2.0 * PI * phase));
+			const Vec3 start = in_physics_scene->initial_motion[body_idx].position;
+			const Vec3 target = vec3_add(start, vec3_scale(mover->travel, fraction));
+			body->linear_velocity = vec3_scale(vec3_sub(target, body->position), 1.0f / in_delta_time);
 		}
 	}
 

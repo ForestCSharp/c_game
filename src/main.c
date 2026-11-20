@@ -553,6 +553,48 @@ static void spawn_ragdoll_demo(GameObjectManager* manager, Vec3 origin)
 	}
 }
 
+static void spawn_motor_demo(GameObjectManager* manager, Vec3 base)
+{
+	const Vec3 axle = vec3_add(base, vec3_new(0, 27, 5));
+	PhysicsBody* stand = game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = vec3_add(base, vec3_new(0, 14, 0)), .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(3, 14, 2))},
+		.debug_color = vec3_new(0.3f, 0.35f, 0.4f),
+	});
+	// The offset center of mass loads the motor even after the ball leaves the paddle.
+	PhysicsBody* paddle = game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = vec3_add(axle, vec3_new(4, 0, 0)), .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(16, 2, 2))},
+		.inverse_mass = 0.2f, .elasticity = 0.2f, .friction = 0.6f,
+		.debug_color = vec3_new(0.95f, 0.25f, 0.1f),
+	});
+	PhysicsConstraint motor = physics_constraint_motor_init(stand, paddle, axle, vec3_new(0, 0, 1), 2.0f);
+	physics_scene_add_constraint(&manager->physics_scene, &motor);
+	game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = vec3_add(axle, vec3_new(12, 14, 0)), .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_SPHERE, .sphere = {.radius = 3}},
+		.inverse_mass = 1, .elasticity = 0.5f, .friction = 0.6f,
+		.debug_color = vec3_new(1.0f, 0.85f, 0.2f),
+	});
+}
+
+static void spawn_platform_demo(GameObjectManager* manager, Vec3 start)
+{
+	game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = start, .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(14, 2, 10))},
+		.inverse_mass = 0, .friction = 1.0f,
+		.mover = {.travel = vec3_new(32, 0, 0), .period = 10.0f},
+		.debug_color = vec3_new(0.15f, 0.42f, 0.85f),
+	});
+	game_object_spawn_physics_body(manager, &(PhysicsBody){
+		.position = vec3_add(start, vec3_new(0, 5, 0)), .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(4, 3, 4))},
+		.inverse_mass = 1.0f, .friction = 0.95f,
+		.debug_color = vec3_new(0.95f, 0.65f, 0.2f),
+	});
+}
+
 int main()
 {
 	// Init multithreaded task system
@@ -701,6 +743,8 @@ int main()
 		spawn_box_chain(game_object_manager_ptr, vec3_new(90, 120, 0), true);
 		spawn_shoulder_demo(game_object_manager_ptr);
 		spawn_ragdoll_demo(game_object_manager_ptr, vec3_new(250, 62, 0));
+		spawn_motor_demo(game_object_manager_ptr, vec3_new(345, 0, 0));
+		spawn_platform_demo(game_object_manager_ptr, vec3_new(420, 9, 0));
 
 		{
 			// side length s

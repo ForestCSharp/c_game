@@ -28,6 +28,7 @@ bool test_rotating_box_sweep();
 bool test_distance_joint_drift();
 bool test_orientation_lock();
 bool test_hinges();
+bool test_hinge_motor();
 bool test_constant_velocity_joints();
 bool test_resting_contacts();
 bool test_manifold_points();
@@ -37,6 +38,7 @@ bool test_joint_supported_by_contact();
 bool test_contact_friction();
 bool test_contact_lift_off_and_bounce();
 bool test_kinematic_collider();
+bool test_moving_platform();
 bool test_physics_scene_reset();
 bool test_physics_scene_remove_body();
 bool test_arena_create_destroy();
@@ -66,6 +68,7 @@ int main()
 	success &= test_distance_joint_drift();
 	success &= test_orientation_lock();
 	success &= test_hinges();
+	success &= test_hinge_motor();
 	success &= test_constant_velocity_joints();
 	success &= test_resting_contacts();
 	success &= test_manifold_points();
@@ -75,6 +78,7 @@ int main()
 	success &= test_contact_friction();
 	success &= test_contact_lift_off_and_bounce();
 	success &= test_kinematic_collider();
+	success &= test_moving_platform();
 	success &= test_physics_scene_reset();
 	success &= test_physics_scene_remove_body();
 	success &= test_arena_create_destroy();
@@ -747,6 +751,67 @@ bool test_hinges()
 	return true;
 }
 
+bool test_hinge_motor()
+{
+	printf("  test_hinge_motor... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	const Vec3 axis = vec3_normalize(vec3_new(1, 2, -1));
+	PhysicsBody sphere = {
+		.shape = {.type = SHAPE_TYPE_SPHERE, .sphere = {.radius = 0.5f}},
+		.orientation = quat_new(vec3_new(1, 0, 0), 0.8f), .inverse_mass = 1.0f,
+	};
+	PhysicsBody* a = physics_scene_add_body(&scene, &sphere);
+	sphere.position = vec3_scale(axis, 3);
+	sphere.orientation = quat_new(vec3_new(0, 1, 0), -0.6f);
+	sphere.inverse_mass = 0.5f;
+	PhysicsBody* b = physics_scene_add_body(&scene, &sphere);
+	const Vec3 pivot = vec3_scale(axis, 1.5f);
+	PhysicsConstraint motor = physics_constraint_motor_init(a, b, pivot, axis, 3.0f);
+	physics_scene_add_constraint(&scene, &motor);
+	PhysicsConstraintHinge* drive = &scene.constraints[0].hinge;
+	for (i32 run = 0; run < 2; ++run)
+	{
+		assert(optional_is_set(drive->motor_speed) && optional_get(drive->motor_speed) == 3.0f);
+		for (i32 i = 0; i < 120; ++i)
+		{
+			if (i == 40) { optional_set(drive->motor_speed, -2.0f); }
+			if (i == 80) { optional_set(drive->motor_speed, 0.0f); }
+			const f32 dt = i % 2 ? 1.0f / 40.0f : 1.0f / 120.0f;
+			// Load both shafts with equal and opposite torque, including while braking.
+			physics_body_apply_impulse_angular(a, vec3_scale(axis, dt));
+			physics_body_apply_impulse_angular(b, vec3_scale(axis, -dt));
+			physics_scene_update(&scene, dt);
+			const f32 speed = optional_get(drive->motor_speed);
+			assert(vec3_length(vec3_sub(vec3_sub(b->angular_velocity, a->angular_velocity), vec3_scale(axis, speed))) < 0.001f);
+			// B has twice A's inertia. The drive must conserve their combined angular momentum.
+			assert(vec3_length(vec3_add(a->angular_velocity, vec3_scale(b->angular_velocity, 2))) < 0.001f);
+			assert(vec3_length(vec3_sub(physics_body_local_to_world_space(a, motor.anchor_a),
+				physics_body_local_to_world_space(b, motor.anchor_b))) < 0.001f);
+		}
+		physics_scene_reset(&scene);
+	}
+	// A driven hinge holds at its stop and releases as soon as the command reverses.
+	drive->limited = true;
+	drive->min_angle = -0.3f;
+	drive->max_angle = 0.5f;
+	for (i32 i = 0; i < 100; ++i)
+	{
+		if (i == 50) { optional_set(drive->motor_speed, -3.0f); }
+		physics_scene_update(&scene, 1.0f / 60.0f);
+		assert(drive->angle >= -0.301f && drive->angle <= 0.501f);
+		if (i == 49 || i == 99)
+		{
+			assert(fabsf(drive->angle - (i == 49 ? 0.5f : -0.3f)) < 0.001f);
+			assert(vec3_length(vec3_sub(b->angular_velocity, a->angular_velocity)) < 0.001f);
+		}
+		if (i == 50) { assert(vec3_dot(vec3_sub(b->angular_velocity, a->angular_velocity), axis) < -2.99f); }
+	}
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
 bool test_constant_velocity_joints()
 {
 	printf("  test_constant_velocity_joints... ");
@@ -1113,6 +1178,55 @@ bool test_kinematic_collider()
 	assert(vec3_nearly_equal(player->linear_velocity, vec3_zero));
 	assert(vec3_nearly_equal(player->angular_velocity, vec3_zero));
 	assert(crate->linear_velocity.x > -0.01f);
+	physics_scene_destroy(&scene);
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_moving_platform()
+{
+	printf("  test_moving_platform... ");
+	PhysicsScene scene;
+	physics_scene_init(&scene);
+	const Vec3 start = vec3_new(40, 9, -7);
+	PhysicsBody* platform = physics_scene_add_body(&scene, &(PhysicsBody){
+		.position = start, .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(14, 2, 10))},
+		.friction = 1, .mover = {.travel = vec3_new(32, 0, 0), .period = 10},
+	});
+	PhysicsBody* box = physics_scene_add_body(&scene, &(PhysicsBody){
+		.position = vec3_add(start, vec3_new(0, 5, 0)), .orientation = quat_identity,
+		.shape = {.type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(4, 3, 4))},
+		.inverse_mass = 1, .friction = 0.95f,
+	});
+	Vec3 replay[2];
+	for (i32 run = 0; run < 4; ++run)
+	{
+		f64 time = 0;
+		// Reset a quarter of the way into the third trip, while the platform is moving.
+		for (i32 i = 0; i < 1350; ++i)
+		{
+			const f32 dt = run % 2 ? (i % 2 ? 1.0f / 40 : 1.0f / 120) : 1.0f / 60;
+			physics_scene_update(&scene, dt);
+			time += dt;
+			const f32 expected = start.x + 16.0f * (1.0 - cos(2.0 * PI * time / 10.0));
+			assert(fabsf(platform->position.x - expected) < 0.001f);
+			assert(platform->position.y == start.y && platform->position.z == start.z);
+			const Vec3 offset = vec3_sub(box->position, platform->position);
+			assert(hypotf(offset.x, offset.z) < 0.5f && fabsf(offset.y - 5.0f) < 0.1f);
+		}
+		if (run < 2) { replay[run] = box->position; }
+		else { assert(vec3_nearly_equal(box->position, replay[run % 2])); }
+		physics_scene_reset(&scene);
+		assert(platform->mover.elapsed == 0 && vec3_nearly_equal(platform->position, start));
+		assert(vec3_nearly_equal(platform->linear_velocity, vec3_zero));
+	}
+	// At zero friction the platform moves underneath the resting box.
+	box->friction = 0.0f;
+	for (i32 i = 0; i < 60; ++i) { physics_scene_update(&scene, 1.0f / 60); }
+	assert(platform->position.x > start.x + 3 && fabsf(box->position.x - start.x) < 0.01f);
+	physics_scene_remove_body(&scene, platform);
+	physics_scene_update(&scene, 1.0f / 60);
 	physics_scene_destroy(&scene);
 	printf("PASSED\n");
 	return true;
