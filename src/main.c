@@ -1241,6 +1241,8 @@ int main()
 	bool show_mouse = true;
 	window_show_mouse_cursor(&window, show_mouse);
 	bool reset_key_was_down = false;
+	const f64 max_physics_step = 1.0 / 60.0;
+	const i32 max_physics_steps_per_frame = 3;
 
 	GpuCommandBuffer command_buffers[swapchain_count];
 	for (i32 command_buffer_idx = 0; command_buffer_idx < swapchain_count; ++command_buffer_idx)
@@ -1258,6 +1260,9 @@ int main()
         const u64 new_time = time_now();
         const double delta_time = time_seconds(new_time - time);
         time = new_time;
+
+		// Drop excess game time after a stall so catch-up work cannot stall the next frame.
+		const f64 simulation_dt = fmin(delta_time, max_physics_steps_per_frame * max_physics_step);
 
         accumulated_delta_time += delta_time;
         frames_rendered++;	
@@ -1317,6 +1322,12 @@ int main()
 			reset_simulation = true;
 		}
 
+		const char* impact_label = physics_scene->recheck_impacts ? "Impact rechecks: on" : "Impact rechecks: off";
+		if (show_mouse && gui_button(&gui_context, impact_label, vec2_new(15, 100), vec2_new(270, 50)) == GUI_CLICKED)
+		{
+			physics_scene->recheck_impacts = !physics_scene->recheck_impacts;
+		}
+
 		if (!show_mouse) 
 		{
 			int x,y;
@@ -1334,7 +1345,7 @@ int main()
 				.character = &character,
 				.window = &window,
 				.game_object_manager = &game_object_manager,
-				.delta_time = delta_time,
+				.delta_time = simulation_dt,
 				.mouse_delta = mouse_delta,
 			});
 		}
@@ -1425,10 +1436,15 @@ int main()
 		else
 		{
 			// Sweep from the previous pose so contacts see the player's velocity, including sprinting.
-			character_collider->linear_velocity = delta_time > 0.0
-				? vec3_scale(vec3_sub(collider_target, character_collider->position), 1.0 / delta_time)
+			character_collider->linear_velocity = simulation_dt > 0.0
+				? vec3_scale(vec3_sub(collider_target, character_collider->position), 1.0 / simulation_dt)
 				: vec3_zero;
-			physics_scene_update(physics_scene, delta_time);
+			const i32 steps = (i32)ceil(simulation_dt / max_physics_step);
+			if (steps > 0)
+			{
+				const f32 step_dt = (f32)(simulation_dt / steps);
+				for (i32 i = 0; i < steps; ++i) { physics_scene_update(physics_scene, step_dt); }
+			}
 		}
 		// Anchor the collider to the current player pose even on the reset frame.
 		character_collider->position = collider_target;
@@ -1436,17 +1452,6 @@ int main()
 		// GUI
 		if (show_mouse)
 		{
-			if (gui_button(&gui_context, "Btn 2", vec2_new(15, 100), vec2_new(270, 50)) == GUI_HELD)
-			{
-				printf("Holding Second Button\n");
-			}
-
-			if (gui_button(&gui_context, "Btn 3", vec2_new(15, 150), vec2_new(270, 50)) ==
-				GUI_HOVERED)
-			{
-				printf("Hovering Third Button\n");
-			}
-
 			static f32 f = 0.25f;
 			gui_slider_f32(&gui_context, &f, vec2_new(0, 2), "My Slider", vec2_new(15, 0), vec2_new(270, 50));
 

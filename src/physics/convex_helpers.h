@@ -1228,9 +1228,7 @@ void find_dangling_edges(const ConvexTri* in_tris, const i32 in_num_tris, sbuffe
 	assert(out_dangling_edges != NULL);
 	
 	// Reset out dangling edges
-	sb_free(*out_dangling_edges);
-
-	sbuffer(ConvexEdge) out_edges = NULL;
+	if (*out_dangling_edges) { sb_deln(*out_dangling_edges, 0, sb_count(*out_dangling_edges)); }
 
 	for (i32 idx_1 = 0; idx_1 < in_num_tris; ++idx_1)
 	{

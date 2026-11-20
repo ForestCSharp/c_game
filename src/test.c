@@ -27,6 +27,7 @@ bool test_lcp_op_begin_end();
 bool test_rotating_box_sweep();
 bool test_collision_query_preserves_bodies();
 bool test_broad_phase_sweep();
+bool test_same_step_impacts();
 bool test_distance_joint_drift();
 bool test_orientation_lock();
 bool test_hinges();
@@ -69,6 +70,7 @@ int main()
 	success &= test_rotating_box_sweep();
 	success &= test_collision_query_preserves_bodies();
 	success &= test_broad_phase_sweep();
+	success &= test_same_step_impacts();
 	success &= test_distance_joint_drift();
 	success &= test_orientation_lock();
 	success &= test_hinges();
@@ -624,6 +626,68 @@ bool test_collision_query_preserves_bodies()
 			assert(!physics_bodies_intersect_dt(&a, &b, first_toi * 0.99f, &contact));
 			assert(memcmp(original_a, &a, sizeof(a)) == 0 && memcmp(original_b, &b, sizeof(b)) == 0);
 		}
+	}
+	printf("PASSED\n");
+	return true;
+}
+
+bool test_same_step_impacts()
+{
+	printf("  test_same_step_impacts... ");
+	const f32 dt = 1.0f / 60.0f;
+	const PhysicsBody sphere = {
+		.orientation = quat_identity, .inverse_mass = 1, .elasticity = 1,
+		.shape = { .type = SHAPE_TYPE_SPHERE, .sphere = { .radius = 1 } },
+	};
+	// The first impact starts the middle sphere moving and cancels the predicted A-C hit.
+	for (i32 touching = 0; touching <= 1; ++touching)
+	{
+		PhysicsScene scene;
+		physics_scene_init(&scene);
+		PhysicsBody* balls[3];
+		for (i32 i = 0; i < 3; ++i)
+		{
+			PhysicsBody body = sphere;
+			body.position.x = 3.0f * i - (i == 2 ? touching : 0);
+			body.linear_velocity.x = i == 0 ? 300.0f : 0.0f;
+			balls[i] = physics_scene_add_body(&scene, &body);
+		}
+		assert(!scene.recheck_impacts);
+		physics_scene_update(&scene, dt);
+		assert(fabsf(balls[1]->linear_velocity.x - 300.0f) < 0.001f);
+		assert(fabsf(balls[2]->linear_velocity.x) < 0.001f);
+
+		scene.recheck_impacts = true;
+		physics_scene_reset(&scene);
+		assert(scene.recheck_impacts);
+		physics_scene_update(&scene, dt);
+		assert(fabsf(balls[2]->linear_velocity.x - 300.0f) < 0.001f);
+		assert(fabsf(balls[0]->linear_velocity.x) < 0.001f && fabsf(balls[1]->linear_velocity.x) < 0.001f);
+		assert(fabsf(balls[0]->position.x - 1.0f) < 0.001f);
+		assert(fabsf(balls[1]->position.x - (4.0f - touching)) < 0.001f);
+		assert(fabsf(balls[2]->position.x - 9.0f) < 0.001f);
+		physics_scene_destroy(&scene);
+	}
+
+	// Revisit the same two pairs 22 times in one tick, with positive time between rebounds.
+	for (i32 box_stops = 0; box_stops <= 1; ++box_stops)
+	{
+		PhysicsScene scene;
+		physics_scene_init(&scene);
+		scene.recheck_impacts = true;
+		PhysicsBody stop = sphere;
+		stop.inverse_mass = 0.0f;
+		if (box_stops) { stop.shape = (Shape){ .type = SHAPE_TYPE_BOX, .box = box_shape_create(vec3_new(8, 1, 8)) }; }
+		stop.position.y = -3.0f;
+		physics_scene_add_body(&scene, &stop);
+		stop.position.y = 3.0f;
+		physics_scene_add_body(&scene, &stop);
+		PhysicsBody* ball = physics_scene_add_body(&scene, &sphere);
+		ball->linear_velocity.y = 2610.0f + 10.0f * dt;
+		physics_scene_update(&scene, dt);
+		assert(fabsf(ball->position.y + 0.5f) < (box_stops ? 0.01f : 0.001f));
+		assert(fabsf(ball->linear_velocity.y - 2610.0f) < 0.01f);
+		physics_scene_destroy(&scene);
 	}
 	printf("PASSED\n");
 	return true;

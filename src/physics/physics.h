@@ -215,9 +215,29 @@ typedef struct PhysicsContact
 } PhysicsContact;
 
 
+// GJK and EPA repeatedly query the same pose in different directions.
+typedef struct PhysicsSupportShape
+{
+	const PhysicsBody* body;
+	Vec3 box_points[NUM_BOX_POINTS];
+} PhysicsSupportShape;
+
+static void physics_support_shape_init(PhysicsSupportShape* shape, const PhysicsBody* body)
+{
+	shape->body = body;
+	if (body->shape.type == SHAPE_TYPE_BOX)
+	{
+		for (i32 i = 0; i < NUM_BOX_POINTS; ++i)
+		{
+			shape->box_points[i] = vec3_add(quat_rotate_vec3(body->orientation, body->shape.box.points[i]), body->position);
+		}
+	}
+}
+
 // Returns point on a convex shape that's furthest in a particular direction
-Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const f32 in_bias)
+static Vec3 physics_body_support(const PhysicsSupportShape* shape, const Vec3 in_dir, const f32 in_bias)
 {	
+	const PhysicsBody* in_body = shape->body;
 	switch(in_body->shape.type)
 	{
 		case SHAPE_TYPE_SPHERE:
@@ -227,13 +247,12 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const f
 		}
 		case SHAPE_TYPE_BOX:
 		{
-			const BoxShape* box = &in_body->shape.box;
-			Vec3 max_point = vec3_add(quat_rotate_vec3(in_body->orientation, box->points[0]), in_body->position);
+			Vec3 max_point = shape->box_points[0];
 			f32 max_distance = vec3_dot(in_dir, max_point);
 
 			for (i32 point_idx = 1; point_idx < NUM_BOX_POINTS; ++point_idx)
 			{
-				const Vec3 current_point = vec3_add(quat_rotate_vec3(in_body->orientation, box->points[point_idx]), in_body->position);
+				const Vec3 current_point = shape->box_points[point_idx];
 				const f32 current_distance = vec3_dot(in_dir, current_point);
 				if (current_distance > max_distance)
 				{
@@ -276,7 +295,7 @@ Vec3 physics_body_support(const PhysicsBody* in_body, const Vec3 in_dir, const f
 }
 
 /** Calls physics_body_support on both bodies, storing the results as well as their difference */
-MinkowskiPoint physics_bodies_support(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, const Vec3 in_dir, const f32 in_bias)
+static MinkowskiPoint physics_bodies_support(const PhysicsSupportShape* in_body_a, const PhysicsSupportShape* in_body_b, const Vec3 in_dir, const f32 in_bias)
 {
 	MinkowskiPoint out_point = {};
 
@@ -294,9 +313,9 @@ MinkowskiPoint physics_bodies_support(const PhysicsBody* in_body_a, const Physic
 	return out_point;
 }
 
-f32 physics_bodies_epa_expand(
-	const PhysicsBody* in_body_a, 
-	const PhysicsBody* in_body_b, 
+static void physics_bodies_epa_expand(
+	const PhysicsSupportShape* in_body_a,
+	const PhysicsSupportShape* in_body_b,
 	const f32 in_bias, 
 	const MinkowskiPoint in_simplex_points[4],
 	Vec3* out_point_on_a,
@@ -306,6 +325,11 @@ f32 physics_bodies_epa_expand(
 	sbuffer(MinkowskiPoint) points = NULL;
 	sbuffer(ConvexTri) tris = NULL;
 	sbuffer(ConvexEdge) dangling_edges = NULL;
+
+	// Most contact patches expand just a few faces beyond the tetrahedron.
+	sb_reserve(points, 12);
+	sb_reserve(tris, 24);
+	sb_reserve(dangling_edges, 8);
 
 	// Add points from in_simplex_points and determine center
 	Vec3 center = vec3_zero;
@@ -424,86 +448,55 @@ f32 physics_bodies_epa_expand(
 	sb_free(tris);
 	sb_free(dangling_edges);
 
-	const Vec3 delta = vec3_sub(*out_point_on_b, *out_point_on_a);
-	return vec3_length(delta);
 }
 
 const i32 MAX_GJK_ITERATIONS = 64;
 
-bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, const f32 in_bias, Vec3* out_pt_on_a, Vec3* out_pt_on_b)
+static bool physics_bodies_gjk_query(const PhysicsSupportShape* a, const PhysicsSupportShape* b, f32 bias,
+	Vec3* point_a, Vec3* point_b)
 {
-	assert(out_pt_on_a != NULL);
-	assert(out_pt_on_b != NULL);
-
-	const Vec3 origin = vec3_zero;
-
 	i32 num_points = 1;
-	MinkowskiPoint simplex_points[4] = {0};
-	simplex_points[0] = physics_bodies_support(in_body_a, in_body_b, vec3_new(1,1,1), 0.0f);
-
-	f32 closest_dist = 1e10f;
+	MinkowskiPoint simplex_points[4] = { physics_bodies_support(a, b, vec3_new(1,1,1), 0.0f) };
+	Vec4 weights = vec4_new(1,0,0,0);
+	Vec3 direction = vec3_negate(simplex_points[0].xyz);
+	f32 closest_dist_squared = 1e10f;
+	bool separated = false;
 	bool contains_origin = false;
-	Vec3 new_dir = vec3_scale(simplex_points[0].xyz, -1.0f);
 
-	i32 num_iterations = 0;
-	do
+	for (i32 i = 0; i < MAX_GJK_ITERATIONS; ++i)
 	{
-		if (++num_iterations > MAX_GJK_ITERATIONS)
+		const MinkowskiPoint next = physics_bodies_support(a, b, direction, 0.0f);
+		if (simplex_has_point(simplex_points, num_points, &next)) { break; }
+		if (vec3_dot(direction, next.xyz) < 0.0f)
 		{
+			// A separating plane proves a miss. Keep this simplex to find the witnesses for CCD.
+			separated = true;
+		}
+		simplex_points[num_points++] = next;
+		contains_origin = simplex_signed_volumes(simplex_points, num_points, &direction, &weights) && !separated;
+		if (contains_origin) { break; }
+
+		sort_valids(simplex_points, &weights);
+		num_points = num_valids(weights);
+		const f32 dist_squared = vec3_length_squared(direction);
+		if (dist_squared >= closest_dist_squared) { break; }
+		closest_dist_squared = dist_squared;
+		if (num_points == 4)
+		{
+			contains_origin = !separated;
 			break;
 		}
-
-		MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, new_dir, 0.0f);
-
-		// if new point is same as previous, then we can't expand further
-		if (simplex_has_point(simplex_points, num_points, &new_point))
-		{
-			break;
-		}
-
-		// Add new MinkowskiPoint to our array of points
-		simplex_points[num_points] = new_point;
-		++num_points;
-
-		// if the new point hasn't moved past the origin, then the origin cannot be in the set, so break
-		const f32 dot_dot = vec3_dot(new_dir, vec3_sub(new_point.xyz, origin));
-		if (dot_dot < 0.0f)
-		{
-			break;
-		}
-
-		// run simplex_signed_volumes, modifying new_dir and lambdas 
-		Vec4 lambdas;
-		contains_origin = simplex_signed_volumes(simplex_points, num_points, &new_dir, &lambdas);
-
-		// break if we contain the origin
-		if (contains_origin)
-		{
-			break;
-		}
-
-		// if new projection isn't closer, break
-		f32 dist = vec3_length_squared(new_dir);
-		if (dist >= closest_dist)
-		{
-			break;		
-		}
-
-		// Update closest_dist
-		closest_dist = dist;
-
-		// Use lambdas that support the new search dir, and invalidate any points that don't support it
-		sort_valids(simplex_points, &lambdas);
-		num_points = num_valids(lambdas);
-
-		// If we reached 4 total points in our simplex, then we contain the origin and the two bodies intersect
-		contains_origin = (num_points == 4);
 	}
-	while (!contains_origin);
 
-	// Only run EPA on successful intersections
 	if (!contains_origin)
 	{
+		*point_a = vec3_zero;
+		*point_b = vec3_zero;
+		for (i32 i = 0; i < num_points; ++i)
+		{
+			*point_a = vec3_add(*point_a, vec3_scale(simplex_points[i].pt_a, weights.v[i]));
+			*point_b = vec3_add(*point_b, vec3_scale(simplex_points[i].pt_b, weights.v[i]));
+		}
 		return false;
 	}
 
@@ -511,7 +504,7 @@ bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBod
 	if (num_points == 1)
 	{
 		const Vec3 search_dir = vec3_negate(simplex_points[0].xyz);
-		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, search_dir, 0.0f);
+		const MinkowskiPoint new_point = physics_bodies_support(a, b, search_dir, 0.0f);
 		simplex_points[num_points] = new_point;
 		num_points += 1;
 	}
@@ -523,7 +516,7 @@ bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBod
 		vec3_get_ortho(ab, &u, &v);
 
 		const Vec3 search_dir = u;
-		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, search_dir, 0.0f);
+		const MinkowskiPoint new_point = physics_bodies_support(a, b, search_dir, 0.0f);
 		simplex_points[num_points] = new_point;
 		num_points += 1;
 	}
@@ -535,7 +528,7 @@ bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBod
 		const Vec3 norm = vec3_cross(ab,ac);
 
 		const Vec3 search_dir = norm;
-		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, search_dir, 0.0f);
+		const MinkowskiPoint new_point = physics_bodies_support(a, b, search_dir, 0.0f);
 		simplex_points[num_points] = new_point;
 		num_points += 1;
 	}
@@ -554,77 +547,14 @@ bool physics_bodies_gjk_intersect(const PhysicsBody* in_body_a, const PhysicsBod
 	{
 		MinkowskiPoint* pt = &simplex_points[i];
 		const Vec3 dir = vec3_normalize(vec3_sub(pt->xyz, avg));
-		pt->pt_a = vec3_add(pt->pt_a, vec3_scale(dir, in_bias));
-		pt->pt_b = vec3_sub(pt->pt_b, vec3_scale(dir, in_bias));
+		pt->pt_a = vec3_add(pt->pt_a, vec3_scale(dir, bias));
+		pt->pt_b = vec3_sub(pt->pt_b, vec3_scale(dir, bias));
 		pt->xyz = vec3_sub(pt->pt_a, pt->pt_b);
 	}
 
-	physics_bodies_epa_expand(in_body_a, in_body_b, in_bias, simplex_points, out_pt_on_a, out_pt_on_b);
+	physics_bodies_epa_expand(a, b, bias, simplex_points, point_a, point_b);
 
 	return true;
-}
-
-void physics_bodies_gjk_closest_points(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, Vec3* out_point_on_a, Vec3* out_point_on_b)
-{
-	assert(out_point_on_a != NULL);
-	assert(out_point_on_b != NULL);
-
-	const Vec3 origin = vec3_zero;
-
-	f32 closest_dist_squared = 1e10;
-	const f32 bias = 0.0f;
-
-	i32 num_points = 1;
-	MinkowskiPoint simplex_points[4] = {0};
-
-	simplex_points[0] = physics_bodies_support(in_body_a, in_body_b, vec3_new(1,1,1), bias);
-
-	Vec4 lambdas = vec4_new(1,0,0,0);
-	Vec3 new_dir = vec3_negate(simplex_points[0].xyz);
-
-	i32 num_iterations = 0;
-	do
-	{
-		if (++num_iterations > MAX_GJK_ITERATIONS)
-		{
-			break;
-		}
-
-		const MinkowskiPoint new_point = physics_bodies_support(in_body_a, in_body_b, new_dir, bias);
-
-		// if the new point is the same as a previous point: break
-		if (simplex_has_point(simplex_points, num_points, &new_point))
-		{
-			break;
-		}
-
-		// Add new point to simplex
-		simplex_points[num_points] = new_point;
-		num_points += 1;
-
-		// Update new_dir and lambdas
-		simplex_signed_volumes(simplex_points, num_points, &new_dir, &lambdas);
-		sort_valids(simplex_points, &lambdas);
-		num_points = num_valids(lambdas);
-
-		// If we failed to find a closer point: break
-		f32 dist_squared = vec3_length_squared(new_dir);
-		if (dist_squared >= closest_dist_squared)
-		{
-			break;	
-		}
-
-		// Found a new closest distance
-		closest_dist_squared = dist_squared;
-	} while (num_points < 4);
-
-	*out_point_on_a = vec3_zero;
-	*out_point_on_b = vec3_zero;
-	for (i32 i = 0; i < 4; ++i)
-	{
-		*out_point_on_a = vec3_add(*out_point_on_a, vec3_scale(simplex_points[i].pt_a, lambdas.v[i]));
-		*out_point_on_b = vec3_add(*out_point_on_b, vec3_scale(simplex_points[i].pt_b, lambdas.v[i]));
-	}
 }
 
 f32 physics_body_get_max_linear_speed(const PhysicsBody* in_body, const Vec3 in_angular_velocity, const Vec3 in_dir)
@@ -995,12 +925,16 @@ bool physics_body_intersect_sphere_sphere(
 }
 
 // Checks collision at current point in time for two bodies
-bool physics_bodies_intersect(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b, PhysicsContact* in_contact)
+bool physics_bodies_intersect(const PhysicsBody* in_body_a, const PhysicsBody* in_body_b,
+	PhysicsContact* in_contact)
 {
 	const f32 bias = 0.001f;
 	Vec3 pt_on_a;
 	Vec3 pt_on_b;
-	if (physics_bodies_gjk_intersect(in_body_a, in_body_b, bias, &pt_on_a, &pt_on_b))
+	PhysicsSupportShape a, b;
+	physics_support_shape_init(&a, in_body_a);
+	physics_support_shape_init(&b, in_body_b);
+	if (physics_bodies_gjk_query(&a, &b, bias, &pt_on_a, &pt_on_b))
 	{
 		const Vec3 normal = vec3_normalize(vec3_sub(pt_on_b, pt_on_a));
 
@@ -1018,7 +952,6 @@ bool physics_bodies_intersect(const PhysicsBody* in_body_a, const PhysicsBody* i
 		return true;
 	}
 
-	physics_bodies_gjk_closest_points(in_body_a, in_body_b, &pt_on_a, &pt_on_b);	
 	in_contact->point_on_a_world = pt_on_a;
 	in_contact->point_on_b_world = pt_on_b;
 	in_contact->point_on_a_local = physics_body_world_to_local_space(in_body_a, in_contact->point_on_a_world);
@@ -1027,34 +960,14 @@ bool physics_bodies_intersect(const PhysicsBody* in_body_a, const PhysicsBody* i
 	return false;
 }
 
-bool physics_bodies_conservative_advance(PhysicsBody* in_body_a, PhysicsBody* in_body_b, const f32 in_delta_time, PhysicsContact* in_contact)
+static bool physics_advance_from_gap(PhysicsBody* a, PhysicsBody* b, f32 dt, Vec3 gap, PhysicsContact* in_contact)
 {
-	in_contact->body_a = in_body_a;
-	in_contact->body_b = in_body_b;
-
-	// Prediction advances private poses. Contacts keep pointing to the live bodies for resolution.
-	PhysicsBody predicted_a = *in_body_a;
-	PhysicsBody predicted_b = *in_body_b;
-	f32 toi = 0.f;
-	i32 num_iterations = 0;
-
-	f32 dt = in_delta_time;
-	while (dt > 0.f)
+	PhysicsBody predicted_a = *a;
+	PhysicsBody predicted_b = *b;
+	f32 toi = 0.0f;
+	for (i32 iteration = 0; iteration < 10 && dt > 0.0f; ++iteration)
 	{
-		const bool did_intersect = physics_bodies_intersect(&predicted_a, &predicted_b, in_contact);
-		if (did_intersect)
-		{
-			in_contact->time_of_impact = toi;
-			return true;
-		}
-
-		++num_iterations;
-		if (num_iterations > 10)
-		{
-			break;
-		}
-
-		const Vec3 ab = vec3_normalize(vec3_sub(in_contact->point_on_b_world, in_contact->point_on_a_world));
+		const Vec3 ab = vec3_normalize(gap);
 		const f32 angular_speed_a = physics_body_get_max_linear_speed(&predicted_a, predicted_a.angular_velocity, ab);
 		const f32 angular_speed_b = physics_body_get_max_linear_speed(&predicted_b, predicted_b.angular_velocity, vec3_scale(ab, -1.0f));
 			
@@ -1065,7 +978,7 @@ bool physics_bodies_conservative_advance(PhysicsBody* in_body_a, PhysicsBody* in
 			break;
 		}
 
-		f32 time_to_go = in_contact->separation_distance / ortho_speed;
+		f32 time_to_go = vec3_length(gap) / ortho_speed;
 		if (time_to_go > dt)
 		{
 			break;
@@ -1073,11 +986,32 @@ bool physics_bodies_conservative_advance(PhysicsBody* in_body_a, PhysicsBody* in
 
 		dt -= time_to_go;
 		toi += time_to_go;
+		if (dt <= 0.0f) { break; }
 		physics_body_update(&predicted_a, time_to_go);
 		physics_body_update(&predicted_b, time_to_go);
+		if (physics_bodies_intersect(&predicted_a, &predicted_b, in_contact))
+		{
+			in_contact->time_of_impact = toi;
+			return true;
+		}
+		gap = vec3_sub(in_contact->point_on_b_world, in_contact->point_on_a_world);
 	}
-
 	return false;
+}
+
+bool physics_bodies_conservative_advance(PhysicsBody* a, PhysicsBody* b, f32 dt, PhysicsContact* contact)
+{
+	contact->body_a = a;
+	contact->body_b = b;
+	if (dt < 0.0f) { return false; }
+	if (dt == 0.0f) { contact->time_of_impact = 0.0f; }
+	if (physics_bodies_intersect(a, b, contact))
+	{
+		contact->time_of_impact = 0.0f;
+		return true;
+	}
+	const Vec3 gap = vec3_sub(contact->point_on_b_world, contact->point_on_a_world);
+	return physics_advance_from_gap(a, b, dt, gap, contact);
 }
 
 // Checks for collisions over specified in_delta_time
@@ -1139,7 +1073,7 @@ bool physics_bodies_intersect_dt(PhysicsBody* in_body_a, PhysicsBody* in_body_b,
 	return false;
 }
 
-void physics_contact_resolve(PhysicsContact* in_contact)
+bool physics_contact_resolve(PhysicsContact* in_contact)
 {
 	PhysicsBody* body_a = in_contact->body_a;
 	PhysicsBody* body_b = in_contact->body_b;
@@ -1167,6 +1101,9 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 	const Vec3 velocity_b = physics_body_velocity_at_offset(body_b, rb);
 	const Vec3 velocity_a_to_b = vec3_sub(velocity_a, velocity_b);
 
+	const f32 normal_speed = vec3_dot(velocity_a_to_b, contact_normal);
+	if (normal_speed >= -1e-5f) { return false; }
+
 	{	// Collision Impulse
 
 		// Use inverse inertia tensors, direction vectors, and contact normal to compute angular factors
@@ -1175,7 +1112,7 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 		const f32 angular_factor = vec3_dot(vec3_add(angular_ja, angular_jb), contact_normal);
 
 		// Calculate collision impulse magnitude
-		const f32 collision_impulse_magnitude = (1.0f + elasticity) * vec3_dot(velocity_a_to_b, contact_normal) / (inverse_mass_sum + angular_factor);
+		const f32 collision_impulse_magnitude = (1.0f + elasticity) * normal_speed / (inverse_mass_sum + angular_factor);
 		// Collision impulse is in direction of contact normal
 		const Vec3 collision_impulse = vec3_scale(contact_normal, collision_impulse_magnitude);
 
@@ -1210,18 +1147,7 @@ void physics_contact_resolve(PhysicsContact* in_contact)
 		physics_body_apply_impulse(body_a, vec3_negate(friction_impulse), point_on_a);
 		physics_body_apply_impulse(body_b, friction_impulse, point_on_b);
 	}
-}
-
-i32 physics_contact_compare(const void* in_a, const void* in_b)
-{
-	const PhysicsContact* in_contact_a = (const PhysicsContact*) in_a;
-	const PhysicsContact* in_contact_b = (const PhysicsContact*) in_b;
-
-	const f32 toi_a = in_contact_a->time_of_impact;
-	const f32 toi_b = in_contact_b->time_of_impact;
-	return		toi_a < toi_b	? 	-1
-	  		:	toi_a == toi_b	?	0
-	  		: 						1;
+	return true;
 }
 
 typedef enum PhysicsConstraintType
@@ -1983,6 +1909,7 @@ typedef struct PhysicsScene
 	sbuffer(PhysicsBodyMotion) initial_motion;
 	sbuffer(PhysicsConstraint) constraints;
 	sbuffer(PhysicsContactManifold) manifolds;
+	bool recheck_impacts;
 	f32 previous_dt;
 	Arena* arena;
 } PhysicsScene;
@@ -2230,7 +2157,7 @@ PhysicsConstraint physics_constraint_limited_cv_init(PhysicsBody* a, PhysicsBody
 static Bounds physics_body_swept_bounds(const PhysicsBody* body, f32 dt)
 {
 	Bounds bounds;
-	if (body->inverse_mass > 0.0f && body->shape.type != SHAPE_TYPE_SPHERE &&
+	if (dt > 0.0f && body->inverse_mass > 0.0f && body->shape.type != SHAPE_TYPE_SPHERE &&
 		vec3_length_squared(body->angular_velocity) > 0.0f)
 	{
 		// A sphere about the center of mass encloses every intermediate orientation.
@@ -2333,6 +2260,325 @@ sbuffer(CollisionPair) physics_scene_broad_phase(PhysicsScene* in_physics_scene,
 	return pairs;
 }
 
+typedef struct PhysicsImpact
+{
+	CollisionPair pair;
+	PhysicsContact contact;
+} PhysicsImpact;
+
+static i32 physics_impact_compare(const void* lhs, const void* rhs)
+{
+	const PhysicsImpact* a = lhs;
+	const PhysicsImpact* b = rhs;
+	if (a->contact.time_of_impact < b->contact.time_of_impact) { return -1; }
+	if (a->contact.time_of_impact > b->contact.time_of_impact) { return 1; }
+	return collision_pair_compare(&a->pair, &b->pair);
+}
+
+typedef struct PhysicsImpactState
+{
+	Bounds swept_bounds;
+	f32 advanced_to;
+	bool had_impact;
+	i32 first_cached_pair; // One-based index, zero ends the list.
+} PhysicsImpactState;
+
+// Contacts at one instant share geometry even as impulses change the velocities.
+typedef struct PhysicsImpactPose
+{
+	PhysicsContact contact;
+	i32 other_idx;
+	i32 next;
+	bool touching;
+} PhysicsImpactPose;
+
+static void physics_recheck_impact(PhysicsScene* scene, CollisionPair pair, PhysicsBody* a, PhysicsBody* b,
+	f32 elapsed, f32 remaining, PhysicsImpactState* states,
+	sbuffer(PhysicsImpactPose)* cache, sbuffer(PhysicsImpact)* impacts)
+{
+	PhysicsImpact impact = { .pair = pair };
+	if (a->shape.type == SHAPE_TYPE_SPHERE && b->shape.type == SHAPE_TYPE_SPHERE)
+	{
+		if (!physics_bodies_intersect_dt(a, b, remaining, &impact.contact)) { return; }
+	}
+	else
+	{
+		PhysicsImpactState* owner = &states[pair.idx_a];
+		i32 link = owner->first_cached_pair;
+		while (link && (*cache)[link - 1].other_idx != pair.idx_b) { link = (*cache)[link - 1].next; }
+		if (!link)
+		{
+			PhysicsImpactPose pose = { .other_idx = pair.idx_b, .next = owner->first_cached_pair };
+			pose.touching = physics_bodies_intersect(a, b, &pose.contact);
+			sb_push(*cache, pose);
+			link = owner->first_cached_pair = sb_count(*cache);
+		}
+
+		const PhysicsImpactPose* pose = &(*cache)[link - 1];
+		if (pose->touching)
+		{
+			impact.contact = pose->contact;
+		}
+		else
+		{
+			const Vec3 gap = vec3_sub(pose->contact.point_on_b_world, pose->contact.point_on_a_world);
+			if (!physics_advance_from_gap(a, b, remaining, gap, &impact.contact)) { return; }
+		}
+	}
+	impact.contact.time_of_impact += elapsed;
+	impact.contact.body_a = scene->bodies[pair.idx_a];
+	impact.contact.body_b = scene->bodies[pair.idx_b];
+	sb_push(*impacts, impact);
+}
+
+typedef struct PhysicsPairPose
+{
+	CollisionPair pair;
+	bool touching;
+	Vec3 gap;
+} PhysicsPairPose;
+
+// Finish a congested interval with simultaneous contact constraints. Swept tests
+// still catch incoming bodies, and neighboring contacts can transmit the impulse.
+static void physics_scene_advance_contact_batch(PhysicsScene* scene, f32 dt)
+{
+	sbuffer(CollisionPair) pairs = physics_scene_broad_phase(scene, dt);
+	sbuffer(PhysicsConstraintPenetration) contacts = NULL;
+	for (i32 i = 0; i < sb_count(pairs); ++i)
+	{
+		PhysicsBody* a = scene->bodies[pairs[i].idx_a];
+		PhysicsBody* b = scene->bodies[pairs[i].idx_b];
+		PhysicsContact contact = { .body_a = a, .body_b = b };
+		if (a->shape.type == SHAPE_TYPE_SPHERE && b->shape.type == SHAPE_TYPE_SPHERE)
+		{
+			if (!physics_bodies_intersect_dt(a, b, dt, &contact)) { continue; }
+		}
+		else if (!physics_bodies_intersect(a, b, &contact))
+		{
+			const Vec3 gap = vec3_sub(contact.point_on_b_world, contact.point_on_a_world);
+			if (contact.separation_distance <= 0.02f && contact.separation_distance > 0.0f)
+			{
+				contact.normal = vec3_negate(vec3_normalize(gap));
+			}
+			else if (!physics_advance_from_gap(a, b, dt, gap, &contact)) { continue; }
+		}
+		PhysicsConstraintPenetration row = physics_penetration_pre_solve(&contact, dt);
+		const Vec3 anchor_a = physics_body_local_to_world_space(a, contact.point_on_a_local);
+		const Vec3 anchor_b = physics_body_local_to_world_space(b, contact.point_on_b_local);
+		const f32 gap = vec3_dot(vec3_sub(anchor_b, anchor_a), row.basis.columns[0]);
+		if (gap > 0.0f) { row.separation_speed = -gap / dt; }
+		sb_push(contacts, row);
+	}
+	sb_free(pairs);
+	for (i32 iteration = 0; iteration < 8; ++iteration)
+	{
+		for (i32 i = 0; i < sb_count(contacts); ++i) { physics_penetration_solve(&contacts[i]); }
+	}
+	sb_free(contacts);
+	for (i32 i = 0; i < sb_count(scene->bodies); ++i) { physics_body_update(scene->bodies[i], dt); }
+}
+
+static void physics_scene_resolve_impacts(PhysicsScene* scene, f32 dt, sbuffer(PhysicsPairPose) poses)
+{
+	sbuffer(PhysicsImpact) impacts = NULL;
+	sbuffer(CollisionPair) pairs = physics_scene_broad_phase(scene, dt);
+	i32 pose_idx = 0;
+	for (i32 i = 0; i < sb_count(pairs); ++i)
+	{
+		const CollisionPair pair = pairs[i];
+		PhysicsBody* a = scene->bodies[pair.idx_a];
+		PhysicsBody* b = scene->bodies[pair.idx_b];
+		while (pose_idx < sb_count(poses) && collision_pair_compare(&poses[pose_idx].pair, &pair) < 0) { ++pose_idx; }
+		if (pose_idx < sb_count(poses) && collision_pair_compare(&poses[pose_idx].pair, &pair) == 0)
+		{
+			// The constraint solver changed velocities, but the starting witnesses are still valid.
+			const PhysicsPairPose* pose = &poses[pose_idx];
+			if (pose->touching) { continue; }
+			PhysicsImpact impact = { .pair = pair, .contact = { .body_a = a, .body_b = b } };
+			if (physics_advance_from_gap(a, b, dt, pose->gap, &impact.contact)) { sb_push(impacts, impact); }
+		}
+		else
+		{
+			PhysicsImpact impact = { .pair = pair };
+			if (physics_bodies_intersect_dt(a, b, dt, &impact.contact) && impact.contact.time_of_impact > 0.0f)
+			{
+				sb_push(impacts, impact);
+			}
+		}
+	}
+	sb_free(pairs);
+
+	const i32 count = sb_count(scene->bodies);
+	sbuffer(PhysicsImpactState) states = NULL;
+	if (impacts)
+	{
+		sb_add(states, count);
+		for (i32 i = 0; i < count; ++i)
+		{
+			states[i] = (PhysicsImpactState){ .swept_bounds = physics_body_swept_bounds(scene->bodies[i], dt) };
+		}
+	}
+	// First hits on independent bodies do not spend the repeat-impact budget.
+	const i32 max_repeat_impacts = 32;
+	i32 repeat_impacts = 0;
+	f32 batch_start = dt;
+	sbuffer(PhysicsImpactPose) cache = NULL;
+	f32 cache_time = 0.0f;
+	while (sb_count(impacts) > 0)
+	{
+		i32 next = 0;
+		for (i32 i = 1; i < sb_count(impacts); ++i)
+		{
+			if (physics_impact_compare(&impacts[i], &impacts[next]) < 0) { next = i; }
+		}
+
+		PhysicsImpact hit = impacts[next];
+		sb_del(impacts, next);
+		const f32 elapsed = fminf(hit.contact.time_of_impact, dt);
+		if (elapsed != cache_time)
+		{
+			cache_time = elapsed;
+			if (sb_count(cache))
+			{
+				sb_deln(cache, 0, sb_count(cache));
+				for (i32 i = 0; i < count; ++i) { states[i].first_cached_pair = 0; }
+			}
+		}
+		const i32 participants[] = { hit.pair.idx_a, hit.pair.idx_b };
+		// Unrelated bodies stay on the trajectories used to predict their pending hits.
+		for (i32 k = 0; k < 2; ++k)
+		{
+			const i32 id = participants[k];
+			if (elapsed > states[id].advanced_to)
+			{
+				physics_body_update(scene->bodies[id], elapsed - states[id].advanced_to);
+				states[id].advanced_to = elapsed;
+			}
+		}
+		if (!physics_contact_resolve(&hit.contact)) { continue; }
+
+		if ((states[hit.pair.idx_a].had_impact || states[hit.pair.idx_b].had_impact) &&
+			++repeat_impacts >= max_repeat_impacts)
+		{
+			batch_start = elapsed;
+			break;
+		}
+
+		for (i32 k = 0; k < 2; ++k)
+		{
+			const i32 id = participants[k];
+			PhysicsBody* body = scene->bodies[id];
+			if (body->inverse_mass <= 0.0f) { continue; }
+
+			// Only predictions involving this body's old trajectory are stale.
+			for (i32 i = sb_count(impacts) - 1; i >= 0; --i)
+			{
+				if (impacts[i].pair.idx_a == id || impacts[i].pair.idx_b == id) { sb_del(impacts, i); }
+			}
+			states[id].had_impact = true;
+			const f32 remaining = dt - elapsed;
+			states[id].swept_bounds = physics_body_swept_bounds(body, remaining);
+			for (i32 j = 0; j < count; ++j)
+			{
+				if (j == participants[0] || j == participants[1]) { continue; }
+				PhysicsBody* other = scene->bodies[j];
+				if (!bounds_intersect(states[id].swept_bounds, states[j].swept_bounds)) { continue; }
+
+				PhysicsBody predicted_other;
+				if (elapsed > states[j].advanced_to)
+				{
+					predicted_other = *other;
+					physics_body_update(&predicted_other, elapsed - states[j].advanced_to);
+					other = &predicted_other;
+				}
+				const CollisionPair pair = { MIN(id, j), MAX(id, j) };
+				physics_recheck_impact(scene, pair, id < j ? body : other, id < j ? other : body,
+					elapsed, remaining, states, &cache, &impacts);
+			}
+		}
+	}
+	sb_free(cache);
+	sb_free(impacts);
+	for (i32 i = 0; i < count; ++i)
+	{
+		const f32 remaining = states ? batch_start - states[i].advanced_to : dt;
+		if (remaining > 0.0f) { physics_body_update(scene->bodies[i], remaining); }
+	}
+	sb_free(states);
+	if (batch_start < dt)
+	{
+		// Rebuild the swept contacts halfway through the remaining interval so
+		// velocities transferred through the stack can produce new contacts.
+		const f32 half = (dt - batch_start) * 0.5f;
+		physics_scene_advance_contact_batch(scene, half);
+		physics_scene_advance_contact_batch(scene, half);
+	}
+}
+
+static sbuffer(PhysicsPairPose) physics_scene_collect_pair_poses(PhysicsScene* scene, f32 dt)
+{
+	sbuffer(CollisionPair) pairs = physics_scene_broad_phase(scene, 0.0f);
+	sbuffer(PhysicsPairPose) poses = NULL;
+	sb_reserve(poses, sb_count(pairs));
+	for (i32 i = 0; i < sb_count(pairs); ++i)
+	{
+		PhysicsBody* a = scene->bodies[pairs[i].idx_a];
+		PhysicsBody* b = scene->bodies[pairs[i].idx_b];
+		PhysicsContact contact = { .body_a = a, .body_b = b };
+		const bool spheres = a->shape.type == SHAPE_TYPE_SPHERE && b->shape.type == SHAPE_TYPE_SPHERE;
+		const bool touching = spheres
+			? physics_bodies_intersect_dt(a, b, dt, &contact) && contact.time_of_impact == 0.0f
+			: physics_bodies_intersect(a, b, &contact);
+		if (touching)
+		{
+			physics_scene_cache_contact(scene, &contact);
+		}
+		if (touching || !spheres)
+		{
+			const PhysicsPairPose pose = {
+				.pair = pairs[i], .touching = touching, .gap = vec3_sub(contact.point_on_b_world, contact.point_on_a_world),
+			};
+			sb_push(poses, pose);
+		}
+	}
+	sb_free(pairs);
+	return poses;
+}
+
+// Single pass: predict each candidate once, before solving contacts and joints.
+static sbuffer(PhysicsImpact) physics_scene_predict_impacts(PhysicsScene* scene, f32 dt)
+{
+	sbuffer(PhysicsImpact) impacts = NULL;
+	sbuffer(CollisionPair) pairs = physics_scene_broad_phase(scene, dt);
+	for (i32 i = 0; i < sb_count(pairs); ++i)
+	{
+		const CollisionPair pair = pairs[i];
+		PhysicsImpact impact = { .pair = pair };
+		if (!physics_bodies_intersect_dt(scene->bodies[pair.idx_a], scene->bodies[pair.idx_b], dt, &impact.contact)) { continue; }
+		if (impact.contact.time_of_impact == 0.0f) { physics_scene_cache_contact(scene, &impact.contact); }
+		else { sb_push(impacts, impact); }
+	}
+	sb_free(pairs);
+	return impacts;
+}
+
+static void physics_scene_apply_predicted_impacts(PhysicsScene* scene, f32 dt, sbuffer(PhysicsImpact) impacts)
+{
+	const i32 count = sb_count(impacts);
+	if (count > 1) { qsort(impacts, count, sizeof(*impacts), physics_impact_compare); }
+	f32 elapsed = 0.0f;
+	for (i32 i = 0; i <= count; ++i)
+	{
+		const f32 target = i < count ? impacts[i].contact.time_of_impact : dt;
+		if (target > elapsed)
+		{
+			for (i32 j = 0; j < sb_count(scene->bodies); ++j) { physics_body_update(scene->bodies[j], target - elapsed); }
+			elapsed = target;
+		}
+		if (i < count) { physics_contact_resolve(&impacts[i].contact); }
+	}
+}
+
 void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 {
 	if (in_delta_time <= 0.0f) { return; }
@@ -2361,50 +2607,20 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		}
 	}
 
-	// Broadphase
-	sbuffer(CollisionPair) collision_pairs = physics_scene_broad_phase(in_physics_scene, in_delta_time);
-
-	//printf("\033[2J\033[1;1H");
-	//printf("-------------------------------------------\n");
-	//printf("Num Collision Pairs: %i\n", sb_count(collision_pairs));
-	//printf("Max Possible Pairs:  %i\n", (num_bodies * (num_bodies-1)) / 2);
-	//printf("-------------------------------------------\n");
-
-	// Narrowphase
+	// Both impact modes feed resting contacts into the same constraint solver.
 	for (i32 i = 0; i < sb_count(in_physics_scene->manifolds); ++i)
 	{
 		in_physics_scene->manifolds[i].touching = false;
 	}
-	sbuffer(PhysicsContact) impacts = NULL;
-
-	for (i32 pair_idx = 0; pair_idx < sb_count(collision_pairs); ++pair_idx)
+	sbuffer(PhysicsPairPose) poses = NULL;
+	sbuffer(PhysicsImpact) impacts = NULL;
+	if (in_physics_scene->recheck_impacts)
 	{
-		CollisionPair* collision_pair = &collision_pairs[pair_idx];
-		PhysicsBody* body_a = in_physics_scene->bodies[collision_pair->idx_a];
-		PhysicsBody* body_b = in_physics_scene->bodies[collision_pair->idx_b];
-
-		PhysicsContact contact = {};
-		if (physics_bodies_intersect_dt(body_a, body_b, in_delta_time, &contact))
-		{
-			if (contact.time_of_impact == 0.0f)
-			{
-				physics_scene_cache_contact(in_physics_scene, &contact);
-			}
-			else
-			{
-				sb_push(impacts, contact);
-			}
-		}
+		poses = physics_scene_collect_pair_poses(in_physics_scene, in_delta_time);
 	}
-
-	// Done with collision pairs. Free them 
-	sb_free(collision_pairs);
-
-	// Sort contacts by time of impact
-	const i32 num_impacts = sb_count(impacts);
-	if (num_impacts > 1)
+	else
 	{
-		qsort(impacts, num_impacts, sizeof(PhysicsContact), physics_contact_compare);
+		impacts = physics_scene_predict_impacts(in_physics_scene, in_delta_time);
 	}
 
 	// Solve Constraints
@@ -2450,46 +2666,15 @@ void physics_scene_update(PhysicsScene* in_physics_scene, f32 in_delta_time)
 		}
 	}
 
-	// peform physics body updates and contact resolution at each contact time of impact
-	f32 accumulated_delta_time = 0.f;
-	for (i32 contact_idx = 0; contact_idx < num_impacts; ++contact_idx)
+	if (in_physics_scene->recheck_impacts)
 	{
-		PhysicsContact* contact = &impacts[contact_idx];
-
-		const f32 contact_delta_time = contact->time_of_impact - accumulated_delta_time;
-
-		PhysicsBody* body_a = contact->body_a;
-		PhysicsBody* body_b = contact->body_b;
-
-		// Skip if both bodies have zero mass
-		if (body_a->inverse_mass <= 0.f && body_b->inverse_mass <= 0.f)
-		{
-			continue;
-		}
-
-		// Position Update up to time of impact
-		for (i32 body_idx = 0; body_idx < sb_count(in_physics_scene->bodies); ++body_idx)
-		{
-			PhysicsBody* body = in_physics_scene->bodies[body_idx];
-			physics_body_update(body, contact_delta_time);
-		}
-
-		physics_contact_resolve(contact);
-		accumulated_delta_time += contact_delta_time;
+		physics_scene_resolve_impacts(in_physics_scene, in_delta_time, poses);
+		sb_free(poses);
 	}
-
-	// Free contacts
-	sb_free(impacts);
-
-	// Update physics bodies for any remaining delta time
-	const f32 remaining_delta_time = in_delta_time - accumulated_delta_time;
-	if (remaining_delta_time > 0.0f)
+	else
 	{
-		for (i32 body_idx = 0; body_idx < num_bodies; ++body_idx)
-		{
-			PhysicsBody* body = in_physics_scene->bodies[body_idx];
-			physics_body_update(body, remaining_delta_time);
-		}
+		physics_scene_apply_predicted_impacts(in_physics_scene, in_delta_time, impacts);
+		sb_free(impacts);
 	}
 }
 
